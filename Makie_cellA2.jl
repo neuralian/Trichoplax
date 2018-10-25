@@ -92,4 +92,4 @@ cellvolume(c::Cell) = begin
    return V/6.0
 end
 
-cellVolume(c)
+cellvolume(c)

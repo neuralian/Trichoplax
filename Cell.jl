@@ -33,11 +33,20 @@ Cell2D(x₀, y₀, r) = Cell2D( cellCount,
 
 # # Cell sprouter
 # # sprout a cell from existing cell
-# function sprout(cell, whatface)
-#
-#
-#
-# end
+function sprout(cell, whatface)
+
+  x0 = cell.x[1]
+  y0 = cell.y[1]
+  dx = cell.r*cos(π/3)
+  dy = cell.r*sin(π/3)
+
+  #Cell2D(cell.x[2]  + 1.0, cell.y[2], cell.r)
+  #Cell2D(cell.x[1] - 1.0, cell.y[1] + 2.0*dy, cell.r)
+  #Cell2D(cell.x[3] - 1.0, cell.y[3], cell.r)
+  #Cell2D(cell.x[5] -1.0, cell.y[5], cell.r)
+  #Cell2D(cell.x[1] -1.0, cell.y[1] - 2.0*dy, cell.r)
+  Cell2D(cell.x[6] + 1.0, cell.y[6], cell.r)
+end
 
 # Cell renderer
 function plot(cell)
@@ -48,18 +57,20 @@ function plot(cell)
      backgroundcolor = RGBA(0.0, 0.5, 0.0, 0.25) )
 end
 
-#Mat = Scene(limits = FRect(-50, -50, 100, 100))
+Mat = Scene(limits = FRect(-10, -10, 20, 20))
 
 cellCount +=1
 cell = Cell2D(0,0,1)
-scene = plot(cell)
+plot(cell)
 
 cellCount +=1
-cell = Cell2D(0,2,1)
-scene = plot(cell)
+cell = sprout(cell, 1)
+plot(cell)
 
 # draw  cell
 
-display(scene)
+print("hello")
+
+display(Mat)
 
 #sprout(1,1)

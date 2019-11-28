@@ -81,7 +81,7 @@ end
 
 c= Cell()
 @time render(c)
-@time render(c, RGBA(1,0,0, .5))
+@time render(c, RGBA(1,0,0, 1))
 
 cellvolume(c::Cell) = begin
    # volume of tetrahedron with 1 vertex at 0
@@ -92,4 +92,7 @@ cellvolume(c::Cell) = begin
    return V/6.0
 end
 
+
 cellvolume(c)
+
+#hello

@@ -1,7 +1,7 @@
-using Plots
-pyplot()
-using Colors
-
+# using Plots
+# pyplot()
+# using Colors
+#
 
 # Cell structure
 # dev for Trichoplax model
@@ -48,17 +48,17 @@ function sprout(cell, face)
   dy = cell.r*sin(π/3)
 
   if face == 1
-    Cell2D(cell.x[2]  + 1.0, cell.y[2], cell.r)
+    Cell2D(cell.x[2]  + cell.r, cell.y[2], cell.r)
   elseif face == 2
-    Cell2D(cell.x[1] - 1.0, cell.y[1] + 2.0*dy, cell.r)
+    Cell2D(cell.x[1] - cell.r, cell.y[1] + 2.0*dy, cell.r)
   elseif face == 3
-    Cell2D(cell.x[3] - 1.0, cell.y[3], cell.r)
+    Cell2D(cell.x[3] - cell.r, cell.y[3], cell.r)
   elseif face == 4
-    Cell2D(cell.x[5] -1.0, cell.y[5], cell.r)
+    Cell2D(cell.x[5] -cell.r, cell.y[5], cell.r)
   elseif face == 5
-    Cell2D(cell.x[1] -1.0, cell.y[1] - 2.0*dy, cell.r)
+    Cell2D(cell.x[1] -cell.r, cell.y[1] - 2.0*dy, cell.r)
   elseif face == 6
-    Cell2D(cell.x[6] + 1.0, cell.y[6], cell.r)
+    Cell2D(cell.x[6] + cell.r, cell.y[6], cell.r)
   end
 
 end
@@ -68,14 +68,14 @@ function plot(cell)
   # draw cell
   poly!(Point2f0[[cell.x[i], cell.y[i]] for i in 1:6],
      color = RGBA(1.0, 0.5, 0.5, .75), strokecolor = :black,
-     strokewidth = 1, scale_plot = false,
+     strokewidth = cell.r/2.0, scale_plot = false,
      backgroundcolor = RGBA(0.0, 0.5, 0.0, 0.25) )
 end
 
 Mat = Scene(limits = FRect(-10, -10, 20, 20))
 
 cellCount =1
-cell[cellCount] = Cell2D(0,0,1)
+cell[cellCount] = Cell2D(0,0,.5)
 plot(cell[cellCount])
 
 for i in 1:6

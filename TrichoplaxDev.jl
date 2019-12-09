@@ -3,15 +3,15 @@
 
 using Makie
 
-plaxDiam = 100.0  # Trichoplax diameter in cell diameters
+plaxDiam = 200.0  # Trichoplax diameter microns
 cellDiam = 5.0   # cell diameter microns
 
 # row height factor
 # (row height is h*cellDiam, column width is cellDiam)
 h = sqrt(3.0)/2.0
 
-nRows     = Int64(ceil(plaxDiam/(cellDiam*h)))
-nCols     = Int64(ceil(plaxDiam/cellDiam))
+nRows     = Int64(ceil(plaxDiam/(cellDiam*h)/2.0))
+nCols     = Int64(ceil(plaxDiam/cellDiam/2.0))
 MaxNCells = Int64(ceil(π*(nRows+1)*(nCols+1)))
 
 # array for x-y coordinates of cell centres
@@ -31,55 +31,54 @@ petridish = Scene(limits = FRect(-2*plaxDiam, -2*plaxDiam, 4*plaxDiam,4*plaxDiam
               scale_plot = false)
 
 # draw cell nuclei
-nCells = 1
-cellVertex[1,:] = [0.0 0.0]
+nCells = 0
 for row in 0:nRows
     for col in 0:nCols
         if iseven(row)
             x = col*cellDiam
             y = h*row*cellDiam
-            if (x^2 + y^2) < (plaxDiam + cellDiam)^2
+            if (x^2 + y^2) <= (plaxDiam/2.)^2
                 global nCells = nCells + 1
                 cellVertex[nCells,:] = [x y]
-                if row>0
+                if y>cellDiam/4.
                     nCells = nCells + 1
                     cellVertex[nCells,:] = [x -y]
                 end
-                if col>0
+                if x > cellDiam/4.
                     nCells = nCells + 1
                     cellVertex[nCells,:] = [-x y]
                 end
-                if (row>0) & (col>0)
+                    if (x > cellDiam/4.) &  (y > cellDiam/4.)
                     nCells = nCells + 1
                     cellVertex[nCells,:] = [-x -y]
                 end
             end
         else
-            x = (col - 0.5)*cellDiam
+            x = (col + 0.5)*cellDiam
             y = h*row*cellDiam
-            if (x^2 + y^2) < (plaxDiam + h*cellDiam)^2
+            if (x^2 + y^2) <= (plaxDiam/2.)^2
                 nCells = nCells + 1
                 cellVertex[nCells,:] = [x y]
-                if row>0
-                    nCells = nCells + 1
-                    cellVertex[nCells,:] = [x -y]
-                end
-                if col>0
-                    nCells = nCells + 1
-                    cellVertex[nCells,:] = [-x y]
-                end
-                if (row>0) & (col>0)
                     nCells = nCells + 1
                     cellVertex[nCells,:] = [-x -y]
-                end
+                    nCells = nCells + 1
+                    cellVertex[nCells,:] = [x -y]
+                    nCells = nCells + 1
+                    cellVertex[nCells,:] = [-x y]
             end
         end
     end
 end
 
-
+# draw cell centres
 scatter!(petridish, eachcol(cellVertex[1:nCells,:])...,
-                 markersize = 1, color = :grey)
+                 markersize = cellDiam/8., color = :grey)
+
+# enclosing circle
+nPt = 128.
+lines!(plaxDiam/2.0*cos.(2π*(0:nPt)./nPt),
+        plaxDiam/2.0*sin.(2π*(0:nPt)./nPt),
+        color = :lightblue)
 
 
 # # draw neighbour links

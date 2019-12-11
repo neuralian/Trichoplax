@@ -3,7 +3,7 @@
 
 using Makie
 
-plaxDiam = 200.0  # Trichoplax diameter microns
+plaxDiam = 32.0  # Trichoplax diameter microns
 cellDiam = 5.0   # cell diameter microns
 
 # row height factor
@@ -20,15 +20,19 @@ cellNucleus = NaN*ones(MaxNCells,2)
 # cell vertex array
 # each row is a vertex (x,y) of a hexagonal cell boundary
 # TODO: Determine empirically how big (or small) this array needs to be
-cellVertex = NaN*ones(25*MaxNCells, 2)
+cellVertex = NaN*ones(MaxNCells, 2)
 
 # array for cell boundaries
 # each hexagonal cell defined by 6 vertex indices listed anticlockwise
 cellBoundary = fill(1, MaxNCells, 6)
 
 # Set scene
-petridish = Scene(limits = FRect(-2*plaxDiam, -2*plaxDiam, 4*plaxDiam,4*plaxDiam),
-              scale_plot = false)
+sceneWidth = Int64(round(plaxDiam*1.5))
+if isodd(sceneWidth)
+    sceneWidth = sceneWidth + 1
+end
+petridish = Scene(limits = FRect(-sceneWidth/2, -sceneWidth/2,
+                                sceneWidth,sceneWidth), scale_plot = false)
 
 # draw cell nuclei
 nCells = 0
@@ -39,18 +43,18 @@ for row in 0:nRows
             y = h*row*cellDiam
             if (x^2 + y^2) <= (plaxDiam/2.)^2
                 global nCells = nCells + 1
-                cellVertex[nCells,:] = [x y]
+                cellNucleus[nCells,:] = [x y]
                 if y>cellDiam/4.
                     nCells = nCells + 1
-                    cellVertex[nCells,:] = [x -y]
+                    cellNucleus[nCells,:] = [x -y]
                 end
                 if x > cellDiam/4.
                     nCells = nCells + 1
-                    cellVertex[nCells,:] = [-x y]
+                    cellNucleus[nCells,:] = [-x y]
                 end
                     if (x > cellDiam/4.) &  (y > cellDiam/4.)
                     nCells = nCells + 1
-                    cellVertex[nCells,:] = [-x -y]
+                    cellNucleus[nCells,:] = [-x -y]
                 end
             end
         else
@@ -58,21 +62,23 @@ for row in 0:nRows
             y = h*row*cellDiam
             if (x^2 + y^2) <= (plaxDiam/2.)^2
                 nCells = nCells + 1
-                cellVertex[nCells,:] = [x y]
-                    nCells = nCells + 1
-                    cellVertex[nCells,:] = [-x -y]
-                    nCells = nCells + 1
-                    cellVertex[nCells,:] = [x -y]
-                    nCells = nCells + 1
-                    cellVertex[nCells,:] = [-x y]
+                cellNucleus[nCells,:] = [x y]
+                nCells = nCells + 1
+                cellNucleus[nCells,:] = [-x -y]
+                nCells = nCells + 1
+                cellNucleus[nCells,:] = [x -y]
+                nCells = nCells + 1
+                cellNucleus[nCells,:] = [-x y]
             end
         end
     end
 end
 
 # draw cell centres
-scatter!(petridish, eachcol(cellVertex[1:nCells,:])...,
+scatter!(petridish, eachcol(cellNucleus[1:nCells,:])...,
                  markersize = cellDiam/8., color = :grey)
+
+# construct cell
 
 # enclosing circle
 nPt = 128.

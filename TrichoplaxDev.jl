@@ -2,13 +2,17 @@
 # MGP Dec 2019
 
 using Makie
+using LinearAlgebra
 
-plaxDiam = 32.0  # Trichoplax diameter microns
+plaxDiam = 100.0  # Trichoplax diameter microns
 cellDiam = 5.0   # cell diameter microns
 
 # row height factor
 # (row height is h*cellDiam, column width is cellDiam)
 h = sqrt(3.0)/2.0
+
+# vertex tolerance (vertices closer than this are combined into one)
+vertexTol = cellDiam/100.
 
 nRows     = Int64(ceil(plaxDiam/(cellDiam*h)/2.0))
 nCols     = Int64(ceil(plaxDiam/cellDiam/2.0))
@@ -20,11 +24,11 @@ cellNucleus = NaN*ones(MaxNCells,2)
 # cell vertex array
 # each row is a vertex (x,y) of a hexagonal cell boundary
 # TODO: Determine empirically how big (or small) this array needs to be
-cellVertex = NaN*ones(MaxNCells, 2)
+cellVertex = NaN*ones(6*MaxNCells, 2)
 
 # array for cell boundaries
 # each hexagonal cell defined by 6 vertex indices listed anticlockwise
-cellBoundary = fill(1, MaxNCells, 6)
+cellFace = fill(-1, MaxNCells, 6)
 
 # Set scene
 sceneWidth = Int64(round(plaxDiam*1.5))
@@ -78,7 +82,34 @@ end
 scatter!(petridish, eachcol(cellNucleus[1:nCells,:])...,
                  markersize = cellDiam/8., color = :grey)
 
-# construct cell
+# construct cells
+nCellVertex = 0
+for cell in 1:nCells
+    for i in 1:6
+        newVertex = cellNucleus[cell,:]' .+
+                     0.5/h*cellDiam.*[cos(2π*(i-.5)/6)  sin(2π*(i-.5)/6)]
+        # check for existing vertex
+        vertexExists = false
+        for j in 1:nCellVertex
+            if norm(cellVertex[j,:]' - newVertex) < vertexTol
+                cellFace[cell, i] = j
+                vertexExists = true
+            end
+        end
+        if !vertexExists
+            global nCellVertex = nCellVertex + 1
+            cellVertex[nCellVertex, :] = newVertex
+            cellFace[cell, i] = nCellVertex
+        end
+   end
+end
+
+for i in 1:nCells
+    lines!(cellVertex[vcat(cellFace[i,:],cellFace[i,1]),1],
+            cellVertex[vcat(cellFace[i,:],cellFace[i,1]),2])
+end
+
+
 
 # enclosing circle
 nPt = 128.
@@ -117,5 +148,5 @@ lines!(plaxDiam/2.0*cos.(2π*(0:nPt)./nPt),
 
 
 display(petridish)
-println(nCells)
-println(MaxNCells)
+# println(nCells)
+# println(MaxNCells)

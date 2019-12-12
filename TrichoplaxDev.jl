@@ -4,7 +4,9 @@
 using Makie
 using LinearAlgebra
 
-plaxDiam = 100.0  # Trichoplax diameter microns
+function trichoplax(Diameter)
+
+plaxDiam = Float64(Diameter)  # Trichoplax diameter microns
 cellDiam = 5.0   # cell diameter microns
 
 # row height factor
@@ -18,7 +20,7 @@ nRows     = Int64(ceil(plaxDiam/(cellDiam*h)/2.0))
 nCols     = Int64(ceil(plaxDiam/cellDiam/2.0))
 MaxNCells = Int64(ceil(π*(nRows+1)*(nCols+1)))
 
-# array for x-y coordinates of cell centres
+# cell centre x-y coordinate array
 cellNucleus = NaN*ones(MaxNCells,2)
 
 # cell vertex array
@@ -26,9 +28,14 @@ cellNucleus = NaN*ones(MaxNCells,2)
 # TODO: Determine empirically how big (or small) this array needs to be
 cellVertex = NaN*ones(6*MaxNCells, 2)
 
-# array for cell boundaries
+# cell boundary indices
 # each hexagonal cell defined by 6 vertex indices listed anticlockwise
 cellFace = fill(-1, MaxNCells, 6)
+
+# links
+# each row defines a link between cell vertices
+# by specifying a pair of row indices in the vertex array
+vertexLink = fill(-1, 6*MaxNCells, 2)
 
 # Set scene
 sceneWidth = Int64(round(plaxDiam*1.5))
@@ -46,7 +53,7 @@ for row in 0:nRows
             x = col*cellDiam
             y = h*row*cellDiam
             if (x^2 + y^2) <= (plaxDiam/2.)^2
-                global nCells = nCells + 1
+                nCells = nCells + 1
                 cellNucleus[nCells,:] = [x y]
                 if y>cellDiam/4.
                     nCells = nCells + 1
@@ -82,8 +89,9 @@ end
 scatter!(petridish, eachcol(cellNucleus[1:nCells,:])...,
                  markersize = cellDiam/8., color = :grey)
 
-# construct cells
+# construct cells and links
 nCellVertex = 0
+nLink = 0
 for cell in 1:nCells
     for i in 1:6
         newVertex = cellNucleus[cell,:]' .+
@@ -97,9 +105,23 @@ for cell in 1:nCells
             end
         end
         if !vertexExists
-            global nCellVertex = nCellVertex + 1
+            nCellVertex = nCellVertex + 1
             cellVertex[nCellVertex, :] = newVertex
             cellFace[cell, i] = nCellVertex
+        end
+        # create links
+        if i>1
+            linkExists = false
+            for j in 1:nLink
+                if [cellFace[cell,i-1] cellFace[cell,i]] == vertexLink[j,:] or
+                [cellFace[cell,i] cellFace[cell,i-1]] == vertexLink[j,:]
+                    linkExists = true
+                end
+            end
+            if !linkExists
+                nLink = nLink + 1
+                vertexLink[nLink,:] = [cellFace[cell,i-1] cellFace[cell,i]]
+            end
         end
    end
 end
@@ -150,3 +172,5 @@ lines!(plaxDiam/2.0*cos.(2π*(0:nPt)./nPt),
 display(petridish)
 # println(nCells)
 # println(MaxNCells)
+
+end

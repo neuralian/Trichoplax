@@ -4,6 +4,7 @@
 using Makie
 using LinearAlgebra
 
+
 function trichoplax(Diameter)
 
 plaxDiam = Float64(Diameter)  # Trichoplax diameter microns
@@ -113,8 +114,8 @@ for cell in 1:nCells
         if i>1
             linkExists = false
             for j in 1:nLink
-                if [cellFace[cell,i-1] cellFace[cell,i]] == vertexLink[j,:] or
-                [cellFace[cell,i] cellFace[cell,i-1]] == vertexLink[j,:]
+                if (transpose([cellFace[cell,i-1] cellFace[cell,i]]') == vertexLink[j,:]') |
+                   (transpose([cellFace[cell,i] cellFace[cell,i-1]]') == vertexLink[j,:]')
                     linkExists = true
                 end
             end
@@ -123,13 +124,34 @@ for cell in 1:nCells
                 vertexLink[nLink,:] = [cellFace[cell,i-1] cellFace[cell,i]]
             end
         end
+        if nLink>0
+        lines!(cellVertex[vertexLink[nLink, :],1],
+               cellVertex[vertexLink[nLink, :],2])
+        end
+   end
+   # add 6th edge (close the loop from 6th to 1st vertex)
+   linkExists = false
+   for j in 1:nLink
+       if (transpose([cellFace[cell,1] cellFace[cell,6]]') == vertexLink[j,:]') |
+          (transpose([cellFace[cell,6] cellFace[cell,1]]') == vertexLink[j,:]')
+           linkExists = true
+       end
+   end
+   if !linkExists
+       nLink = nLink + 1
+       vertexLink[nLink,:] = [cellFace[cell,1] cellFace[cell,6]]
    end
 end
+if nLink>0
+lines!(cellVertex[vertexLink[nLink, :],1],
+      cellVertex[vertexLink[nLink, :],2])
 
-for i in 1:nCells
-    lines!(cellVertex[vcat(cellFace[i,:],cellFace[i,1]),1],
-            cellVertex[vcat(cellFace[i,:],cellFace[i,1]),2])
 end
+
+# for i in 1:nCells
+#     lines!(cellVertex[vcat(cellFace[i,:],cellFace[i,1]),1],
+#             cellVertex[vcat(cellFace[i,:],cellFace[i,1]),2])
+# end
 
 
 
@@ -170,7 +192,8 @@ lines!(plaxDiam/2.0*cos.(2π*(0:nPt)./nPt),
 
 
 display(petridish)
-# println(nCells)
+println(nLink)
+println(nCellVertex)
 # println(MaxNCells)
 
 end

@@ -5,12 +5,14 @@ using Makie
 using LinearAlgebra
 
 struct Trichoplax
+    x0::Float64       # un-stressed edge length
+    v0::Float64       # un-stressed cell volume (area in 2D)
     vertex::Array    # nVertex*2 cell vertices
     face::Array      # nCells*6  indices of cell vertices
     edge::Array      # nLink*2   indices of 2 cell vertices
 end
 
-diameter = 48
+diameter = 16
 
 function make_trichoplax(Diameter)
     # construct a Trichoplax of specified diameter
@@ -146,11 +148,23 @@ function make_trichoplax(Diameter)
        end
     end
 
-    trichoplax = Trichoplax(cellVertex[1:nCellVertex,:],
+    trichoplax = Trichoplax(h, sqrt(3.)/2.0*cellDiam^2,
+                            cellVertex[1:nCellVertex,:],
                             cellFace[1:nCells,:],
                             vertexLink[1:nLink,:])
 
 end
+
+
+function draw_trichoplax(trichoplax, scene)
+
+    for link in 1:size(trichoplax.edge,1)
+        lines!(scene, trichoplax.vertex[trichoplax.edge[link, :],1],
+               trichoplax.vertex[trichoplax.edge[link, :],2])
+    end
+    display(scene)
+end
+
 
 
 trichoplax = make_trichoplax(diameter);
@@ -165,38 +179,64 @@ end
 petridish = Scene(limits = FRect(-sceneWidth/2, -sceneWidth/2,
                                 sceneWidth,sceneWidth), scale_plot = false)
 
-# # draw cell centres
-# scatter!(petridish, eachcol(cellNucleus[1:nCells,:])...,
-#                 markersize = cellDiam/8., color = :grey)
+draw_trichoplax(trichoplax, petridish)
 
-# draw links
-for link in 1:size(trichoplax.edge,1)
-    lines!(trichoplax.vertex[trichoplax.edge[link, :],1],
-           trichoplax.vertex[trichoplax.edge[link, :],2])
-end
 
-# enclosing circle
-nPt = 128.
-lines!(diameter/2.0*cos.(2π*(0:nPt)./nPt),
-        diameter/2.0*sin.(2π*(0:nPt)./nPt),
-        color = :lightblue)
+# # enclosing circle
+# nPt = 128.
+# lines!(diameter/2.0*cos.(2π*(0:nPt)./nPt),
+#         diameter/2.0*sin.(2π*(0:nPt)./nPt),
+#         color = :lightblue)
 
-display(petridish)
+
 
 
 # println(MaxNCells)
 
-function cellVolume(cell)
+function cellVolume(cell, trichoplax)
 # volume (area in 2D) of cell
 
-    A = 0.0
+    V = 0.0
     for i in 1:6
         j = i % 6 + 1
-        A = A + cellVertex[cellFace[cell, i], 1]*cellVertex[cellFace[cell, j],2] -
-        cellVertex[cellFace[cell, j], 1]*cellVertex[cellFace[cell, i],2]
+        V = V + trichoplax.vertex[trichoplax.face[cell,i], 1] *
+                trichoplax.vertex[trichoplax.face[cell,j], 2] -
+                trichoplax.vertex[trichoplax.face[cell,i], 2] *
+                trichoplax.vertex[trichoplax.face[cell,j], 1]
     #    A = A + x[i]*y[j] - y[i]*x[j]
     end
 
-    return (abs(A/2.0))
+    return (abs(V/2.0))
 
+end
+
+function cellVolume2(cell, trichoplax)
+# volume (area in 2D) of cell
+
+    V = 0.0
+    for i in 1:5
+        V = V + trichoplax.vertex[trichoplax.face[cell,i], 1] *
+                trichoplax.vertex[trichoplax.face[cell,i+1], 2] -
+                trichoplax.vertex[trichoplax.face[cell,i], 2] *
+                trichoplax.vertex[trichoplax.face[cell,i+1], 1]
+    end
+
+    V = V + trichoplax.vertex[trichoplax.face[cell,6], 1] *
+            trichoplax.vertex[trichoplax.face[cell,1], 2] -
+            trichoplax.vertex[trichoplax.face[cell,6], 2] *
+            trichoplax.vertex[trichoplax.face[cell,1], 1]
+
+    return (abs(V/2.0))
+
+end
+
+
+function stress(v, trichoplax)
+    # mechanical stress on trichoplax with vertices v
+
+    # turgor pressure
+    E = 0.0
+    for i in 1:size(v,1)
+        E = E + (cellVolume(:, trichoplax)-trichoplax.v0)^2
+    end
 end

@@ -3,16 +3,17 @@
 
 using Makie
 using LinearAlgebra
+using Statistics
 
 struct Trichoplax
     x0::Float64       # un-stressed edge length
     v0::Float64       # un-stressed cell volume (area in 2D)
     vertex::Array    # nVertex*2 cell vertices
-    face::Array      # nCells*6  indices of cell vertices
+    cell::Array      # nCells*6  indices of cell vertices
     edge::Array      # nLink*2   indices of 2 cell vertices
 end
 
-diameter = 16
+diameter = 100
 
 function make_trichoplax(Diameter)
     # construct a Trichoplax of specified diameter
@@ -41,7 +42,7 @@ function make_trichoplax(Diameter)
 
     # cell boundary indices
     # each hexagonal cell defined by 6 vertex indices listed anticlockwise
-    cellFace = fill(-1, MaxNCells, 6)
+    cellIndex= fill(-1, MaxNCells, 6)
 
     # links
     # each row defines a link between cell vertices
@@ -49,7 +50,7 @@ function make_trichoplax(Diameter)
     vertexLink = fill(-1, 6*MaxNCells, 2)
 
     # cell nuclei
-    # used to construct cell membranes/faces, not members of Trichoplax
+    # used to construct cell membranes/cells, not members of Trichoplax
     nCells = 0
     for row in 0:nRows
         for col in 0:nCols
@@ -100,29 +101,29 @@ function make_trichoplax(Diameter)
             vertexExists = false
             for j in 1:nCellVertex
                 if norm(cellVertex[j,:]' - newVertex) < vertexTol
-                    cellFace[cell, i] = j
+                    cellIndex[cell, i] = j
                     vertexExists = true
                 end
             end
             if !vertexExists
                 nCellVertex = nCellVertex + 1
                 cellVertex[nCellVertex, :] = newVertex
-                cellFace[cell, i] = nCellVertex
+                cellIndex[cell, i] = nCellVertex
             end
             # create links
             if i>1
                 linkExists = false
                 for j in 1:nLink
-                    if (transpose([cellFace[cell,i-1] cellFace[cell,i]]') ==
+                    if (transpose([cellIndex[cell,i-1] cellIndex[cell,i]]') ==
                                                           vertexLink[j,:]') |
-                       (transpose([cellFace[cell,i] cellFace[cell,i-1]]') ==
+                       (transpose([cellIndex[cell,i] cellIndex[cell,i-1]]') ==
                                                           vertexLink[j,:]')
                         linkExists = true
                     end
                 end
                 if !linkExists
                     nLink = nLink + 1
-                    vertexLink[nLink,:] = [cellFace[cell,i-1] cellFace[cell,i]]
+                    vertexLink[nLink,:] = [cellIndex[cell,i-1] cellIndex[cell,i]]
                 end
             end
             if nLink>0
@@ -135,22 +136,22 @@ function make_trichoplax(Diameter)
        # add 6th edge (close the loop from 6th to 1st vertex)
        linkExists = false
        for j in 1:nLink
-           if (transpose([cellFace[cell,1] cellFace[cell,6]]') ==
+           if (transpose([cellIndex[cell,1] cellIndex[cell,6]]') ==
                                                        vertexLink[j,:]') |
-              (transpose([cellFace[cell,6] cellFace[cell,1]]') ==
+              (transpose([cellIndex[cell,6] cellIndex[cell,1]]') ==
                                                         vertexLink[j,:]')
                linkExists = true
            end
        end
        if !linkExists
            nLink = nLink + 1
-           vertexLink[nLink,:] = [cellFace[cell,1] cellFace[cell,6]]
+           vertexLink[nLink,:] = [cellIndex[cell,1] cellIndex[cell,6]]
        end
     end
 
     trichoplax = Trichoplax(h, sqrt(3.)/2.0*cellDiam^2,
                             cellVertex[1:nCellVertex,:],
-                            cellFace[1:nCells,:],
+                            cellIndex[1:nCells,:],
                             vertexLink[1:nLink,:])
 
 end
@@ -158,10 +159,37 @@ end
 
 function draw_trichoplax(trichoplax, scene)
 
+    nVertex = size(trichoplax.vertex, 1)
+    nCell = size(trichoplax.cell, 1)
+    vertex = fill(0.0, nVertex+nCell, 2) # will add centre vertex to each cell
+    for i in 1:nVertex
+        vertex[i,:] = trichoplax.vertex[i,:]
+    end
+    facet = fill(0,6*nCell,3) # 6 triangle facets per cell
+    nFacet = 0
+    for cell in 1:nCell
+        vertex[nVertex+cell, :] = mean(vertex[trichoplax.cell[cell,:],:], dims=1)
+        for i in 1:6
+            nFacet = nFacet + 1
+            i0 = trichoplax.cell[cell,i]
+            i1 = trichoplax.cell[cell,i%6+1]
+            facet[nFacet, :] = [nVertex+cell i0 i1]
+        end
+    end
+
+
+
+            poly!(vertex, facet, color =  rand(nVertex+nCell) )
+
+
+
     for link in 1:size(trichoplax.edge,1)
         lines!(scene, trichoplax.vertex[trichoplax.edge[link, :],1],
                trichoplax.vertex[trichoplax.edge[link, :],2])
     end
+
+
+
     display(scene)
 end
 
@@ -199,10 +227,10 @@ function cellVolume(cell, trichoplax)
     V = 0.0
     for i in 1:6
         j = i % 6 + 1
-        V = V + trichoplax.vertex[trichoplax.face[cell,i], 1] *
-                trichoplax.vertex[trichoplax.face[cell,j], 2] -
-                trichoplax.vertex[trichoplax.face[cell,i], 2] *
-                trichoplax.vertex[trichoplax.face[cell,j], 1]
+        V = V + trichoplax.vertex[trichoplax.cell[cell,i], 1] *
+                trichoplax.vertex[trichoplax.cell[cell,j], 2] -
+                trichoplax.vertex[trichoplax.cell[cell,i], 2] *
+                trichoplax.vertex[trichoplax.cell[cell,j], 1]
     #    A = A + x[i]*y[j] - y[i]*x[j]
     end
 
@@ -215,16 +243,16 @@ function cellVolume2(cell, trichoplax)
 
     V = 0.0
     for i in 1:5
-        V = V + trichoplax.vertex[trichoplax.face[cell,i], 1] *
-                trichoplax.vertex[trichoplax.face[cell,i+1], 2] -
-                trichoplax.vertex[trichoplax.face[cell,i], 2] *
-                trichoplax.vertex[trichoplax.face[cell,i+1], 1]
+        V = V + trichoplax.vertex[trichoplax.cell[cell,i], 1] *
+                trichoplax.vertex[trichoplax.cell[cell,i+1], 2] -
+                trichoplax.vertex[trichoplax.cell[cell,i], 2] *
+                trichoplax.vertex[trichoplax.cell[cell,i+1], 1]
     end
 
-    V = V + trichoplax.vertex[trichoplax.face[cell,6], 1] *
-            trichoplax.vertex[trichoplax.face[cell,1], 2] -
-            trichoplax.vertex[trichoplax.face[cell,6], 2] *
-            trichoplax.vertex[trichoplax.face[cell,1], 1]
+    V = V + trichoplax.vertex[trichoplax.cell[cell,6], 1] *
+            trichoplax.vertex[trichoplax.cell[cell,1], 2] -
+            trichoplax.vertex[trichoplax.cell[cell,6], 2] *
+            trichoplax.vertex[trichoplax.cell[cell,1], 1]
 
     return (abs(V/2.0))
 

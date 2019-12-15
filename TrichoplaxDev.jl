@@ -6,11 +6,12 @@ using LinearAlgebra
 using Statistics
 
 struct Trichoplax
-    x0::Float64       # un-stressed edge length
-    v0::Float64       # un-stressed cell volume (area in 2D)
-    vertex::Array    # nVertex*2 cell vertices
-    cell::Array      # nCells*6  indices of cell vertices
-    edge::Array      # nLink*2   indices of 2 cell vertices
+    L0::Float64       # un-stressed cytoskeleton edge length
+    V0::Float64       # un-stressed cell volume (area in 2D)
+    vertex::Array     # nVertex*2 cell vertices
+    skeleton::Array   # nLink*2   indices of 2 cell vertices
+    cell::Array       # nCells*6  indices of cell vertices
+    skin::Array       # nSkin*1  indices of exterior skeleton links
 end
 
 diameter = 12
@@ -30,7 +31,7 @@ function make_trichoplax(Diameter)
 
     nRows     = Int64(ceil(plaxDiam/(cellDiam*h)/2.0))
     nCols     = Int64(ceil(plaxDiam/cellDiam/2.0))
-    MaxNCells = Int64(ceil(π*(nRows+1)*(nCols+1)))
+    MaxNCells = Int64(ceil((nRows+1)*(nCols+1)))
 
     # cell centre x-y coordinate array
     cellNucleus = NaN*ones(MaxNCells,2)
@@ -42,12 +43,12 @@ function make_trichoplax(Diameter)
 
     # cell boundary indices
     # each hexagonal cell defined by 6 vertex indices listed anticlockwise
-    cellIndex= fill(-1, MaxNCells, 6)
+    iCell= fill(-1, MaxNCells, 6)
 
     # links
     # each row defines a link between cell vertices
     # by specifying a pair of row indices in the vertex array
-    vertexLink = fill(-1, 6*MaxNCells, 2)
+    skeleton = fill(-1, 6*MaxNCells, 2)
 
     # cell nuclei
     # used to construct cell membranes/cells, not members of Trichoplax
@@ -101,34 +102,35 @@ function make_trichoplax(Diameter)
             vertexExists = false
             for j in 1:nCellVertex
                 if norm(cellVertex[j,:]' - newVertex) < vertexTol
-                    cellIndex[cell, i] = j
+                    iCell[cell, i] = j
                     vertexExists = true
                 end
             end
             if !vertexExists
                 nCellVertex = nCellVertex + 1
                 cellVertex[nCellVertex, :] = newVertex
-                cellIndex[cell, i] = nCellVertex
+                iCell[cell, i] = nCellVertex
             end
             # create links
             if i>1
                 linkExists = false
                 for j in 1:nLink
-                    if (transpose([cellIndex[cell,i-1] cellIndex[cell,i]]') ==
-                                                          vertexLink[j,:]') |
-                       (transpose([cellIndex[cell,i] cellIndex[cell,i-1]]') ==
-                                                          vertexLink[j,:]')
+                    if (transpose([iCell[cell,i-1] iCell[cell,i]]') ==
+                                                          skeleton[j,:]') |
+                       (transpose([iCell[cell,i] iCell[cell,i-1]]') ==
+                                                          skeleton[j,:]')
                         linkExists = true
                     end
                 end
                 if !linkExists
                     nLink = nLink + 1
-                    vertexLink[nLink,:] = [cellIndex[cell,i-1] cellIndex[cell,i]]
+                    skeleton[nLink,:] =
+                                 [iCell[cell,i-1] iCell[cell,i]]
                 end
             end
             if nLink>0
-                lines!(cellVertex[vertexLink[nLink, :],1],
-                    cellVertex[vertexLink[nLink, :],2])
+                lines!(cellVertex[skeleton[nLink, :],1],
+                    cellVertex[skeleton[nLink, :],2])
                 # display(petridish)
                 # sleep(1/25)
             end
@@ -136,23 +138,44 @@ function make_trichoplax(Diameter)
        # add 6th edge (close the loop from 6th to 1st vertex)
        linkExists = false
        for j in 1:nLink
-           if (transpose([cellIndex[cell,1] cellIndex[cell,6]]') ==
-                                                       vertexLink[j,:]') |
-              (transpose([cellIndex[cell,6] cellIndex[cell,1]]') ==
-                                                        vertexLink[j,:]')
+           if (transpose([iCell[cell,1] iCell[cell,6]]') == skeleton[j,:]') |
+              (transpose([iCell[cell,6] iCell[cell,1]]') == skeleton[j,:]')
                linkExists = true
            end
        end
        if !linkExists
            nLink = nLink + 1
-           vertexLink[nLink,:] = [cellIndex[cell,1] cellIndex[cell,6]]
+           skeleton[nLink,:] = [iCell[cell,1] iCell[cell,6]]
        end
     end
 
-    trichoplax = Trichoplax(h, sqrt(3.)/2.0*cellDiam^2,
-                            cellVertex[1:nCellVertex,:],
-                            cellIndex[1:nCells,:],
-                            vertexLink[1:nLink,:])
+    # find skin segments (they have a vertex with only 2 links)
+    # nb skin segments with two exterior vertices are duplicated
+    #    duplicates are removed by unique() in Trichoplax constructor call
+    nSkin = 0
+    skin = fill(0, 4*nCells)
+    for iVertex in 1:nCellVertex
+        skinCount = 0
+        for iLink in 1:nLink  # count links to this vertex
+            if any(skeleton[iLink,:].==iVertex)
+                nSkin = nSkin + 1
+                skinCount = skinCount + 1
+                skin[nSkin] = iLink
+            end
+        end
+        if skinCount>2  # not a skin segment
+            nSkin = nSkin - skinCount  # reset pointer to overwrite
+        end
+    end
+
+   # construct Trichoplax
+    trichoplax = Trichoplax(h,
+                            cellDiam/2.0,
+                            cellVertex[1:nCellVertex,:].*h,
+                            skeleton[1:nLink,:],
+                            iCell[1:nCells,:],
+                            unique(skin[1:nSkin])
+                            )
 
 end
 
@@ -177,14 +200,14 @@ function draw_trichoplax(trichoplax, scene)
         end
     end
 
-    #poly!(vertex, facet, color =  rand(nVertex+nCell) )
+    # render cells
     poly!(vertex, facet, color = :lightblue)
 
 
-
-    for link in 1:size(trichoplax.edge,1)
-        lines!(scene, trichoplax.vertex[trichoplax.edge[link, :],1],
-               trichoplax.vertex[trichoplax.edge[link, :],2])
+    # render skeletons on top
+    for link in 1:size(trichoplax.skeleton,1)
+        lines!(scene, trichoplax.vertex[trichoplax.skeleton[link, :],1],
+               trichoplax.vertex[trichoplax.skeleton[link, :],2])
     end
 
 
@@ -205,9 +228,11 @@ end
 
 petridish = Scene(limits = FRect(-sceneWidth/2, -sceneWidth/2,
                                 sceneWidth,sceneWidth), scale_plot = false)
-trichoplax.vertex[1,1] = 2.0
+# for i in 1:size(trichoplax.vertex, 1)
+#     trichoplax.vertex[i,:] = trichoplax.vertex[i,:] + 0.5*(rand(2).-0.5)
+# end
 
-draw_trichoplax(trichoplax, petridish)
+
 
 
 # # enclosing circle
@@ -253,7 +278,6 @@ function cellVolume(x,y)
 end
 
 
-
 function stress(trichoplax, dx)
     # mechanical stress on trichoplax with each vertex coordinate
     # perturbed in turn  by  dx
@@ -276,52 +300,94 @@ function stress(trichoplax, dx)
         for cell in 1:size(trichoplax.cell,1)
             x = v[trichoplax.cell[cell,:],1]
             y = v[trichoplax.cell[cell,:],2]
-            E[i,1] = E[i,1] + (cellVolume(x, y)-trichoplax.v0)^2
+            E[i,1] = E[i,1] + (cellVolume(x, y)-trichoplax.V0)^2
+        end
+
+        # skeleton tension
+        for link in 1:size(trichoplax.skeleton, 1)
+
+            dx = v[trichoplax.skeleton[link,1],1] -
+                 v[trichoplax.skeleton[link,2],1]
+            dy = v[trichoplax.skeleton[link,1],2] -
+                      v[trichoplax.skeleton[link,2],2]
+
+            E[i,1] = E[i, 1] .+ (sqrt(dx^2 + dy^2) - trichoplax.L0)^2
+
+
         end
 
         v[i,1] =  v[i,1].-dx  # put the vertex back
 
         v[i,2] =  v[i,2].+dx   # perturb ith vertex in y-direction
 
-        # turgor pressure
         for cell in 1:size(trichoplax.cell,1)
             x = v[trichoplax.cell[cell,:],1]
             y = v[trichoplax.cell[cell,:],2]
-            E[i,2] = E[i,2]+ (cellVolume(x, y)-trichoplax.v0)^2
+            E[i,2] = E[i,2]+ (cellVolume(x, y)-trichoplax.V0)^2
+        end
+
+        # skeleton tension
+        for link in 1:size(trichoplax.skeleton,1)
+
+            dx = v[trichoplax.skeleton[link,1],1] -
+                 v[trichoplax.skeleton[link,2],1]
+            dy = v[trichoplax.skeleton[link,1],2] -
+                 v[trichoplax.skeleton[link,2],2]
+
+            E[i,2] = E[i, 2] .+ (sqrt(dx^2 + dy^2) - trichoplax.L0)^2
+
         end
 
         v[i,2] =  v[i,2].-dx  # put the vertex back
+
     end
 
     E
 end
 
+trichoplax.vertex[1,1] = 1.5
+draw_trichoplax(trichoplax, petridish)
+
+
+dx = 0.1
+frameCount = 0
+for i in 1:32
+    D =  (stress(trichoplax, dx) - stress(trichoplax, -dx))/(2.0*dx)
+    println(D[1,:])
+    for j in 1:size(trichoplax.vertex,1)
+        println(D[j,:])
+        trichoplax.vertex[j,:] = trichoplax.vertex[j,:]- .005*D[j,:]
+    end
+    # shift to origin
+    x0 = mean(trichoplax.vertex, dims=1)
+    println(x0)
+    # for j in 1:size(trichoplax.vertex,1)
+    #     trichoplax.vertex[j,:] = trichoplax.vertex[j,:]- transpose(x0)
+    # end
+
+
+    # scene = Scene(limits = FRect(-sceneWidth/2, -sceneWidth/2,
+    #         sceneWidth,sceneWidth), scale_plot = false)
+    global frameCount = frameCount + 1
+    if frameCount > 8
+    draw_trichoplax(trichoplax, petridish)
+  display(petridish)
+  sleep(.1)
+  frameCount = 0
+end
+end
+
 
 # dx = 0.1
 #
-# for i in 1:64
-#     D =  (stress(trichoplax, dx) - stress(trichoplax, -dx))/(2.0*dx)
-#     println(D[1,:])
+# for i in 1:12
 #     for j in 1:size(trichoplax.vertex,1)
-#         trichoplax.vertex[j,:] = trichoplax.vertex[j,:]- .01*D[j,:]
+#         trichoplax.vertex[j,:] = trichoplax.vertex[j,:]+0.5*(rand(2).-.5)
 #     end
 #
-# end
 # scene = Scene(limits = FRect(-sceneWidth/2, -sceneWidth/2,
 #         sceneWidth,sceneWidth), scale_plot = false)
 # draw_trichoplax(trichoplax, scene)
 # display(scene)
-
-dx = 0.1
-
-for i in 1:32
-    for j in 1:size(trichoplax.vertex,1)
-        trichoplax.vertex[j,:] = trichoplax.vertex[j,:]+0.5*(rand(2).-.5)
-    end
-
-scene = Scene(limits = FRect(-sceneWidth/2, -sceneWidth/2,
-        sceneWidth,sceneWidth), scale_plot = false)
-draw_trichoplax(trichoplax, scene)
-display(scene)
-sleep(.1)
-end
+# sleep(.1)
+# end

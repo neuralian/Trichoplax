@@ -169,8 +169,8 @@ function make_trichoplax(Diameter)
     end
 
    # construct Trichoplax
-    trichoplax = Trichoplax(h,
-                            cellDiam/2.0,
+    trichoplax = Trichoplax(cellDiam/2.0,
+                            3.0*sqrt(3)*(cellDiam/2.0)^2/2.0,
                             cellVertex[1:nCellVertex,:].*h,
                             skeleton[1:nLink,:],
                             iCell[1:nCells,:],
@@ -349,6 +349,7 @@ trichoplax.vertex[1,1] = 1.5
 draw_trichoplax(trichoplax, petridish)
 
 
+function morph(trichoplax)
 dx = 0.1
 frameCount = 0
 for i in 1:32
@@ -368,7 +369,7 @@ for i in 1:32
 
     # scene = Scene(limits = FRect(-sceneWidth/2, -sceneWidth/2,
     #         sceneWidth,sceneWidth), scale_plot = false)
-    global frameCount = frameCount + 1
+    frameCount = frameCount + 1
     if frameCount > 8
     draw_trichoplax(trichoplax, petridish)
   display(petridish)
@@ -376,7 +377,7 @@ for i in 1:32
   frameCount = 0
 end
 end
-
+end
 
 # dx = 0.1
 #

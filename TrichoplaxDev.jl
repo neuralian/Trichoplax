@@ -13,7 +13,7 @@ struct Trichoplax
     edge::Array      # nLink*2   indices of 2 cell vertices
 end
 
-diameter = 100
+diameter = 12
 
 function make_trichoplax(Diameter)
     # construct a Trichoplax of specified diameter
@@ -177,9 +177,8 @@ function draw_trichoplax(trichoplax, scene)
         end
     end
 
-
-
-            poly!(vertex, facet, color =  rand(nVertex+nCell) )
+    #poly!(vertex, facet, color =  rand(nVertex+nCell) )
+    poly!(vertex, facet, color = :lightblue)
 
 
 
@@ -206,6 +205,7 @@ end
 
 petridish = Scene(limits = FRect(-sceneWidth/2, -sceneWidth/2,
                                 sceneWidth,sceneWidth), scale_plot = false)
+trichoplax.vertex[1,1] = 2.0
 
 draw_trichoplax(trichoplax, petridish)
 
@@ -220,51 +220,108 @@ draw_trichoplax(trichoplax, petridish)
 
 
 # println(MaxNCells)
+#
+# function cellVolume(cell, trichoplax)
+# # volume (area in 2D) of cell
+#
+#     V = 0.0
+#     for i in 1:6
+#         j = i % 6 + 1
+#         V = V + trichoplax.vertex[trichoplax.cell[cell,i], 1] *
+#                 trichoplax.vertex[trichoplax.cell[cell,j], 2] -
+#                 trichoplax.vertex[trichoplax.cell[cell,i], 2] *
+#                 trichoplax.vertex[trichoplax.cell[cell,j], 1]
+#     #    A = A + x[i]*y[j] - y[i]*x[j]
+#     end
+#
+#     return (abs(V/2.0))
+#
+# end
 
-function cellVolume(cell, trichoplax)
-# volume (area in 2D) of cell
+function cellVolume(x,y)
+    # volume (area in 2D) of cell with vertices x (Mx2)
 
     V = 0.0
     for i in 1:6
         j = i % 6 + 1
-        V = V + trichoplax.vertex[trichoplax.cell[cell,i], 1] *
-                trichoplax.vertex[trichoplax.cell[cell,j], 2] -
-                trichoplax.vertex[trichoplax.cell[cell,i], 2] *
-                trichoplax.vertex[trichoplax.cell[cell,j], 1]
-    #    A = A + x[i]*y[j] - y[i]*x[j]
+        V = V + x[i]*y[j] - x[j]*y[i]
     end
 
     return (abs(V/2.0))
 
-end
-
-function cellVolume2(cell, trichoplax)
-# volume (area in 2D) of cell
-
-    V = 0.0
-    for i in 1:5
-        V = V + trichoplax.vertex[trichoplax.cell[cell,i], 1] *
-                trichoplax.vertex[trichoplax.cell[cell,i+1], 2] -
-                trichoplax.vertex[trichoplax.cell[cell,i], 2] *
-                trichoplax.vertex[trichoplax.cell[cell,i+1], 1]
-    end
-
-    V = V + trichoplax.vertex[trichoplax.cell[cell,6], 1] *
-            trichoplax.vertex[trichoplax.cell[cell,1], 2] -
-            trichoplax.vertex[trichoplax.cell[cell,6], 2] *
-            trichoplax.vertex[trichoplax.cell[cell,1], 1]
-
-    return (abs(V/2.0))
 
 end
 
 
-function stress(v, trichoplax)
-    # mechanical stress on trichoplax with vertices v
 
-    # turgor pressure
-    E = 0.0
+function stress(trichoplax, dx)
+    # mechanical stress on trichoplax with each vertex coordinate
+    # perturbed in turn  by  dx
+    # returned value E is the same size as trichoplax.vertex
+    # E[i,1] is the stress when vertex[i,:] (ith x-ccord) is perterbed by dx
+    # E[i,2] is the stress when vertex[i,:] (ith y-coord) is perterbed by dx
+    #        and all other vertices stay fixed.
+    # Used to compute the gradient of stress given the vertices
+    # nb this is inefficient because it computes the stress over the whole
+    # animal but moving one vertex while holding others fixed affects
+    # only neighbouring cells (TBD)
+
+    # copy vertices
+    v = copy(trichoplax.vertex)
+    E = fill(0.0, size(v)...)
     for i in 1:size(v,1)
-        E = E + (cellVolume(:, trichoplax)-trichoplax.v0)^2
+        v[i,1] = v[i,1].+dx   # perturb ith vertex in x-direction
+
+        # turgor pressure
+        for cell in 1:size(trichoplax.cell,1)
+            x = v[trichoplax.cell[cell,:],1]
+            y = v[trichoplax.cell[cell,:],2]
+            E[i,1] = E[i,1] + (cellVolume(x, y)-trichoplax.v0)^2
+        end
+
+        v[i,1] =  v[i,1].-dx  # put the vertex back
+
+        v[i,2] =  v[i,2].+dx   # perturb ith vertex in y-direction
+
+        # turgor pressure
+        for cell in 1:size(trichoplax.cell,1)
+            x = v[trichoplax.cell[cell,:],1]
+            y = v[trichoplax.cell[cell,:],2]
+            E[i,2] = E[i,2]+ (cellVolume(x, y)-trichoplax.v0)^2
+        end
+
+        v[i,2] =  v[i,2].-dx  # put the vertex back
     end
+
+    E
+end
+
+
+# dx = 0.1
+#
+# for i in 1:64
+#     D =  (stress(trichoplax, dx) - stress(trichoplax, -dx))/(2.0*dx)
+#     println(D[1,:])
+#     for j in 1:size(trichoplax.vertex,1)
+#         trichoplax.vertex[j,:] = trichoplax.vertex[j,:]- .01*D[j,:]
+#     end
+#
+# end
+# scene = Scene(limits = FRect(-sceneWidth/2, -sceneWidth/2,
+#         sceneWidth,sceneWidth), scale_plot = false)
+# draw_trichoplax(trichoplax, scene)
+# display(scene)
+
+dx = 0.1
+
+for i in 1:32
+    for j in 1:size(trichoplax.vertex,1)
+        trichoplax.vertex[j,:] = trichoplax.vertex[j,:]+0.5*(rand(2).-.5)
+    end
+
+scene = Scene(limits = FRect(-sceneWidth/2, -sceneWidth/2,
+        sceneWidth,sceneWidth), scale_plot = false)
+draw_trichoplax(trichoplax, scene)
+display(scene)
+sleep(.1)
 end

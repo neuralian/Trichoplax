@@ -14,7 +14,7 @@ struct Trichoplax
     skin::Array       # nSkin*1  indices of exterior skeleton links
 end
 
-diameter = 36
+diameter = 28
 
 function make_trichoplax(Diameter)
     # construct a Trichoplax of specified diameter
@@ -180,7 +180,7 @@ function make_trichoplax(Diameter)
 end
 
 
-function draw_trichoplax(trichoplax, scene)
+function draw(trichoplax)
 
     nVertex = size(trichoplax.vertex, 1)
     nCell = size(trichoplax.cell, 1)
@@ -206,13 +206,10 @@ function draw_trichoplax(trichoplax, scene)
 
     # render skeletons on top
     for link in 1:size(trichoplax.skeleton,1)
-        lines!(scene, trichoplax.vertex[trichoplax.skeleton[link, :],1],
+        lines!(trichoplax.vertex[trichoplax.skeleton[link, :],1],
                trichoplax.vertex[trichoplax.skeleton[link, :],2])
     end
 
-
-
-    display(scene)
 end
 
 
@@ -226,11 +223,8 @@ if isodd(sceneWidth)
     sceneWidth = sceneWidth + 1
 end
 
-petridish = Scene(limits = FRect(-sceneWidth/2, -sceneWidth/2,
-                                sceneWidth,sceneWidth), scale_plot = false)
-# for i in 1:size(trichoplax.vertex, 1)
-#     trichoplax.vertex[i,:] = trichoplax.vertex[i,:] + 0.5*(rand(2).-0.5)
-# end
+world = Scene(limits = FRect(-sceneWidth/2, -sceneWidth/2,
+                              sceneWidth,sceneWidth), scale_plot = false)
 
 
 
@@ -244,24 +238,7 @@ petridish = Scene(limits = FRect(-sceneWidth/2, -sceneWidth/2,
 
 
 
-# println(MaxNCells)
 #
-# function cellVolume(cell, trichoplax)
-# # volume (area in 2D) of cell
-#
-#     V = 0.0
-#     for i in 1:6
-#         j = i % 6 + 1
-#         V = V + trichoplax.vertex[trichoplax.cell[cell,i], 1] *
-#                 trichoplax.vertex[trichoplax.cell[cell,j], 2] -
-#                 trichoplax.vertex[trichoplax.cell[cell,i], 2] *
-#                 trichoplax.vertex[trichoplax.cell[cell,j], 1]
-#     #    A = A + x[i]*y[j] - y[i]*x[j]
-#     end
-#
-#     return (abs(V/2.0))
-#
-# end
 
 function cellVolume(x,y)
     # volume (area in 2D) of cell with vertices x (Mx2)
@@ -290,52 +267,68 @@ function stress(trichoplax, dx)
     # animal but moving one vertex while holding others fixed affects
     # only neighbouring cells (TBD)
 
+    c = 1.05  # skeleton stretch
+    σ = 2.0  # surface energy density
+
     # copy vertices
     v = copy(trichoplax.vertex)
     E = fill(0.0, size(v)...)
     for i in 1:size(v,1)
         v[i,1] = v[i,1].+dx   # perturb ith vertex in x-direction
 
-        # turgor pressure
+        # cell turgor pressure
         for cell in 1:size(trichoplax.cell,1)
             x = v[trichoplax.cell[cell,:],1]
             y = v[trichoplax.cell[cell,:],2]
             E[i,1] = E[i,1] + (cellVolume(x, y)-trichoplax.V0)^2
         end
 
-        # skeleton tension
+        # cytoskeleton tension
         for link in 1:size(trichoplax.skeleton, 1)
-
             xdiff = v[trichoplax.skeleton[link,1],1] -
                  v[trichoplax.skeleton[link,2],1]
             ydiff = v[trichoplax.skeleton[link,1],2] -
                       v[trichoplax.skeleton[link,2],2]
-
-            E[i,1] = E[i, 1] .+ abs(sqrt(xdiff^2 + ydiff^2) - .9*trichoplax.L0)
-
-
+            E[i,1] = E[i, 1] .+ abs(sqrt(xdiff^2 + ydiff^2) - trichoplax.L0/c)
         end
 
-        v[i,1] =  v[i,1].-dx  # put the vertex back
+        # skin surface tension
+        for link in 1:size(trichoplax.skin,1)
+            xdiff = v[trichoplax.skeleton[trichoplax.skin[link],1],1] -
+                    v[trichoplax.skeleton[trichoplax.skin[link],2],1]
+            ydiff = v[trichoplax.skeleton[trichoplax.skin[link],1],2] -
+                    v[trichoplax.skeleton[trichoplax.skin[link],2],2]
+            E[i,1] = E[i,1] .+ σ*sqrt(xdiff^2 + ydiff^2)
+        end
+
+        v[i,1] =  v[i,1].-dx  # put the x-vertex back
 
         v[i,2] =  v[i,2].+dx   # perturb ith vertex in y-direction
 
+        # cell turgor pressure
         for cell in 1:size(trichoplax.cell,1)
             x = v[trichoplax.cell[cell,:],1]
             y = v[trichoplax.cell[cell,:],2]
             E[i,2] = E[i,2]+ (cellVolume(x, y)-trichoplax.V0)^2
         end
 
-        # skeleton tension
+        # cytoskeleton tension
         for link in 1:size(trichoplax.skeleton,1)
-
             xdiff = v[trichoplax.skeleton[link,1],1] -
                  v[trichoplax.skeleton[link,2],1]
             ydiff = v[trichoplax.skeleton[link,1],2] -
                  v[trichoplax.skeleton[link,2],2]
+            E[i,2] = E[i, 2] .+ abs(sqrt(xdiff^2 + ydiff^2)-trichoplax.L0/c)
 
-            E[i,2] = E[i, 2] .+ abs(sqrt(xdiff^2 + ydiff^2) - .9*trichoplax.L0)
+        end
 
+        # skin surface tension
+        for link in 1:size(trichoplax.skin,1)
+            xdiff = v[trichoplax.skeleton[trichoplax.skin[link],1],1] -
+                    v[trichoplax.skeleton[trichoplax.skin[link],2],1]
+            ydiff = v[trichoplax.skeleton[trichoplax.skin[link],1],2] -
+                    v[trichoplax.skeleton[trichoplax.skin[link],2],2]
+            E[i,2] = E[i,2] .+ σ*sqrt(xdiff^2 + ydiff^2)
         end
 
         v[i,2] =  v[i,2].-dx  # put the vertex back
@@ -345,52 +338,35 @@ function stress(trichoplax, dx)
     E
 end
 
-for i in 1:size(trichoplax.vertex, 1)
-    trichoplax.vertex[i,:] = trichoplax.vertex[i,:] + (rand(2).-.5)
-end
-draw_trichoplax(trichoplax, petridish)
-
+# for i in 1:size(trichoplax.vertex, 1)
+#     trichoplax.vertex[i,:] = trichoplax.vertex[i,:] + (rand(2).-.5)
+# end
+world = Scene(limits =
+        FRect(-sceneWidth/2, -sceneWidth/2,
+               sceneWidth,sceneWidth), scale_plot = false)
+draw(trichoplax)
+display(world)
 
 function morph(trichoplax)
-dx = 1e-8
-frameCount = 0
-for i in 1:1024
-    D =  (stress(trichoplax, dx) - stress(trichoplax, -dx))/(2.0*dx)
-    #println(D[1,:])
-    for j in 1:size(trichoplax.vertex,1)
-        #println(D[j,:])
-        trichoplax.vertex[j,:] = trichoplax.vertex[j,:]- .001*D[j,:]
+    # morph to minimise stress
+    dx = 1e-8
+    frameCount = 0
+    for i in 1:512
+        D =  (stress(trichoplax, dx) - stress(trichoplax, -dx))/(2.0*dx)
+        #println(D[1,:])
+        for j in 1:size(trichoplax.vertex,1)
+            #println(D[j,:])
+            trichoplax.vertex[j,:] = trichoplax.vertex[j,:]- .005*D[j,:]
+        end
+        # shift to origin
+        x0 = mean(trichoplax.vertex, dims=1)
+
+        # frameCount = frameCount + 1
+        # if frameCount >128
+        #     draw(trichoplax)
+        #     display(world)
+        #     sleep(.1)
+        #     frameCount = 0
+        # end
     end
-    # shift to origin
-    x0 = mean(trichoplax.vertex, dims=1)
-    #println(x0)
-    # for j in 1:size(trichoplax.vertex,1)
-    #     trichoplax.vertex[j,:] = trichoplax.vertex[j,:]- transpose(x0)
-    # end
-
-
-    # scene = Scene(limits = FRect(-sceneWidth/2, -sceneWidth/2,
-    #         sceneWidth,sceneWidth), scale_plot = false)
-    frameCount = frameCount + 1
-    if frameCount > 64
-    draw_trichoplax(trichoplax, petridish)
-  display(petridish)
-  sleep(.1)
-  frameCount = 0
 end
-end
-end
-
-# dx = 0.1
-#
-# for i in 1:12
-#     for j in 1:size(trichoplax.vertex,1)
-#         trichoplax.vertex[j,:] = trichoplax.vertex[j,:]+0.5*(rand(2).-.5)
-#     end
-#
-# scene = Scene(limits = FRect(-sceneWidth/2, -sceneWidth/2,
-#         sceneWidth,sceneWidth), scale_plot = false)
-# draw_trichoplax(trichoplax, scene)
-# display(scene)
-# sleep(.1)
-# end

@@ -14,7 +14,7 @@ struct Trichoplax
     skin::Array       # nSkin*1  indices of exterior skeleton links
 end
 
-diameter = 28
+diameter = 44
 
 function make_trichoplax(Diameter)
     # construct a Trichoplax of specified diameter
@@ -267,7 +267,7 @@ function stress(trichoplax, dx)
     # animal but moving one vertex while holding others fixed affects
     # only neighbouring cells (TBD)
 
-    c = 1.05  # skeleton stretch
+    c = 10.0  # skeleton stretch
     σ = 2.0  # surface energy density
 
     # copy vertices
@@ -280,7 +280,8 @@ function stress(trichoplax, dx)
         for cell in 1:size(trichoplax.cell,1)
             x = v[trichoplax.cell[cell,:],1]
             y = v[trichoplax.cell[cell,:],2]
-            E[i,1] = E[i,1] + (cellVolume(x, y)-trichoplax.V0)^2
+#            E[i,1] = E[i,1] + log(cellVolume(x, y)/trichoplax.V0)^2
+            E[i,1] = E[i,1] + (cellVolume(x, y)- trichoplax.V0)^2
         end
 
         # cytoskeleton tension
@@ -289,7 +290,7 @@ function stress(trichoplax, dx)
                  v[trichoplax.skeleton[link,2],1]
             ydiff = v[trichoplax.skeleton[link,1],2] -
                       v[trichoplax.skeleton[link,2],2]
-            E[i,1] = E[i, 1] .+ abs(sqrt(xdiff^2 + ydiff^2) - trichoplax.L0/c)
+            E[i,1] = E[i, 1] .+ log(sqrt(xdiff^2 + ydiff^2)/trichoplax.L0*c)^2
         end
 
         # skin surface tension
@@ -318,7 +319,7 @@ function stress(trichoplax, dx)
                  v[trichoplax.skeleton[link,2],1]
             ydiff = v[trichoplax.skeleton[link,1],2] -
                  v[trichoplax.skeleton[link,2],2]
-            E[i,2] = E[i, 2] .+ abs(sqrt(xdiff^2 + ydiff^2)-trichoplax.L0/c)
+            E[i,2] = E[i, 2] .+ log(sqrt(xdiff^2 + ydiff^2)/trichoplax.L0*c)^2
 
         end
 

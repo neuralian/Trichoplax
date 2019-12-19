@@ -1,13 +1,13 @@
 # Trichoplax development model
 # MGP Dec 2019
-module Placozoan
+#module Placozoan
 
 using Makie
 using LinearAlgebra
 using Statistics
 using Colors
 
-export Trichoplax, make_trichoplax, draw, morph
+#export Trichoplax,  draw, morph
 
 
 struct Trichoplax
@@ -19,80 +19,63 @@ struct Trichoplax
     skin::Array       # nSkin*1  indices of exterior skeleton links
 end
 
-function make_trichoplax(Diameter)
-    # construct a Trichoplax of specified diameter
+function make_trichoplax(cellDiam, Nlayers, nMorph = 64)
+    # Construct Trichoplax with N layers
+    # Build hexagonal pre-morph, then morph by minimising
+    #  energy = turgor pressure + cytoskeleton elasticity + cell surface energy
+    #  nMorph = number of morphing steps
 
-    plaxDiam = Float64(Diameter)  # Trichoplax diameter microns
-    cellDiam = 5.0   # cell diameter microns
-
-    # row height factor
-    # (row height is h*cellDiam, column width is cellDiam)
+    # cell edge length re. diameter
     h = sqrt(3.0)/2.0
 
     # vertex distance tolerance
     vertexTol = cellDiam/100.
 
-    nRows     = Int64(ceil(plaxDiam/(cellDiam*h)/2.0))
-    nCols     = Int64(ceil(plaxDiam/cellDiam/2.0))
-    MaxNCells = Int64(8*ceil((nRows+1)*(nCols+1)))
+    maxNCells = Int64(round(4*Nlayers^2 - Nlayers*(Nlayers-1)))
 
-    # cell centre x-y coordinate array
-    cellNucleus = NaN*ones(MaxNCells,2)
+    # x-y coordinates of cell centres
+    cellNucleus = fill(0.0, maxNCells, 2)
+
+    # build in 1st quadrant, then copy to other quadrants
+    #  (don't copy vertices on axes, ie 1 coordinate is zero)
+    nCells = 0
+    for i in 1:Nlayers
+        y = cellDiam*(i-1)*1.5/2
+        for j in 1:Int64(ceil((2Nlayers-i)/2))
+            x = h*cellDiam*(j - 0.5 - 0.5*isodd(i))
+            nCells = nCells+1
+            cellNucleus[nCells, :] = [x y]
+            if i>1
+                nCells = nCells + 1
+                cellNucleus[nCells,:] = [x -y]
+            end
+            if x>cellDiam/4
+                nCells = nCells + 1
+                cellNucleus[nCells, :] = [-x y]
+            end
+            if (x > cellDiam/4.) &  (y > cellDiam/4.)
+                nCells = nCells + 1
+                cellNucleus[nCells,:] = [-x -y]
+            end
+        end
+    end
+
+    # # draw nuclei - for debug; comment out to run
+    # scatter!(cellNucleus[:,1], cellNucleus[:,2], markersize = cellDiam/5)
 
     # cell vertex array
     # each row is a vertex (x,y) of a hexagonal cell boundary
     # TODO: Determine empirically how big (or small) this array needs to be
-    cellVertex = NaN*ones(6*MaxNCells, 2)
+    cellVertex = NaN*ones(6*nCells, 2)
 
     # cell boundary indices
     # each hexagonal cell defined by 6 vertex indices listed anticlockwise
-    iCell= fill(-1, MaxNCells, 6)
+    iCell= fill(-1, nCells, 6)
 
     # links
     # each row defines a link between cell vertices
     # by specifying a pair of row indices in the vertex array
-    skeleton = fill(-1, 6*MaxNCells, 2)
-
-    # cell nuclei
-    # used to construct cell membranes/cells, not members of Trichoplax
-    nCells = 0
-    for row in 0:nRows
-        for col in 0:nCols
-            if iseven(row)
-                x = col*cellDiam
-                y = h*row*cellDiam
-                if (x^2 + y^2) <= (plaxDiam/2.)^2
-                    nCells = nCells + 1
-                    cellNucleus[nCells,:] = [x y]
-                    if y>cellDiam/4.
-                        nCells = nCells + 1
-                        cellNucleus[nCells,:] = [x -y]
-                    end
-                    if x > cellDiam/4.
-                        nCells = nCells + 1
-                        cellNucleus[nCells,:] = [-x y]
-                    end
-                        if (x > cellDiam/4.) &  (y > cellDiam/4.)
-                        nCells = nCells + 1
-                        cellNucleus[nCells,:] = [-x -y]
-                    end
-                end
-            else
-                x = (col + 0.5)*cellDiam
-                y = h*row*cellDiam
-                if (x^2 + y^2) <= (plaxDiam/2.)^2
-                    nCells = nCells + 1
-                    cellNucleus[nCells,:] = [x y]
-                    nCells = nCells + 1
-                    cellNucleus[nCells,:] = [-x -y]
-                    nCells = nCells + 1
-                    cellNucleus[nCells,:] = [x -y]
-                    nCells = nCells + 1
-                    cellNucleus[nCells,:] = [-x y]
-                end
-            end
-        end
-    end
+    skeleton = fill(-1, 6*nCells, 2)
 
     # construct cells and links
     nCellVertex = 0
@@ -100,7 +83,7 @@ function make_trichoplax(Diameter)
     for cell in 1:nCells
         for i in 1:6
             newVertex = cellNucleus[cell,:]' .+
-                         0.5/h*cellDiam.*[cos(2π*(i-.5)/6)  sin(2π*(i-.5)/6)]
+                         0.5*cellDiam.*[cos(2π*(i-.5)/6)  sin(2π*(i-.5)/6)]
             # check for existing vertex
             vertexExists = false
             for j in 1:nCellVertex
@@ -131,12 +114,13 @@ function make_trichoplax(Diameter)
                                  [iCell[cell,i-1] iCell[cell,i]]
                 end
             end
-            if nLink>0
-                lines!(cellVertex[skeleton[nLink, :],1],
-                    cellVertex[skeleton[nLink, :],2])
-                # display(petridish)
-                # sleep(1/25)
-            end
+
+            # # draw links - for debug; comment out to run
+            # if nLink>0
+            #     lines!(cellVertex[skeleton[nLink, :],1],
+            #         cellVertex[skeleton[nLink, :],2])
+            # end
+
        end
        # add 6th edge (close the loop from 6th to 1st vertex)
        linkExists = false
@@ -156,7 +140,7 @@ function make_trichoplax(Diameter)
     # nb skin segments with two exterior vertices are duplicated
     #    duplicates are removed by unique() in Trichoplax constructor call
     nSkin = 0
-    skin = fill(0, 4*nCells)
+    skin = fill(0, 8*nCells)
     for iVertex in 1:nCellVertex
         skinCount = 0
         for iLink in 1:nLink  # count links to this vertex
@@ -178,18 +162,21 @@ function make_trichoplax(Diameter)
    # construct Trichoplax
     trichoplax = Trichoplax(cellDiam/2.0,
                             V0,
-                            cellVertex[1:nCellVertex,:].*h,
+                            cellVertex[1:nCellVertex,:],
                             skeleton[1:nLink,:],
                             iCell[1:nCells,:],
                             unique(skin[1:nSkin])
                             )
 
-  morph(trichoplax)
 
-  # return
-  trichoplax
+    morph(trichoplax, nMorph)
+
+
+    # return
+    trichoplax
 
 end
+
 
 
 function draw(trichoplax)
@@ -251,7 +238,7 @@ function stress(trichoplax, dx)
     # animal but moving one vertex while holding others fixed affects
     # only neighbouring cells (TBD)
 
-    c = 1.05  # skeleton pre-tension
+    c = 1.0  # skeleton pre-tension
     σ = 100.0  # surface energy density
 
     # copy vertices
@@ -325,9 +312,8 @@ end
 
 
 
-function morph(trichoplax, N=8, dx = 1e-2)
+function morph(trichoplax, N=16, dx = 1e-2)
     # morph to minimise stress
-    dx = 1e-2
     frameCount = 0
     for i in 1:N
         D =  (stress(trichoplax, dx) - stress(trichoplax, -dx))/(2.0*dx)
@@ -343,4 +329,23 @@ function morph(trichoplax, N=8, dx = 1e-2)
 end
 
 
+#end  # module Placozoan
+
+
+Nlayers = 9
+cellDiam = 7.5
+
+
+# Set scene
+sceneWidth = Int64(round(cellDiam*Nlayers*1.5))
+if isodd(sceneWidth)
+    sceneWidth = sceneWidth + 1
 end
+
+world = Scene(limits = FRect(-sceneWidth/2, -sceneWidth/2,
+                              sceneWidth,sceneWidth), scale_plot = false)
+
+@time trichoplax = make_trichoplax(cellDiam, Nlayers, 32);
+draw(trichoplax)
+display(world)
+println(size(trichoplax.skin))

@@ -265,7 +265,7 @@ function stress(trichoplax, dx)
             x = v[trichoplax.cell[cell,:],1]
             y = v[trichoplax.cell[cell,:],2]
 #            E[i,1] = E[i,1] + log(cellVolume(x, y)/trichoplax.V0)^2
-            E[i,1] = E[i,1] + (cellVolume(x, y)- trichoplax.V0[cell])^2
+            E[i,1] = E[i,1] + (cellVolume(x, y)- trichoplax.V0)^2
         end
 
         # cytoskeleton tension
@@ -294,7 +294,7 @@ function stress(trichoplax, dx)
         for cell in 1:size(trichoplax.cell,1)
             x = v[trichoplax.cell[cell,:],1]
             y = v[trichoplax.cell[cell,:],2]
-            E[i,2] = E[i,2]+ (cellVolume(x, y)-trichoplax.V0[cell])^2
+            E[i,2] = E[i,2]+ (cellVolume(x, y)-trichoplax.V0)^2
         end
 
         # cytoskeleton tension

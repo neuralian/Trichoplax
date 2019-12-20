@@ -1,8 +1,11 @@
+# RoundDelaunay.jl
+# circular Delaunay triangulation
+
 using Makie
 s = Scene(scale_plot = false)
 
 
-nLayers = 32
+nLayers = 4
 layerW = 5.0
 nCells = Int64(round(π*(nLayers+1)^2))
 nuc = fill(0.0,nCells , 2)

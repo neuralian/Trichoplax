@@ -9,6 +9,7 @@ using LinearAlgebra
 #    right-click on folder, select "work in folder"
 #    push!(LOAD_PATH, pwd())
 
+<<<<<<< Updated upstream
 function make_trichoplax(Nlayers)
     # Construct Trichoplax with N layers
     # Build hexagonal pre-morph, then morph by minimising
@@ -210,6 +211,10 @@ end
 
 Nlayers = 3
 trichoplax = make_trichoplax(Nlayers);
+=======
+diameter = 50
+trichoplax = make_trichoplax(diameter);
+>>>>>>> Stashed changes
 
 
 # Set scene

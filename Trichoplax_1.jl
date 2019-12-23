@@ -10,13 +10,16 @@ using LinearAlgebra
 #    push!(LOAD_PATH, pwd())
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 function make_trichoplax(Nlayers)
     # Construct Trichoplax with N layers
     # Build hexagonal pre-morph, then morph by minimising
     #  energy = turgor pressure + cytoskeleton elasticity + cell surface energy
+=======
+>>>>>>> Stashed changes
 
-    cellDiam = 5.0   # cell diameter microns
 
+<<<<<<< Updated upstream
     # cell edge length re. diameter
     h = sqrt(3.0)/2.0
 
@@ -215,10 +218,14 @@ trichoplax = make_trichoplax(Nlayers);
 diameter = 50
 trichoplax = make_trichoplax(diameter);
 >>>>>>> Stashed changes
+=======
+Nlayers = 7
+cellDiam = 5.0
+>>>>>>> Stashed changes
 
 
 # Set scene
-sceneWidth = Int64(round(diameter*1.5))
+sceneWidth = Int64(round(cellDiam*Nlayers*1.5))
 if isodd(sceneWidth)
     sceneWidth = sceneWidth + 1
 end
@@ -226,6 +233,7 @@ end
 world = Scene(limits = FRect(-sceneWidth/2, -sceneWidth/2,
                               sceneWidth,sceneWidth), scale_plot = false)
 
-
+@time trichoplax = make_trichoplax(cellDiam, Nlayers);
 draw(trichoplax)
 display(world)
+println(size(trichoplax.skin))

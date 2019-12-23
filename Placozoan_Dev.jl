@@ -10,52 +10,66 @@ function neighbours(nucleus, dlink, layer)
   # outer nucleus layer
   # MGP Dec 2019
 
-  nLayer = size(layer,1)
-  N = [size(layer[i], 1) for i in 1:nLayer]         # nuclei per layer
-  nCells = size(nucleus, 1) - length(layer[nLayer]) # 1 less layer of cells
-  neighbour = fill(0, nCells, 6)
-  nD = size(dlink,1)  # number of delaunay links
+  nCells = size(nucleus, 1)
+  neighbour = fill(0, nCells, 6)   # neighbour indices for each cell
+  nbrCount = fill(0, nCells)       # number of neighbours found
 
-  # Centre cell (layer 1) is a special case
-  # its neighbours are the 6 cells in layer 2
-  neighbour[1,:] = collect(2:7)
-
-  for i = 2:(nLayer-1)       # for each layer
-    iCandy = -1              # offset to next candidate neighbour in next layer
-    for j = 1:N[i]           # for each cell in layer
-      # first neighbour is previous cell in layer
-      neighbour[layer[i][j], 1] = layer[i][mod(j-2,N[i])+1]
-      # next candidate neighbour is previous cell in next layer
-      candidate = layer[i+1][mod(j+iCandy-1,N[i+1])+1]
-      println((i,j, candidate))
-      nNb = 0   # number of neighbours found in outer layer
-      for k in 1:3  # there are 2 or 3 neighbours in the next layer
-        for id = 1:nD
-          # if there is a d-link from current cell to candidate
-          if any(dlink[id,:].==layer[i][j]) & any(dlink[id,:].==candidate)
-            nNb = nNb + 1
-            neighbour[layer[i][j], 1 + nNb] = candidate
-            candidate = layer[i+1][mod(j+iCandy-1,N[i+1])+1] # next candidate
-          end
-        end
-      end
-      iCandy = iCandy + nNb
-    end
+  # find neighbours of each cell
+  for i in 1:size(dlink,1)
+    a = dlink[i,1]
+    b = dlink[i,2]
+    nbrCount[a] = nbrCount[a]+1
+    nbrCount[b] = nbrCount[b]+1
+    neighbour[a, nbrCount[a]] = b
+    neighbour[b, nbrCount[b]] = a
+  end
+  # put neighbours in counterclockwise order
+  # nb row 1 is already ccw, skip external nuclei (less than 6 links)
+  for i in 2:(nCells-length(layer[end]))
+    dx = nucleus[neighbour[i,:],1].-nucleus[i,1]
+    dy = nucleus[neighbour[i,:],2].-nucleus[i,2]
+    order = sortperm(atan.(dy,dx))
+    neighbour[i,:] = neighbour[i, order]
   end
   neighbour
 end
 
+function cells(nucleus, neighbour, layer)
+  # construct cell vertices
+  # MGP Dec 2019
 
+  nCells = size(nucleus,1) - length(layer[end])
+  vertex = fill(0.0, nCells, 6, 2 )  # 6 vertices per cell
 
+  for i in 1:nCells
+    x0 = nucleus[i,1]
+    y0 = nucleus[i,2]
+    for j in 1:6
+        k = neighbour[i,j]
+        m = neighbour[i, j%6+1]
+        vertex[i,j, :] = [(x0 + nucleus[k,1] + nucleus[m,1])/3.,
+                          (y0 + nucleus[k,2]+ nucleus[m,2])/3.]
+    end
+  end
+  vertex
+end
 
-nLayer = 4
+# function drawcell(iCell, cell, vertex)
+#  lines!(vtx[iCell,[1:end; 1],1], vtx[iCell,[1:end; 1],2])
+# end
+
+nLayer = 8
 layerWidth = 5.0
 @time DD = delaunayDisc(nLayer, layerWidth)
+@time nbrs=neighbours(DD...)
+
+
 cellNucleus = DD[1];
 dlink = DD[2];
 layer = DD[3];
 
-nb=neighbours(DD...)
+@time vtx = cells(cellNucleus, nbrs, layer)
+
 # Draw
 s = Scene(resolution = (800,800), scale_plot = false)
 # cell nucleuslei
@@ -70,15 +84,20 @@ scatter!(
   lines!(
     cellNucleus[dlink[i, :], 1],
     cellNucleus[dlink[i, :], 2],
-    color = RGB(0.7, 0.7, 0.7),
+    color = RGB(0.7, 0.7, 0.7), linewidth = 0.25
   )
 end
 @inbounds for i = 1:nLayer
   scatter!(
     [cellNucleus[layer[i][1], 1]],
     [cellNucleus[layer[i][1], 2]],
-    markersize = layerWidth / 6,
+    markersize = layerWidth / 12,
     color = :red,
   )
+end
+
+
+for i in 1:size(vtx,1)
+  lines!(vtx[i,[1:end; 1],1], vtx[i,[1:end; 1],2])
 end
 display(s)

@@ -34,17 +34,42 @@ function neighbours(nucleus, dlink, layer)
   neighbour
 end
 
+function cells(nucleus, neighbour, layer)
+  # construct cell vertices
+  # MGP Dec 2019
 
+  nCells = size(nucleus,1) - length(layer[end])
+  vertex = fill(0.0, nCells, 6, 2 )  # 6 vertices per cell
 
+  for i in 1:nCells
+    x0 = nucleus[i,1]
+    y0 = nucleus[i,2]
+    for j in 1:6
+        k = neighbour[i,j]
+        m = neighbour[i, j%6+1]
+        vertex[i,j, :] = [(x0 + nucleus[k,1] + nucleus[m,1])/3.,
+                          (y0 + nucleus[k,2]+ nucleus[m,2])/3.]
+    end
+  end
+  vertex
+end
 
-nLayer = 4
+# function drawcell(iCell, cell, vertex)
+#  lines!(vtx[iCell,[1:end; 1],1], vtx[iCell,[1:end; 1],2])
+# end
+
+nLayer = 8
 layerWidth = 5.0
 @time DD = delaunayDisc(nLayer, layerWidth)
+@time nbrs=neighbours(DD...)
+
+
 cellNucleus = DD[1];
 dlink = DD[2];
 layer = DD[3];
 
-nb=neighbours(DD...)
+@time vtx = cells(cellNucleus, nbrs, layer)
+
 # Draw
 s = Scene(resolution = (800,800), scale_plot = false)
 # cell nucleuslei
@@ -59,15 +84,20 @@ scatter!(
   lines!(
     cellNucleus[dlink[i, :], 1],
     cellNucleus[dlink[i, :], 2],
-    color = RGB(0.7, 0.7, 0.7),
+    color = RGB(0.7, 0.7, 0.7), linewidth = 0.25
   )
 end
 @inbounds for i = 1:nLayer
   scatter!(
     [cellNucleus[layer[i][1], 1]],
     [cellNucleus[layer[i][1], 2]],
-    markersize = layerWidth / 6,
+    markersize = layerWidth / 12,
     color = :red,
   )
+end
+
+
+for i in 1:size(vtx,1)
+  lines!(vtx[i,[1:end; 1],1], vtx[i,[1:end; 1],2])
 end
 display(s)

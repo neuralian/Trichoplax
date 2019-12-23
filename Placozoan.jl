@@ -69,7 +69,7 @@ nucleus = nucleus[1:nCells,:]
     #display(s)
 end
 
-iLink = []
+iLink = [] 
 Link = []
 @inbounds for iLayer in 2:nLayers-1
     iLink = [ nLayer[iLayer+1] 1 2]

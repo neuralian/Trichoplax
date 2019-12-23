@@ -1,9 +1,19 @@
-# Placozoan.jl
-# Placozoan package
+# Placozoan.jl Package/module
+#  To make the package available:
+#   At REPL prompt: julia> push!(LOAD_PATH, <path_to_package_folder>)
+# In Juno:
+#    Right-click on folder containing the package.
+#    Select "Juno: Work in folder"
+#    At REPL prompt:  julia> push!(LOAD_PATH, pwd())
+#
+# MGP 2019-2020
 
 module Placozoan
+using Distributions
 
 export delaunayDisc
+
+Ndist = Normal()
 
 function delaunayDisc(nLayers, layerWidth)
     # returns (nucleus, dlink, layer)
@@ -11,6 +21,7 @@ function delaunayDisc(nLayers, layerWidth)
     # dlink = ndlink x indices of cell nuclei defining the dlink
     # layer = ith row indexes cell nuclei in each layer
     # MGP Dec 2019
+a = 0.005    # noise on cell location (re. layerWidth)
 nCells = Int64(round(π*(nLayers+1)^2))
 nucleus = fill(0.0,nCells , 2)
 dlink = fill(0, 6*nCells, 2)
@@ -26,10 +37,20 @@ w = 0
     Layer[iLayer,:] = [fill(0,nLayer[iLayer])]
     w = w + 2π*(rand(1)[1] - 0.5)/nLayer[iLayer]
     @inbounds for j in 1:nLayer[iLayer]
+        dr = rand(Ndist)
+        while abs(dr)>3.0
+            dr = rand(Ndist)
+        end
+        dw = rand(Ndist)
+        while abs(dw)>3.0
+            dw = rand(Ndist)
+        end
+        w = w + a*dw
         iCell = iCell + 1
         Layer[iLayer][j] = iCell
         nucleus[iCell,:] =
-        (iLayer-1)*layerWidth.*[cos(2π*((j-1)/nLayer[iLayer])+w)
+        (iLayer-1)*(1.0+a*dr)*layerWidth.*
+        [cos(2π*((j-1)/nLayer[iLayer])+w)
                        sin(2π*((j-1)/nLayer[iLayer])+w)]
 
         # Delaunay triangulation
@@ -69,7 +90,7 @@ nucleus = nucleus[1:nCells,:]
     #display(s)
 end
 
-iLink = [] 
+iLink = []
 Link = []
 @inbounds for iLayer in 2:nLayers-1
     iLink = [ nLayer[iLayer+1] 1 2]

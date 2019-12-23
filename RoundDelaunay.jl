@@ -4,12 +4,17 @@
 using Makie
 
 
+<<<<<<< Updated upstream
 function delaunayDisc(nLayers, layerWidth)
     # returns (cellNucleus, edge, layer)
     # cellnucleus = nCells x 2 coordinates of ith cell nucleus
     # edge = nEdge x indices of cell nuclei defining the edge
     # layer = ith row indexes cell nuclei in each layer
     # MGP Dec 2019
+=======
+nLayers = 12
+layerW = 5.0
+>>>>>>> Stashed changes
 nCells = Int64(round(π*(nLayers+1)^2))
 cellNucleus = fill(0.0,nCells , 2)
 edge = fill(0, 6*nCells, 2)

@@ -10,37 +10,26 @@ function neighbours(nucleus, dlink, layer)
   # outer nucleus layer
   # MGP Dec 2019
 
-  nLayer = size(layer,1)
-  N = [size(layer[i], 1) for i in 1:nLayer]         # nuclei per layer
-  nCells = size(nucleus, 1) - length(layer[nLayer]) # 1 less layer of cells
-  neighbour = fill(0, nCells, 6)
-  nD = size(dlink,1)  # number of delaunay links
+  nCells = size(nucleus, 1)
+  neighbour = fill(0, nCells, 6)   # neighbour indices for each cell
+  nbrCount = fill(0, nCells)       # number of neighbours found
 
-  # Centre cell (layer 1) is a special case
-  # its neighbours are the 6 cells in layer 2
-  neighbour[1,:] = collect(2:7)
-
-  for i = 2:(nLayer-1)       # for each layer
-    iCandy = -1              # offset to next candidate neighbour in next layer
-    for j = 1:N[i]           # for each cell in layer
-      # first neighbour is previous cell in layer
-      neighbour[layer[i][j], 1] = layer[i][mod(j-2,N[i])+1]
-      # next candidate neighbour is previous cell in next layer
-      candidate = layer[i+1][mod(j+iCandy-1,N[i+1])+1]
-      println((i,j, candidate))
-      nNb = 0   # number of neighbours found in outer layer
-      for k in 1:3  # there are 2 or 3 neighbours in the next layer
-        for id = 1:nD
-          # if there is a d-link from current cell to candidate
-          if any(dlink[id,:].==layer[i][j]) & any(dlink[id,:].==candidate)
-            nNb = nNb + 1
-            neighbour[layer[i][j], 1 + nNb] = candidate
-            candidate = layer[i+1][mod(j+iCandy-1,N[i+1])+1] # next candidate
-          end
-        end
-      end
-      iCandy = iCandy + nNb
-    end
+  # find neighbours of each cell
+  for i in 1:size(dlink,1)
+    a = dlink[i,1]
+    b = dlink[i,2]
+    nbrCount[a] = nbrCount[a]+1
+    nbrCount[b] = nbrCount[b]+1
+    neighbour[a, nbrCount[a]] = b
+    neighbour[b, nbrCount[b]] = a
+  end
+  # put neighbours in counterclockwise order
+  # nb row 1 is already ccw, skip external nuclei (less than 6 links)
+  for i in 2:(nCells-length(layer[end]))
+    dx = nucleus[neighbour[i,:],1].-nucleus[i,1]
+    dy = nucleus[neighbour[i,:],2].-nucleus[i,2]
+    order = sortperm(atan.(dy,dx))
+    neighbour[i,:] = neighbour[i, order]
   end
   neighbour
 end

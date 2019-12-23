@@ -2,84 +2,85 @@
 # circular Delaunay triangulation
 
 using Makie
-s = Scene(scale_plot = false)
 
 
-nLayers = 4
-layerW = 5.0
+function delaunayDisc(nLayers, layerWidth)
+    # returns (cellNucleus, edge, layer)
+    # cellnucleus = nCells x 2 coordinates of ith cell nucleus
+    # edge = nEdge x indices of cell nuclei defining the edge
+    # layer = ith row indexes cell nuclei in each layer
+    # MGP Dec 2019
 nCells = Int64(round(π*(nLayers+1)^2))
-nuc = fill(0.0,nCells , 2)
-Dlny = fill(0, 6*nCells, 2)
-Layer = fill(Int64[],nLayers+1)
+cellNucleus = fill(0.0,nCells , 2)
+edge = fill(0, 6*nCells, 2)
+Layer = fill(Int64[],nLayers)
 nLayer = vcat([1], [6*i for i in 1:nLayers-1]) # n cells in layer
 nCLink = fill(0, nCells, 1)  # number of Delaunay links per cell
 iCell = 1
-nuc[iCell,:] = [0.0 0.0]  # cell at origin
+cellNucleus[iCell,:] = [0.0 0.0]  # cell at origin
 Layer[1,1] = [1]
-iDlny =0
+iEdge =0
 w = 0
 for iLayer in 2:nLayers
-    global iDlny
-    #nLayer = Int64(round(2π*iLayer))
     Layer[iLayer,:] = [fill(0,nLayer[iLayer])]
-    global w = w + 2π*(rand(1)[1] - 0.5)/nLayer[iLayer]
+    w = w + 2π*(rand(1)[1] - 0.5)/nLayer[iLayer]
     for j in 1:nLayer[iLayer]
-        global iCell = iCell + 1
+        iCell = iCell + 1
         Layer[iLayer][j] = iCell
-        nuc[iCell,:] =
-        (iLayer-1)*layerW.*[cos(2π*((j-1)/nLayer[iLayer])+w)
+        cellNucleus[iCell,:] =
+        (iLayer-1)*layerWidth.*[cos(2π*((j-1)/nLayer[iLayer])+w)
                        sin(2π*((j-1)/nLayer[iLayer])+w)]
 
         # Delaunay triangulation
         if j>1
-            iDlny = iDlny + 1
-            Dlny[iDlny, :] = [iCell-1 iCell]
+            iEdge = iEdge + 1
+            edge[iEdge, :] = [iCell-1 iCell]
             nCLink[iCell-1] = nCLink[iCell-1]+1
             nCLink[iCell] = nCLink[iCell]+1
-            #lines!(nuc[Dlny[iDlny,:],1], nuc[Dlny[iDlny,:],2])
+            #lines!(cellNucleus[edge[iEdge,:],1], cellNucleus[edge[iEdge,:],2])
             #display(s)
         end
     end
-    iDlny = iDlny + 1
-    Dlny[iDlny, :] = [iCell Layer[iLayer][1]]
+    iEdge = iEdge + 1
+    edge[iEdge, :] = [iCell Layer[iLayer][1]]
     nCLink[iCell] = nCLink[iCell]+1
     nCLink[Layer[iLayer][1]] = nCLink[Layer[iLayer][1]]+1
-    #lines!(nuc[Dlny[iDlny,:],1], nuc[Dlny[iDlny,:],2])
+    #lines!(cellNucleus[edge[iEdge,:],1], cellNucleus[edge[iEdge,:],2])
     #display(s)
 end
 nCells = iCell
-nuc = nuc[1:nCells,:]
+cellNucleus = cellNucleus[1:nCells,:]
 
-# scatter!(nuc[:,1], nuc[:,2], markersize = layerW/4.)
+# scatter!(cellNucleus[:,1], cellNucleus[:,2], markersize = layerWidth/4.)
 # for i in 1:nLayers
-#      scatter!([nuc[Layer[i][1], 1]], [nuc[Layer[i][1],2]],
+#      scatter!([cellNucleus[Layer[i][1], 1]], [cellNucleus[Layer[i][1],2]],
 #      markersize = .5, color = :red);
 #  end
 # display(s)
 
 # complete Delaunay triangles
 for j in 1:6      # center cell special case, 6 links
-    global iDlny = iDlny + 1
-    Dlny[iDlny,:] = [1 j+1]
+    iEdge = iEdge + 1
+    edge[iEdge,:] = [1 j+1]
     nCLink[1] = nCLink[1]+1
     nCLink[j+1] = nCLink[j+1]+1
-    #lines!(nuc[Dlny[iDlny,:],1], nuc[Dlny[iDlny,:],2])
+    #lines!(cellNucleus[edge[iEdge,:],1], cellNucleus[edge[iEdge,:],2])
     #display(s)
 end
 
 iLink = []
 Link = []
 for iLayer in 2:nLayers-1
-    global iLink = [ nLayer[iLayer+1] 1 2]
-    global Link = Layer[iLayer+1][iLink[1:3]]
+    iLink = [ nLayer[iLayer+1] 1 2]
+    Link = Layer[iLayer+1][iLink[1:3]]
     for i in 1:length(Layer[iLayer])
         #println((iLayer, Link))
-        for j in 1:length(Link)            #global iDlny = iDlny + 1
-            global iDlny = iDlny + 1
-            Dlny[iDlny, :] = [Layer[iLayer][i] Link[j]]
+        for j in 1:length(Link)            #global iEdge = iEdge + 1
+            iEdge = iEdge + 1
+            edge[iEdge, :] = [Layer[iLayer][i] Link[j]]
             nCLink[Layer[iLayer][i]] = nCLink[Layer[iLayer][i]]+1
             nCLink[Link[j]] = nCLink[Link[j]]+1
-            # lines!(nuc[Dlny[iDlny,:],1], nuc[Dlny[iDlny,:],2])
+            # lines!(cellNucleus[edge[iEdge,:],1], cellNucleus[edge[iEdge,:],2])
             # display(s)
             # sleep(.05)
         end
@@ -90,21 +91,27 @@ for iLayer in 2:nLayers-1
         #println(Link)
     end
 end
+edge = edge[1:iEdge,:]
 
+return (cellNucleus, edge, Layer)
 
-
-
-Dlny = Dlny[1:iDlny,:]
-
-
-# cell nuclei
-scatter!(nuc[:,1], nuc[:,2], markersize = layerW/4.)
-# Delaunay
-for i in 1:iDlny
-  lines!(nuc[Dlny[i,:],1], nuc[Dlny[i,:],2])
 end
-for i in 1:nLayers
-     scatter!([nuc[Layer[i][1], 1]], [nuc[Layer[i][1],2]],
+
+
+s = Scene(scale_plot = false)
+nLayer = 4
+layerWidth = 5.0
+DD = delaunayDisc(nLayer, layerWidth)
+cellNucleus=DD[1]; edge = DD[2];  layer = DD[3];
+
+# cell nucleuslei
+scatter!(cellNucleus[:,1], cellNucleus[:,2], markersize = layerWidth/4.)
+# Delaunay
+for i in 1:size(edge,1)
+  lines!(cellNucleus[edge[i,:],1], cellNucleus[edge[i,:],2])
+end
+for i in 1:nLayer
+     scatter!([cellNucleus[layer[i][1], 1]], [cellNucleus[layer[i][1],2]],
      markersize = .5, color = :red);
  end
 display(s)

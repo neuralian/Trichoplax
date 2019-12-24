@@ -224,33 +224,52 @@ end #cells()
 
 
 function find_perimeter(cell, vlink, clayer)
-    # find vertices and vlinks on edge of disc
-    operimeter = fill(0, 2*size(clayer[end],1)) # outer
-    iperimeter = fill(0, 2*size(clayer[end],1))# inner (linked to internal vertex)
+    # find vertices on edge of disc
+    n = length(clayer[end])
+    oP = fill(0, n+6) # outer perimeter ()
+    iP = fill(0, n)# inner (linked to internal vertex)
+
+    # op (outer perimeter) vertices have no vlinks to internal vertices
     no = 0
-    for i in 1:length(clayer[end])  # for each cell in outer layer
-        for v in 1:6  # find vertices with fewer than 3 incoming links ..
+    @inbounds for i in 1:n  # for each cell in outer layer
+        @inbounds for v in 1:6  # vertices with < 3  links ..
             if sum(vlink[:]'.==cell[clayer[end][i],v])<3
                 no = no + 1
-                operimeter[no] = cell[clayer[end][i],v]
-            end
-        end
-    end
-    # iperimeter vertices are vlinked to operimeter vertices + 1 internal vertex
-    ni = 0
-    for i in 1:length(operimeter)
-        for j in 1:size(vlink,1)
-            if (vlink[j,1]==operimeter[i]) & !any(operimeter.==vlink[j,2])
-                ni = ni+1
-                iperimeter[ni] = vlink[j,2]
-            elseif (vlink[j,2]==operimeter[i]) & !any(operimeter.==vlink[j,1])
-                ni = ni+1
-                iperimeter[ni] = vlink[j,1]
+                oP[no] = cell[clayer[end][i],v]
             end
         end
     end
 
-    (operimeter[1:no], unique(iperimeter[1:ni]))
+    # ip (inner perimeter) vertices
+    # are vlinked to op vertices + 1 internal vertex
+    ni = 0
+    @inbounds for i in 1:length(oP)
+        @inbounds for j in 1:size(vlink,1)
+            if  (vlink[j,1]==oP[i])    &
+                 !any(oP.==vlink[j,2]) &
+                 !any(iP.==vlink[j,2])
+               ni = ni+1
+               iP[ni] = vlink[j,2]
+            elseif (vlink[j,2]==oP[i]) &
+                 !any(oP.==vlink[j,1]) &
+                 !any(iP.==vlink[j,1])
+               ni = ni+1
+               iP[ni] = vlink[j,1]
+            end
+        end
+    end
+
+    # internal vertices are vlinked to inner perimeter vertices
+    # (used to align lateral membranes of perimeter cells orthogonal to skin )
+    # for i in 1:length(iP)
+    #     for j in 1:size(vlink,1)
+    #         if (vlink[j,1]==iP[i]) & !any(oP.==vlink[j,2])
+    #
+    #
+    #         end
+    #     end
+    # end
+    (oP, iP)
 end
 
 function round_perimeter(vertex, op, ip)
@@ -295,7 +314,7 @@ function drawDelaunayDisc(dlink)
     end
 end
 
-nLayer = 24
+nLayer = 5
 layerWidth = 5.0
 print("DelaunayDisc:")
 @time DD = delaunayDisc(nLayer, layerWidth)

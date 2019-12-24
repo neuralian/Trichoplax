@@ -149,22 +149,72 @@ function cells(nucleus, neighbour, layer)
   # construct cell vertices
   # MGP Dec 2019
 
-  nCells = size(nucleus,1) - length(layer[end])
-  vertex = fill(0.0, nCells, 6, 2 )  # 6 vertices per cell
+  # tolerance for merging vertices.
+  # nb assuming nucleus_1 is next to nucleus_2, so distance between them
+  # is cell diameter
+  tol = 0.1*sqrt((nucleus[1,1]-nucleus[2,1])^2 + (nucleus[1,2]-nucleus[2,2])^2)
 
-  @inbounds for i in 1:nCells
-    # x0 = nucleus[i,1]
-    # y0 = nucleus[i,2]
-     @inbounds for j in 1:6
+  nCells = size(nucleus,1) - length(layer[end])
+  vertex = fill(0.0, 6*nCells, 2 )  # vertex coordinates
+  cell = fill(0, nCells, 6)         # vertex indices for each cell
+  edge = fill(0, 6*nCells, 2)       # vertex indices for each edge
+
+  nVertex = 0
+  nEdge = 0
+  for i in 1:nCells
+      for j in 1:6
         k = neighbour[i,j]
         m = neighbour[i, j%6+1]
-        vertex[i,j, :] = [(nucleus[i,1] + nucleus[k,1] + nucleus[m,1])/3.,
-                          (nucleus[i,2] + nucleus[k,2]+ nucleus[m,2])/3.]
+        x = (nucleus[i,1] + nucleus[k,1] + nucleus[m,1])/3.
+        y = (nucleus[i,2] + nucleus[k,2] + nucleus[m,2])/3.
+        vertexExists = false
+        for n in 1:nVertex
+            if sqrt( (x-vertex[n,1])^2 + (y-vertex[n,2])^2) < tol
+                cell[i,j]=n  # point to existing vertex
+                vertexExists = true
+                break
+            end
+        end
+        if !vertexExists # add new vertex and point to it
+                nVertex = nVertex+1
+                vertex[nVertex,:] = [x y]
+                cell[i,j] = nVertex
+        end # !vertexExists
 
-    end
-  end
-  vertex
-end
+        # build list of edges (cell membrane segments)
+        edgeExists = false
+        if j>1
+            e = sort([cell[i,j-1] cell[i,j]], dims=2)  # edge
+            for i1 in 1:nEdge
+                if e==edge[i1,:]
+                    edgeExists = true
+                    break
+                end
+            end # for i1
+            if !edgeExists
+            nEdge = nEdge + 1
+            edge[nEdge,:] = e
+            end # !edgeExists
+        end # if j>1
+        # 6th edge links last and first vertex
+        edgeExists = false
+        if j==6
+            e = sort([cell[i,j] cell[i,1]], dims=2)
+            for i1 in 1:nEdge
+                if e==edge[i1,:]
+                    edgeExists = true
+                    break
+                end
+            end # for i1
+            if !edgeExists
+                nEdge = nEdge + 1
+                edge[nEdge,:] = e
+            end # !edgeExists
+        end # j==6
+    end # for j
+    end # for i
+  (vertex[1:nVertex,:], cell, edge[1:nEdge, :])
+end #cells()
 
 function drawDelaunayDisc(dlink)
     @inbounds for i = 1:size(dlink, 1)
@@ -180,7 +230,7 @@ end
 #  lines!(vtx[iCell,[1:end; 1],1], vtx[iCell,[1:end; 1],2])
 # end
 
-nLayer = 4
+nLayer = 16
 layerWidth = 5.0
 print("DelaunayDisc:")
 @time DD = delaunayDisc(nLayer, layerWidth)
@@ -192,7 +242,10 @@ cellNucleus = DD[1];
 dlink = DD[2];
 layer = DD[3];
 print("cells:")
-@time vtx = cells(cellNucleus, nbrs, layer)
+@time C = cells(cellNucleus, nbrs, layer)
+vtx = C[1]
+cell = C[2]
+edge = C[3]
 
 # Draw
 s = Scene(resolution = (800,800), scale_plot = false)
@@ -214,8 +267,29 @@ scatter!(
 #   )
 # end
 
-
-for i in 1:size(vtx,1)
-  lines!(vtx[i,[1:end; 1],1], vtx[i,[1:end; 1],2])
+function draw_cells(vertex, cell)
+@inbounds for i in 1:size(cell,1)
+ lines!(vertex[cell[i,[1:6; 1]],1], vertex[cell[i,[1:6; 1]],2])
 end
+end
+
+function draw_edges(vertex, edge)
+    for i in 1:size(edge, 1)
+        lines!(vertex[edge[i,:],1], vertex[edge[i,:],2])
+    end
+end
+
+NE = size(edge,1)
+E = fill(0, NE)
+E[1:2] = [1 2]
+iE = 2
+for i in 2:NE
+    if edge[i,1] == E[iE]
+        global iE = iE+1
+        E[iE] = edge[i,2]
+    end
+end
+E = E[1:iE]
+
+draw_cells(vtx,cell)
 display(s)

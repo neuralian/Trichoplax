@@ -225,20 +225,32 @@ end #cells()
 
 function find_perimeter(cell, vlink, clayer)
     # find vertices and vlinks on edge of disc
-    perimeter = fill(0, 2*size(clayer[end],1))
-    n = 0
+    operimeter = fill(0, 2*size(clayer[end],1)) # outer
+    iperimeter = fill(0, 2*size(clayer[end],1))# inner (linked to internal vertex)
+    no = 0
     for i in 1:length(clayer[end])  # for each cell in outer layer
         for v in 1:6  # find vertices with fewer than 3 incoming links ..
             if sum(vlink[:]'.==cell[clayer[end][i],v])<3
-                n = n + 1
-                perimeter[n] = cell[clayer[end][i],v]
+                no = no + 1
+                operimeter[no] = cell[clayer[end][i],v]
             end
         end
     end
-    # and vertices that are vlinked to these vertices
+    # iperimeter vertices are vlinked to operimeter vertices + 1 internal vertex
+    ni = 0
+    for i in 1:length(operimeter)
+        for j in 1:size(vlink,1)
+            if (vlink[j,1]==operimeter[i]) & !any(operimeter.==vlink[j,2])
+                ni = ni+1
+                iperimeter[ni] = vlink[j,2]
+            elseif (vlink[j,2]==operimeter[i]) & !any(operimeter.==vlink[j,1])
+                ni = ni+1
+                iperimeter[ni] = vlink[j,1]
+            end
+        end
+    end
 
-
-    perimeter[1:n]
+    (operimeter[1:no], unique(iperimeter[1:ni]))
 end
 
 function drawDelaunayDisc(dlink)
@@ -251,7 +263,7 @@ function drawDelaunayDisc(dlink)
     end
 end
 
-nLayer = 4
+nLayer = 12
 layerWidth = 5.0
 print("DelaunayDisc:")
 @time DD = delaunayDisc(nLayer, layerWidth)
@@ -295,6 +307,9 @@ function draw_vlinks(vertex, vlink)
 end
 
 draw_cells(vertex,cell)
-e = find_perimeter(cell, vlink, clayer)
-scatter!(vertex[e,1], vertex[e,2], markersize = layerWidth/4., color = :red)
+p = find_perimeter(cell, vlink, clayer)
+op = p[1]
+ip = p[2]
+scatter!(vertex[op,1], vertex[op,2], markersize = layerWidth/4., color = :red)
+scatter!(vertex[ip,1], vertex[ip,2], markersize = layerWidth/4., color = :green)
 display(s)

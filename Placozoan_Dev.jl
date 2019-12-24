@@ -253,6 +253,38 @@ function find_perimeter(cell, vlink, clayer)
     (operimeter[1:no], unique(iperimeter[1:ni]))
 end
 
+function round_perimeter(vertex, op, ip)
+    # move perimeter vertices onto a circle
+
+    No = length(op)
+    Ni = length(ip)
+    ri = fill(0.0, Ni)
+    ro = fill(0.0, No)
+    for i in 1:No
+        ro[i] = sqrt(vertex[op[i],1]^2 + vertex[op[i],2]^2)
+    end
+    for i in 1:Ni
+        ri[i] = sqrt(vertex[ip[i],1]^2 + vertex[ip[i],2]^2)
+    end
+
+    # average radius of perimeter vertices
+    r =  (sum(ro)+sum(ri))/(No+Ni)
+
+    # shift inner vertices to mean radius
+    for i in 1:Ni
+        vertex[ip[i],1] = vertex[ip[i],1]*r/ri[i]
+        vertex[ip[i],2] = vertex[ip[i],2]*r/ri[i]
+    end
+
+    for i in 1:No
+        vertex[op[i],1] = vertex[op[i],1]*r/ro[i]
+        vertex[op[i],2] = vertex[op[i],2]*r/ro[i]
+    end
+
+    vertex
+end
+
+
 function drawDelaunayDisc(dlink)
     @inbounds for i = 1:size(dlink, 1)
       lines!(
@@ -263,7 +295,7 @@ function drawDelaunayDisc(dlink)
     end
 end
 
-nLayer = 12
+nLayer = 25
 layerWidth = 5.0
 print("DelaunayDisc:")
 @time DD = delaunayDisc(nLayer, layerWidth)
@@ -289,13 +321,14 @@ scatter!(
   cellNucleus[1:size(cell,1), 1],
   cellNucleus[1:size(cell,1), 2],
   markersize = layerWidth / 6.0,
-  color = RGB(0.7, 0.7, 0.7),
+  color = RGB(1.0, .5, 0.2),
 )
 
 function draw_cells(vertex, cell)
-@inbounds for i in 1:size(cell,1)
- lines!(vertex[cell[i,[1:6; 1]],1], vertex[cell[i,[1:6; 1]],2])
-end
+    @inbounds for i in 1:size(cell,1)
+        lines!(vertex[cell[i,[1:6; 1]],1], vertex[cell[i,[1:6; 1]],2],
+                color = RGB(.65, .45, 0.0))
+    end
 end
 
 
@@ -306,10 +339,15 @@ function draw_vlinks(vertex, vlink)
     end
 end
 
-draw_cells(vertex,cell)
 p = find_perimeter(cell, vlink, clayer)
 op = p[1]
 ip = p[2]
-scatter!(vertex[op,1], vertex[op,2], markersize = layerWidth/4., color = :red)
-scatter!(vertex[ip,1], vertex[ip,2], markersize = layerWidth/4., color = :green)
+
+vertex = round_perimeter(vertex, op, ip)
+
+
+draw_cells(vertex,cell)
+
+# scatter!(vertex[op,1], vertex[op,2], markersize = layerWidth/4., color = :red)
+# scatter!(vertex[ip,1], vertex[ip,2], markersize = layerWidth/4., color = :green)
 display(s)

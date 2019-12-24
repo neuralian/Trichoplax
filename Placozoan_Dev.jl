@@ -13,6 +13,7 @@ function delaunayDisc(nLayers, layerWidth)
     # dlink = ndlink x indices of cell nuclei defining the dlink
     # layer = ith row indexes cell nuclei in each layer
     # MGP Dec 2019
+
 a = .0025   # noise on cell location (re. layerWidth)
 nCells = Int64(round(π*(nLayers+1)^2))
 nucleus = fill(0.0,nCells , 2)
@@ -124,8 +125,6 @@ function neighbours(nucleus, dlink, layer)
   nbrCount = fill(0, nCells)       # number of neighbours found
 
   # find neighbours of each cell
-  a = 0
-  b = 0
   for i in 1:size(dlink,1)
     a = dlink[i,1]
     b = dlink[i,2]
@@ -145,8 +144,15 @@ function neighbours(nucleus, dlink, layer)
   neighbour
 end
 
-function cells(nucleus, neighbour, layer)
-  # construct cell vertices
+function cells(nucleus, neighbour, dlayer)
+  # construct cells
+  # returns (vertex, cell, vlink, clayer)
+  #  vertex = vertices of cell membrane (6 per cell)
+  #  cell[i,:] = indices of 6 vertices of ith cell
+  #  vlink = Nx2 array of indices to ends of each membrane segment
+  #  clayer = index of cells in each layer
+  #  e.g. cell[clayer[end][1], :] points to vertices of first cell in last layer
+  #  vertex[cell[clayer[end][1], :],:]  is 6x2 array of vertices of this cell
   # MGP Dec 2019
 
   # tolerance for merging vertices.
@@ -154,13 +160,13 @@ function cells(nucleus, neighbour, layer)
   # is cell diameter
   tol = 0.1*sqrt((nucleus[1,1]-nucleus[2,1])^2 + (nucleus[1,2]-nucleus[2,2])^2)
 
-  nCells = size(nucleus,1) - length(layer[end])
+  nCells = size(nucleus,1) - length(dlayer[end])
   vertex = fill(0.0, 6*nCells, 2 )  # vertex coordinates
   cell = fill(0, nCells, 6)         # vertex indices for each cell
-  edge = fill(0, 6*nCells, 2)       # vertex indices for each edge
+  vlink = fill(0, 6*nCells, 2)       # vertex indices for each vlink
 
   nVertex = 0
-  nEdge = 0
+  nvlink = 0
   for i in 1:nCells
       for j in 1:6
         k = neighbour[i,j]
@@ -181,40 +187,59 @@ function cells(nucleus, neighbour, layer)
                 cell[i,j] = nVertex
         end # !vertexExists
 
-        # build list of edges (cell membrane segments)
-        edgeExists = false
+        # build list of vlinks (cell membrane segments)
+        vlinkExists = false
         if j>1
-            e = sort([cell[i,j-1] cell[i,j]], dims=2)  # edge
-            for i1 in 1:nEdge
-                if e==edge[i1,:]
-                    edgeExists = true
+            e = sort([cell[i,j-1] cell[i,j]], dims=2)  # vlink
+            for i1 in 1:nvlink
+                if vec(e)==vlink[i1,:]
+                    vlinkExists = true
                     break
                 end
             end # for i1
-            if !edgeExists
-            nEdge = nEdge + 1
-            edge[nEdge,:] = e
-            end # !edgeExists
+            if !vlinkExists
+            nvlink = nvlink + 1
+            vlink[nvlink,:] = e
+            end # !vlinkExists
         end # if j>1
-        # 6th edge links last and first vertex
-        edgeExists = false
+        # 6th vlink links last and first vertex
+        vlinkExists = false
         if j==6
             e = sort([cell[i,j] cell[i,1]], dims=2)
-            for i1 in 1:nEdge
-                if e==edge[i1,:]
-                    edgeExists = true
+            for i1 in 1:nvlink
+                if vec(e)==vlink[i1,:]
+                    vlinkExists = true
                     break
                 end
             end # for i1
-            if !edgeExists
-                nEdge = nEdge + 1
-                edge[nEdge,:] = e
-            end # !edgeExists
+            if !vlinkExists
+                nvlink = nvlink + 1
+                vlink[nvlink,:] = e
+            end # !vlinkExists
         end # j==6
     end # for j
     end # for i
-  (vertex[1:nVertex,:], cell, edge[1:nEdge, :])
+  (vertex[1:nVertex,:], cell, vlink[1:nvlink, :], dlayer[1:(end-1)])
 end #cells()
+
+
+function find_perimeter(cell, vlink, clayer)
+    # find vertices and vlinks on edge of disc
+    perimeter = fill(0, 2*size(clayer[end],1))
+    n = 0
+    for i in 1:length(clayer[end])  # for each cell in outer layer
+        for v in 1:6  # find vertices with fewer than 3 incoming links ..
+            if sum(vlink[:]'.==cell[clayer[end][i],v])<3
+                n = n + 1
+                perimeter[n] = cell[clayer[end][i],v]
+            end
+        end
+    end
+    # and vertices that are vlinked to these vertices
+
+
+    perimeter[1:n]
+end
 
 function drawDelaunayDisc(dlink)
     @inbounds for i = 1:size(dlink, 1)
@@ -226,11 +251,7 @@ function drawDelaunayDisc(dlink)
     end
 end
 
-# function drawcell(iCell, cell, vertex)
-#  lines!(vtx[iCell,[1:end; 1],1], vtx[iCell,[1:end; 1],2])
-# end
-
-nLayer = 16
+nLayer = 4
 layerWidth = 5.0
 print("DelaunayDisc:")
 @time DD = delaunayDisc(nLayer, layerWidth)
@@ -240,32 +261,24 @@ print("neighbours:")
 
 cellNucleus = DD[1];
 dlink = DD[2];
-layer = DD[3];
+dlayer = DD[3];
 print("cells:")
-@time C = cells(cellNucleus, nbrs, layer)
-vtx = C[1]
+@time C = cells(cellNucleus, nbrs, dlayer)
+vertex = C[1]
 cell = C[2]
-edge = C[3]
+vlink = C[3]
+clayer = C[4]
 
 # Draw
 s = Scene(resolution = (800,800), scale_plot = false)
-# cell nucleuslei
+
+# draw cell nuclei
 scatter!(
-  cellNucleus[1:(size(cellNucleus,1)-size(layer[nLayer],1)), 1],
-  cellNucleus[1:(size(cellNucleus,1)-size(layer[nLayer],1)), 2],
+  cellNucleus[1:size(cell,1), 1],
+  cellNucleus[1:size(cell,1), 2],
   markersize = layerWidth / 6.0,
   color = RGB(0.7, 0.7, 0.7),
 )
-# Delaunay
-
-# @inbounds for i = 1:(nLayer-1
-#   scatter!(
-#     [cellNucleus[layer[i][1], 1]],
-#     [cellNucleus[layer[i][1], 2]],
-#     markersize = layerWidth / 12,
-#     color = :red,
-#   )
-# end
 
 function draw_cells(vertex, cell)
 @inbounds for i in 1:size(cell,1)
@@ -273,23 +286,15 @@ function draw_cells(vertex, cell)
 end
 end
 
-function draw_edges(vertex, edge)
-    for i in 1:size(edge, 1)
-        lines!(vertex[edge[i,:],1], vertex[edge[i,:],2])
+
+
+function draw_vlinks(vertex, vlink)
+    for i in 1:size(vlink, 1)
+        lines!(vertex[vlink[i,:],1], vertex[vlink[i,:],2])
     end
 end
 
-NE = size(edge,1)
-E = fill(0, NE)
-E[1:2] = [1 2]
-iE = 2
-for i in 2:NE
-    if edge[i,1] == E[iE]
-        global iE = iE+1
-        E[iE] = edge[i,2]
-    end
-end
-E = E[1:iE]
-
-draw_cells(vtx,cell)
+draw_cells(vertex,cell)
+e = find_perimeter(cell, vlink, clayer)
+scatter!(vertex[e,1], vertex[e,2], markersize = layerWidth/4., color = :red)
 display(s)

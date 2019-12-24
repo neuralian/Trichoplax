@@ -295,7 +295,7 @@ function drawDelaunayDisc(dlink)
     end
 end
 
-nLayer = 25
+nLayer = 24
 layerWidth = 5.0
 print("DelaunayDisc:")
 @time DD = delaunayDisc(nLayer, layerWidth)
@@ -327,7 +327,7 @@ scatter!(
 function draw_cells(vertex, cell)
     @inbounds for i in 1:size(cell,1)
         lines!(vertex[cell[i,[1:6; 1]],1], vertex[cell[i,[1:6; 1]],2],
-                color = RGB(.65, .45, 0.0))
+                color = RGB(.45, .25, 0.0), linewidth=.25)
     end
 end
 

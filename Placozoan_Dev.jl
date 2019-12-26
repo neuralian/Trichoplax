@@ -226,8 +226,10 @@ end #cells()
 function find_perimeter(cell, vlink, clayer)
     # find vertices on edge of disc
     n = length(clayer[end])
-    oP = fill(0, n+6) # outer perimeter ()
-    iP = fill(0, n)# inner (linked to internal vertex)
+    oP = fill(0, n+6) # outer perimeter (linked only to perimeter vertices)
+    cP = fill(0, n)   # corner perimeter (linked to 1 internal vertex)
+    iP = fill(0, n)   # internal vertices linked to corner vertices
+
 
     # op (outer perimeter) vertices have no vlinks to internal vertices
     no = 0
@@ -240,64 +242,77 @@ function find_perimeter(cell, vlink, clayer)
         end
     end
 
-    # ip (inner perimeter) vertices
+    # cP (inner perimeter) vertices
     # are vlinked to op vertices + 1 internal vertex
-    ni = 0
-    @inbounds for i in 1:length(oP)
-        @inbounds for j in 1:size(vlink,1)
-            if  (vlink[j,1]==oP[i])    &
-                 !any(oP.==vlink[j,2]) &
-                 !any(iP.==vlink[j,2])
-               ni = ni+1
-               iP[ni] = vlink[j,2]
-            elseif (vlink[j,2]==oP[i]) &
+    nc = 0
+    @inbounds for i in 1:length(oP)   # for each vertex in outer perimeter
+        @inbounds for j in 1:size(vlink,1) # for each vlink
+            if  (vlink[j,1]==oP[i])    &  # 1st of jth vlink links to ith vertex
+                 !any(oP.==vlink[j,2]) &   # and not to any other oP vertex
+                 !any(cP.==vlink[j,2])     # and hasn't already been found
+               nc = nc+1
+               cP[nc] = vlink[j,2]         # found a corner perimeter vertex
+           elseif (vlink[j,2]==oP[i]) &   # ditto for 2nd element in jth vlink
                  !any(oP.==vlink[j,1]) &
-                 !any(iP.==vlink[j,1])
-               ni = ni+1
-               iP[ni] = vlink[j,1]
+                 !any(cP.==vlink[j,1])
+               nc = nc+1
+               cP[nc] = vlink[j,1]
             end
         end
     end
 
     # internal vertices are vlinked to inner perimeter vertices
     # (used to align lateral membranes of perimeter cells orthogonal to skin )
-    # for i in 1:length(iP)
-    #     for j in 1:size(vlink,1)
-    #         if (vlink[j,1]==iP[i]) & !any(oP.==vlink[j,2])
-    #
-    #
-    #         end
-    #     end
-    # end
-    (oP, iP)
+    ni = 0
+    for i in 1:length(cP)
+        for j in 1:size(vlink,1)
+            if (vlink[j,1]==cP[i])    & # 1st in jth vlink is a corner
+                !any(oP.==vlink[j,2]) & # AND 2nd is not a perimeter cell
+                !any(iP.==vlink[j,2])   # AND not already found
+               ni = ni + 1
+               iP[ni] = vlink[j,2]    # found interior link to corner
+            elseif (vlink[j,2]==cP[i])    & # 2nd in jth vlink is a corner
+                   !any(oP.==vlink[j,1]) & # AND 1st is not a perimeter cell
+                   !any(iP.==vlink[j,1])   # AND not already found
+                  ni = ni + 1
+                  iP[ni] = vlink[j,1]    # found interior link to corner
+            end
+        end
+    end
+    (oP, cP, iP)
 end
 
-function round_perimeter(vertex, op, ip)
+function round_perimeter(vertex, op, cp, ip)
     # move perimeter vertices onto a circle
 
     No = length(op)
-    Ni = length(ip)
-    ri = fill(0.0, Ni)
-    ro = fill(0.0, No)
+    Nc = length(ip)
+    ro = fill(0.0, No)  # radii of outer vertices
+    ri = fill(0.0, Nc)  # radii of internal vertices
+
+    Ro = 0.0
     for i in 1:No
+        Ro  = Ro + sqrt(vertex[op[i],1]^2 + vertex[op[i],2]^2)
         ro[i] = sqrt(vertex[op[i],1]^2 + vertex[op[i],2]^2)
     end
-    for i in 1:Ni
+    Rc = 0.0
+    for i in 1:Nc
+        Rc = Rc + sqrt(vertex[cp[i],1]^2 + vertex[cp[i],2]^2)
         ri[i] = sqrt(vertex[ip[i],1]^2 + vertex[ip[i],2]^2)
     end
 
-    # average radius of perimeter vertices
-    r =  (sum(ro)+sum(ri))/(No+Ni)
+    # mean radius of perimeter vertices
+    R = (Ro/No + Rc/Nc)/2.0
 
-    # shift inner vertices to mean radius
-    for i in 1:Ni
-        vertex[ip[i],1] = vertex[ip[i],1]*r/ri[i]
-        vertex[ip[i],2] = vertex[ip[i],2]*r/ri[i]
+    # shift corner vertices to projection of inner vertices onto mean radius
+    for i in 1:Nc
+        vertex[cp[i],1] = vertex[ip[i],1]*R/ri[i]
+        vertex[cp[i],2] = vertex[ip[i],2]*R/ri[i]
     end
 
     for i in 1:No
-        vertex[op[i],1] = vertex[op[i],1]*r/ro[i]
-        vertex[op[i],2] = vertex[op[i],2]*r/ro[i]
+        vertex[op[i],1] = vertex[op[i],1]*R/ro[i]
+        vertex[op[i],2] = vertex[op[i],2]*R/ro[i]
     end
 
     vertex
@@ -314,7 +329,7 @@ function drawDelaunayDisc(dlink)
     end
 end
 
-nLayer = 5
+nLayer = 20
 layerWidth = 5.0
 print("DelaunayDisc:")
 @time DD = delaunayDisc(nLayer, layerWidth)
@@ -360,9 +375,10 @@ end
 
 p = find_perimeter(cell, vlink, clayer)
 op = p[1]
-ip = p[2]
+cp = p[2]
+ip = p[3]
 
-vertex = round_perimeter(vertex, op, ip)
+vertex = round_perimeter(vertex, op, cp, ip)
 
 
 draw_cells(vertex,cell)

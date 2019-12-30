@@ -15,7 +15,8 @@ function delaunayDisc(nLayers, layerWidth)
     # MGP Dec 2019
 
 a = .0025   # noise on cell location (re. layerWidth)
-nCells = Int64(round(π*(nLayers+1)^2))
+nCells = 3*nLayers*(nLayers-1)+1
+#nCells =Int64(round(π*(nLayers+1)^2))
 nucleus = fill(0.0,nCells , 2)
 dlink = fill(0, 6*nCells, 2)
 Layer = fill(Int64[],nLayers)
@@ -64,8 +65,9 @@ w = 0
     #lines!(nucleus[dlink[idlink,:],1], nucleus[dlink[idlink,:],2])
     #display(s)
 end
-nCells = iCell
-nucleus = nucleus[1:nCells,:]
+# print((nCells, iCell))
+# nCells = iCell
+# nucleus = nucleus[1:nCells,:]
 
 # scatter!(nucleus[:,1], nucleus[:,2], markersize = layerWidth/4.)
 # @inbounds for i in 1:nLayers
@@ -144,7 +146,7 @@ function neighbours(nucleus, dlink, layer)
   neighbour
 end
 
-function cells(nucleus, neighbour, dlayer)
+function make_cells(nucleus, neighbour, dlayer)
   # construct cells
   # returns (vertex, cell, vlink, clayer)
   #  vertex = vertices of cell membrane (6 per cell)
@@ -160,7 +162,8 @@ function cells(nucleus, neighbour, dlayer)
   # is cell diameter
   tol = 0.1*sqrt((nucleus[1,1]-nucleus[2,1])^2 + (nucleus[1,2]-nucleus[2,2])^2)
 
-  nCells = size(nucleus,1) - length(dlayer[end])
+
+  nCells = dlayer[end-1][end]       #
   vertex = fill(0.0, 6*nCells, 2 )  # vertex coordinates
   cell = fill(0, nCells, 6)         # vertex indices for each cell
   vlink = fill(0, 6*nCells, 2)       # vertex indices for each vlink
@@ -319,29 +322,83 @@ function round_perimeter(vertex, op, cp, ip)
 end
 
 
-function drawDelaunayDisc(dlink)
+function make_percept(vertex, cell, clayer, celldepth, senseRange)
+    # construct perceived world
+    # by reflecting celldepth layers of cells around body perimeter
+    # into annular region of width senseRange
+
+    # duplicate body
+    pVertex = copy(vertex)
+    pCell = copy(cell)
+    pLayer = copy(clayer)
+
+    # reverse indices (index vertices from last to first)
+    # N = pLayer[end][end]  # last cell index
+    # for i in 1:size(pLayer,1)
+    #     for j in 1:length(pLayer[i])
+    #         pLayer[i][j] = N-pLayer[i][j]+1
+    #     end
+    # end
+    Nv = size(pVertex,1)
+    for i in 1:size(cell,1)
+        for j in 1:6
+            pCell[i,j] = Nv-pCell[i,j]+1
+        end
+    end
+
+    for i in 1:Nv
+        pVertex[i,:] = vertex[Nv-i+1,:]
+    end
+
+    (pVertex, pCell)
+
+end
+
+
+
+function drawDelaunayDisc(dlink,color = RGB(0.25, 0.25, 0.25), linewidth = 0.5)
     @inbounds for i = 1:size(dlink, 1)
       lines!(
         cellNucleus[dlink[i, :], 1],
         cellNucleus[dlink[i, :], 2],
-        color = RGB(0.7, 0.7, 0.7), linewidth = 0.25
+        color = color, linewidth = linewidth
         )
     end
 end
 
-nLayer = 20
+function drawCells(vertex, cell, color = RGB(.45, .25, 0.0), linewidth=1.0)
+    @inbounds for i in 1:size(cell,1)
+        lines!(vertex[cell[i,[1:6; 1]],1], vertex[cell[i,[1:6; 1]],2],
+                color = color, linewidth=linewidth)
+    end
+end
+
+
+
+function draw_vlinks(vertex, vlink)
+    for i in 1:size(vlink, 1)
+        lines!(vertex[vlink[i,:],1], vertex[vlink[i,:],2])
+    end
+end
+
+
+# MAIN
+nDLayer = 24     # number of layers in Delaunay tesselation
+nClayer = 16      # number of cell layers
 layerWidth = 5.0
 print("DelaunayDisc:")
-@time DD = delaunayDisc(nLayer, layerWidth)
+@time DD = delaunayDisc(nDLayer, layerWidth)
 print("neighbours:")
 @time nbrs=neighbours(DD...)
 
 
-cellNucleus = DD[1];
-dlink = DD[2];
-dlayer = DD[3];
+cellNucleus = DD[1];   # ?x2 Delaunay vertex coordinates
+dlink = DD[2];        # Delaunay edges
+dlayer = DD[3];       # Delaunay layer index
+
+# make nCLayer layers of hexagonal cells (Voronoi tesselation)
 print("cells:")
-@time C = cells(cellNucleus, nbrs, dlayer)
+@time C = make_cells(cellNucleus, nbrs, dlayer[1:nClayer+1])
 vertex = C[1]
 cell = C[2]
 vlink = C[3]
@@ -358,20 +415,7 @@ scatter!(
   color = RGB(1.0, .5, 0.2),
 )
 
-function draw_cells(vertex, cell)
-    @inbounds for i in 1:size(cell,1)
-        lines!(vertex[cell[i,[1:6; 1]],1], vertex[cell[i,[1:6; 1]],2],
-                color = RGB(.45, .25, 0.0), linewidth=.25)
-    end
-end
 
-
-
-function draw_vlinks(vertex, vlink)
-    for i in 1:size(vlink, 1)
-        lines!(vertex[vlink[i,:],1], vertex[vlink[i,:],2])
-    end
-end
 
 p = find_perimeter(cell, vlink, clayer)
 op = p[1]
@@ -381,8 +425,6 @@ ip = p[3]
 vertex = round_perimeter(vertex, op, cp, ip)
 
 
-draw_cells(vertex,cell)
+drawCells(vertex,cell, :red, 1.0)
 
-# scatter!(vertex[op,1], vertex[op,2], markersize = layerWidth/4., color = :red)
-# scatter!(vertex[ip,1], vertex[ip,2], markersize = layerWidth/4., color = :green)
 display(s)

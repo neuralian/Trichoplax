@@ -7,7 +7,7 @@ using Colors
 using Distributions
 Ndist = Normal()
 
-function delaunayDisc(nLayers, layerWidth)
+function delaunaydisc(nLayers, layerWidth)
     # returns (nucleus, dlink, layer)
     # nucleus = nCells x 2 coordinates of ith cell nucleus
     # dlink = ndlink x indices of cell nuclei defining the dlink
@@ -118,7 +118,7 @@ end
 
 function neighbours(nucleus, dlink, layer)
   # index the six neighbour nuclei of each nucleus (excepting outer layer)
-  # given output from delaunayDisc()...   (nb splatted argument)
+  # given output from delaunaydisc()...   (nb splatted argument)
   # outer nucleus layer
   # MGP Dec 2019
 
@@ -127,7 +127,7 @@ function neighbours(nucleus, dlink, layer)
   nbrCount = fill(0, nCells)       # number of neighbours found
 
   # find neighbours of each cell
-  for i in 1:size(dlink,1)
+  @inbounds for i in 1:size(dlink,1)
     a = dlink[i,1]
     b = dlink[i,2]
     nbrCount[a] = nbrCount[a]+1
@@ -137,7 +137,7 @@ function neighbours(nucleus, dlink, layer)
   end
   # put neighbours in counterclockwise order
   # nb row 1 is already ccw, skip external nuclei (less than 6 links)
-  for i in 2:(nCells-length(layer[end]))
+  @inbounds for i in 2:(nCells-length(layer[end]))
     dx = nucleus[neighbour[i,:],1].-nucleus[i,1]
     dy = nucleus[neighbour[i,:],2].-nucleus[i,2]
     order = sortperm(atan.(dy,dx))
@@ -146,7 +146,7 @@ function neighbours(nucleus, dlink, layer)
   neighbour
 end
 
-function make_cells(nucleus, neighbour, dlayer)
+function makebody(nucleus, neighbour, dlayer)
   # construct cells
   # returns (vertex, cell, vlink, clayer)
   #  vertex = vertices of cell membrane (6 per cell)
@@ -163,21 +163,21 @@ function make_cells(nucleus, neighbour, dlayer)
   tol = 0.1*sqrt((nucleus[1,1]-nucleus[2,1])^2 + (nucleus[1,2]-nucleus[2,2])^2)
 
 
-  nCells = dlayer[end-1][end]       #
-  vertex = fill(0.0, 6*nCells, 2 )  # vertex coordinates
-  cell = fill(0, nCells, 6)         # vertex indices for each cell
-  vlink = fill(0, 6*nCells, 2)       # vertex indices for each vlink
+  ncells = dlayer[end-1][end]       #
+  vertex = fill(0.0, 6*ncells, 2 )  # vertex coordinates
+  cell = fill(0, ncells, 6)         # vertex indices for each cell
+  vlink = fill(0, 6*ncells, 2)       # vertex indices for each vlink
 
   nVertex = 0
   nvlink = 0
-  for i in 1:nCells
+  @inbounds for i in 1:ncells
       for j in 1:6
         k = neighbour[i,j]
         m = neighbour[i, j%6+1]
         x = (nucleus[i,1] + nucleus[k,1] + nucleus[m,1])/3.
         y = (nucleus[i,2] + nucleus[k,2] + nucleus[m,2])/3.
         vertexExists = false
-        for n in 1:nVertex
+        @inbounds for n in 1:nVertex
             if sqrt( (x-vertex[n,1])^2 + (y-vertex[n,2])^2) < tol
                 cell[i,j]=n  # point to existing vertex
                 vertexExists = true
@@ -194,7 +194,7 @@ function make_cells(nucleus, neighbour, dlayer)
         vlinkExists = false
         if j>1
             e = sort([cell[i,j-1] cell[i,j]], dims=2)  # vlink
-            for i1 in 1:nvlink
+            @inbounds for i1 in 1:nvlink
                 if vec(e)==vlink[i1,:]
                     vlinkExists = true
                     break
@@ -226,7 +226,7 @@ function make_cells(nucleus, neighbour, dlayer)
 end #cells()
 
 
-function find_perimeter(cell, vlink, clayer)
+function findperimeter(cell, vlink, clayer)
     # find vertices on edge of disc
     n = length(clayer[end])
     oP = fill(0, n+6) # outer perimeter (linked only to perimeter vertices)
@@ -267,8 +267,8 @@ function find_perimeter(cell, vlink, clayer)
     # internal vertices are vlinked to inner perimeter vertices
     # (used to align lateral membranes of perimeter cells orthogonal to skin )
     ni = 0
-    for i in 1:length(cP)
-        for j in 1:size(vlink,1)
+    @inbounds for i in 1:length(cP)
+        @inbounds for j in 1:size(vlink,1)
             if (vlink[j,1]==cP[i])    & # 1st in jth vlink is a corner
                 !any(oP.==vlink[j,2]) & # AND 2nd is not a perimeter cell
                 !any(iP.==vlink[j,2])   # AND not already found
@@ -285,7 +285,7 @@ function find_perimeter(cell, vlink, clayer)
     (oP, cP, iP)
 end
 
-function round_perimeter(vertex, op, cp, ip)
+function smoothperimeter(vertex, op, cp, ip)
     # move perimeter vertices onto a circle
 
     No = length(op)
@@ -294,12 +294,12 @@ function round_perimeter(vertex, op, cp, ip)
     ri = fill(0.0, Nc)  # radii of internal vertices
 
     Ro = 0.0
-    for i in 1:No
+    @inbounds for i in 1:No
         Ro  = Ro + sqrt(vertex[op[i],1]^2 + vertex[op[i],2]^2)
         ro[i] = sqrt(vertex[op[i],1]^2 + vertex[op[i],2]^2)
     end
     Rc = 0.0
-    for i in 1:Nc
+    @inbounds for i in 1:Nc
         Rc = Rc + sqrt(vertex[cp[i],1]^2 + vertex[cp[i],2]^2)
         ri[i] = sqrt(vertex[ip[i],1]^2 + vertex[ip[i],2]^2)
     end
@@ -308,12 +308,12 @@ function round_perimeter(vertex, op, cp, ip)
     R = (Ro/No + Rc/Nc)/2.0
 
     # shift corner vertices to projection of inner vertices onto mean radius
-    for i in 1:Nc
+    @inbounds for i in 1:Nc
         vertex[cp[i],1] = vertex[ip[i],1]*R/ri[i]
         vertex[cp[i],2] = vertex[ip[i],2]*R/ri[i]
     end
 
-    for i in 1:No
+    @inbounds for i in 1:No
         vertex[op[i],1] = vertex[op[i],1]*R/ro[i]
         vertex[op[i],2] = vertex[op[i],2]*R/ro[i]
     end
@@ -322,62 +322,97 @@ function round_perimeter(vertex, op, cp, ip)
 end
 
 
-function make_percept(vertex, cell, clayer, mapWidth, senseRange)
-    # construct perceived world
+function makecellmap(vertex, cell, clayer, mapwidth, senseRange)
+    # reflect outer layers of cells into environment
     # by reflecting mapWidth layers of cells around body perimeter
     # into annular region of width senseRange
 
-    nCells = size(cell,1)
+    ncells = size(cell,1)
 
     #number of cell layers in body
-    nL = Int64((3+sqrt(9+12*(nCells-1)))/6)
+    nlayers = Int64((3+sqrt(9+12*(ncells-1)))/6)
 
     #number of cells in map (outer celldepth layers)
-    nMapCells = nCells - (3*(nL-mapWidth)*(nL-mapWidth-1) + 1)
+    nmap = ncells - (3*(nlayers-mapwidth)*(nlayers-mapwidth-1) + 1)
 
     # duplicate body
-    pCell = fill(0, nMapCells, 6)
+    mapcell = fill(0, nmap, 6)
 
-    Nv = size(vertex,1)
-    for i in 1:nMapCells  #size(cell,1)
-        for j in 1:6
-            pCell[i,j] = cell[nCells-i+1,j]
+    nvertex = size(vertex,1)
+    @inbounds for i in 1:nmap  #size(cell,1)
+        @inbounds for j in 1:6
+            mapcell[i,j] = cell[ncells-i+1,j]
         end
     end
 
     # minimum cell index in pCell
-    i0 = findmin(pCell)[1]
+    i0 = findmin(mapcell)[1]
 
     # copy the required vertices, shift indices to coincide
-    pVertex = copy(vertex[i0:end,:])
-    pCell = pCell.-(i0-1)
+    #pVertex = copy(vertex[i0:end,:])
+    nmapvertex = nvertex-i0+1
+    mapvertex = fill(0.0, nmapvertex,2 )
+    mapcell = mapcell.-(i0-1)
 
     # project vertices beyond skin
-    Rs = sqrt(pVertex[end,1]^2 + pVertex[end,2]^2) # skin radius
+    Rs = sqrt(vertex[end,1]^2 + vertex[end,2]^2) # skin radius
     Rc = sqrt(vertex[2,1]^2 + vertex[2,2]^2)  # cell radius
-    for i in 1:size(pVertex,1)
-
-
-
+    @inbounds for i in 1:nmapvertex
+       R0 = sqrt(vertex[i0+i-1,1]^2 + vertex[i0+i-1,2]^2)
+       R1 = Rs + (Rs-R0)*Rs/R0
+       mapvertex[i,:] = vertex[i0+i-1,:].*R1/R0
     end
 
-    (pVertex, pCell)
+    (mapvertex, mapcell)
+
+end
+
+function makereceptivefields(vertex, cell, clayer, mapwidth, senseRange)
+    # construct receptive field centers
+    # by reflecting centroids of mapping cells
+    # into annular region of width senseRange
+
+    ncells = size(cell,1)
+
+    #number of cell layers in body
+    nlayers = Int64((3+sqrt(9+12*(ncells-1)))/6)
+
+    # number of cells in map (outer celldepth layers)
+    nmap = ncells - (3*(nlayers-mapwidth)*(nlayers-mapwidth-1) + 1)
+
+    # index of cell (centroid) preceding first cell in map
+    i0 = 3*(nlayers-mapwidth)*(nlayers-mapwidth-1)+1
+
+    # array of rf centers
+    rfcenter = fill(0.0, nmap,2)
+
+    # project vertices beyond skin
+    Rs = sqrt(vertex[end,1]^2 + vertex[end,2]^2) # skin radius
+    Rc = sqrt(vertex[2,1]^2 + vertex[2,2]^2)  # cell radius
+    @inbounds for i in 1:nmap
+        x = mean(vertex[cell[i0+i,:],1])
+        y = mean(vertex[cell[i0+i,:],2])
+        R0 = sqrt(x^2 + y^2)
+        R1 = Rs + (Rs-R0)*Rs/R0
+       rfcenter[i,:] = [x*R1/R0 y*R1/R0]
+    end
+
+    return rfcenter
 
 end
 
 
-
-function drawDelaunayDisc(dlink,color = RGB(0.25, 0.25, 0.25), linewidth = 0.5)
+function drawdelaunaydisc(dlink,color = RGB(0.25, 0.25, 0.25), linewidth = 0.5)
     @inbounds for i = 1:size(dlink, 1)
       lines!(
-        cellNucleus[dlink[i, :], 1],
-        cellNucleus[dlink[i, :], 2],
+        cellcentroid[dlink[i, :], 1],
+        cellcentroid[dlink[i, :], 2],
         color = color, linewidth = linewidth
         )
     end
 end
 
-function drawCells(vertex, cell, color = RGB(.45, .25, 0.0), linewidth=1.0)
+function drawcells(vertex, cell, color = RGB(.45, .25, 0.0), linewidth=1.0)
     @inbounds for i in 1:size(cell,1)
         lines!(vertex[cell[i,[1:6; 1]],1], vertex[cell[i,[1:6; 1]],2],
                 color = color, linewidth=linewidth)
@@ -386,7 +421,8 @@ end
 
 
 
-function draw_vlinks(vertex, vlink)
+function drawskeleton(vertex, vlink)
+    # draw links between cell vertices (cytoskeleton)
     for i in 1:size(vlink, 1)
         lines!(vertex[vlink[i,:],1], vertex[vlink[i,:],2])
     end
@@ -394,48 +430,56 @@ end
 
 
 # MAIN
-nDLayer = 8     # number of layers in Delaunay tesselation
-nClayer = 4      # number of cell layers
-layerWidth = 5.0
-print("DelaunayDisc:")
-@time DD = delaunayDisc(nDLayer, layerWidth)
+dlnyLayers = 24     # number of layers in Delaunay tesselation
+celllayers = 14    # number of cell layers
+maplayers = 6     # map layers
+layerwidth = 5.0
+print("delaunaydisc:")
+@time (dvertices,dlink,dlayer) = delaunaydisc(dlnyLayers, layerwidth)
 print("neighbours:")
-@time nbrs=neighbours(DD...)
+@time nbrs=neighbours(dvertices,dlink,dlayer)
 
-
-cellNucleus = DD[1];   # ?x2 Delaunay vertex coordinates
-dlink = DD[2];        # Delaunay edges
-dlayer = DD[3];       # Delaunay layer index
-
-# make nCLayer layers of hexagonal cells (Voronoi tesselation)
+# make celllayers layers of hexagonal cells (Voronoi tesselation)
 print("cells:")
-@time C = make_cells(cellNucleus, nbrs, dlayer[1:nClayer+1])
+ncells = 3*celllayers*(celllayers-1)+1
+@time C = makebody(dvertices, nbrs, dlayer[1:celllayers+1])
 vertex = C[1]
 cell = C[2]
 vlink = C[3]
 clayer = C[4]
+ncells = size(cell,1)
+
+p = findperimeter(cell, vlink, clayer)
+op = p[1]
+cp = p[2]
+ip = p[3]
+
+vertex = smoothperimeter(vertex, op, cp, ip)
+rfcenter = makereceptivefields(vertex, cell, clayer,maplayers,1);
+
+
+(cellmapvertex,cellmapcell) = makecellmap(vertex, cell, clayer,maplayers,1);
 
 # Draw
 s = Scene(resolution = (800,800), scale_plot = false)
 
 # draw cell nuclei
 scatter!(
-  cellNucleus[1:size(cell,1), 1],
-  cellNucleus[1:size(cell,1), 2],
-  markersize = layerWidth / 6.0,
+  dvertices[1:ncells, 1],
+  dvertices[1:ncells, 2],
+  markersize = layerwidth / 6.0,
   color = RGB(1.0, .5, 0.2),
 )
 
-
-
-p = find_perimeter(cell, vlink, clayer)
-op = p[1]
-cp = p[2]
-ip = p[3]
-
-vertex = round_perimeter(vertex, op, cp, ip)
-
-
-drawCells(vertex,cell, :red, 1.0)
-
+drawcells(vertex,cell, :red, 1.0)
+scatter!(
+  rfcenter[:, 1],
+  rfcenter[:, 2],
+  marker = :circle,
+  strokewidth = layerwidth/6.,
+  strokecolor = :blue,
+  markersize = layerwidth / 4.0,
+  color = :white
+)
+drawcells(cellmapvertex,cellmapcell, :green)
 display(s)

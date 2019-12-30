@@ -322,32 +322,43 @@ function round_perimeter(vertex, op, cp, ip)
 end
 
 
-function make_percept(vertex, cell, clayer, celldepth, senseRange)
+function make_percept(vertex, cell, clayer, mapWidth, senseRange)
     # construct perceived world
-    # by reflecting celldepth layers of cells around body perimeter
+    # by reflecting mapWidth layers of cells around body perimeter
     # into annular region of width senseRange
 
-    # duplicate body
-    pVertex = copy(vertex)
-    pCell = copy(cell)
-    pLayer = copy(clayer)
+    nCells = size(cell,1)
 
-    # reverse indices (index vertices from last to first)
-    # N = pLayer[end][end]  # last cell index
-    # for i in 1:size(pLayer,1)
-    #     for j in 1:length(pLayer[i])
-    #         pLayer[i][j] = N-pLayer[i][j]+1
-    #     end
-    # end
-    Nv = size(pVertex,1)
-    for i in 1:size(cell,1)
+    #number of cell layers in body
+    nL = Int64((3+sqrt(9+12*(nCells-1)))/6)
+
+    #number of cells in map (outer celldepth layers)
+    nMapCells = nCells - (3*(nL-mapWidth)*(nL-mapWidth-1) + 1)
+
+    # duplicate body
+    pCell = fill(0, nMapCells, 6)
+
+    Nv = size(vertex,1)
+    for i in 1:nMapCells  #size(cell,1)
         for j in 1:6
-            pCell[i,j] = Nv-pCell[i,j]+1
+            pCell[i,j] = cell[nCells-i+1,j]
         end
     end
 
-    for i in 1:Nv
-        pVertex[i,:] = vertex[Nv-i+1,:]
+    # minimum cell index in pCell
+    i0 = findmin(pCell)[1]
+
+    # copy the required vertices, shift indices to coincide
+    pVertex = copy(vertex[i0:end,:])
+    pCell = pCell.-(i0-1)
+
+    # project vertices beyond skin
+    Rs = sqrt(pVertex[end,1]^2 + pVertex[end,2]^2) # skin radius
+    Rc = sqrt(vertex[2,1]^2 + vertex[2,2]^2)  # cell radius
+    for i in 1:size(pVertex,1)
+
+
+
     end
 
     (pVertex, pCell)
@@ -383,8 +394,8 @@ end
 
 
 # MAIN
-nDLayer = 24     # number of layers in Delaunay tesselation
-nClayer = 16      # number of cell layers
+nDLayer = 8     # number of layers in Delaunay tesselation
+nClayer = 4      # number of cell layers
 layerWidth = 5.0
 print("DelaunayDisc:")
 @time DD = delaunayDisc(nDLayer, layerWidth)

@@ -4,34 +4,60 @@ using Makie
 using Colors
 using Placozoan
 
+struct Trichoplax
+  layers::Int64
+  vertex::Array{Float64}
+  cell::Array{Int64}
+
+
+end
+
+function make_trichoplax(layers, layerwidth, dlayers, mlayers)
+  (dvertex,dlink,dlayer) = delaunaydisc(dlayers, layerwidth)
+  nbrs=neighbours(dvertex,dlink,dlayer)
+
+  # make celllayers layers of hexagonal cells (Voronoi tesselation)
+  ncells = 3*layers*(layers-1)+1
+  (vertex, cell, link, layer) = makebody(dvertex, nbrs, dlayer[1:layers+1])
+
+  perimeter = findperimeter(cell, link, layer)
+  vertex = smoothperimeter(vertex, perimeter...)
+  rfcenter = makereceptivefields(vertex, cell, layer,mlayers);
+
+
+  (mapvertex,mapcell) = makecellmap(vertex, cell, layer,mlayers);
+
+
+  return Trichoplax(layers, vertex, cell)
+end
 
 
 # MAIN
 dlayers = 8    # number of layers in Delaunay tesselation
-blayers = 6   # number of body cell layers
-maplayers = 2     # map layers
+layers = 7   # number of body cell layers
+mlayers = 2     # map layers
 layerwidth = 5.0
-(dvertices,dlink,dlayer) = delaunaydisc(dlayers, layerwidth)
-nbrs=neighbours(dvertices,dlink,dlayer)
+(dvertex,dlink,dlayer) = delaunaydisc(dlayers, layerwidth)
+nbrs=neighbours(dvertex,dlink,dlayer)
 
 # make celllayers layers of hexagonal cells (Voronoi tesselation)
-ncells = 3*blayers*(blayers-1)+1
-(vertex, cell, vlink, clayer) = makebody(dvertices, nbrs, dlayer[1:blayers+1])
+ncells = 3*layers*(layers-1)+1
+(vertex, cell, link, layer) = makebody(dvertex, nbrs, dlayer[1:layers+1])
 
-perimeter = findperimeter(cell, vlink, clayer)
+perimeter = findperimeter(cell, link, layer)
 vertex = smoothperimeter(vertex, perimeter...)
-rfcenter = makereceptivefields(vertex, cell, clayer,maplayers);
+rfcenter = makereceptivefields(vertex, cell, layer,mlayers);
 
 
-(cellmapvertex,cellmapcell) = makecellmap(vertex, cell, clayer,maplayers);
+(mapvertex,mapcell) = makecellmap(vertex, cell, layer,mlayers);
 
 # Draw
 s = Scene(resolution = (800,800), scale_plot = false)
 
 # draw cell nuclei
 scatter!(
-  dvertices[1:ncells, 1],
-  dvertices[1:ncells, 2],
+  dvertex[1:ncells, 1],
+  dvertex[1:ncells, 2],
   markersize = layerwidth / 6.0,
   color = RGB(1.0, .5, 0.2),
 )
@@ -46,5 +72,5 @@ drawcells(vertex,cell, :red, 1.0)
 #   markersize = layerwidth / 4.0,
 #   color = :white
 # )
-drawcells(cellmapvertex,cellmapcell, RGB(.25, 0.5,.4))
+drawcells(mapvertex,mapcell, RGB(.25, 0.5,.4))
 display(s)

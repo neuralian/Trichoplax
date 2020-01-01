@@ -4,37 +4,24 @@ using Makie
 using Colors
 using Placozoan
 
-struct Mat
-  layers::Int64
-  vertex::Array{Float64}
-  link::Array{Int64}
-end
 
-struct Trichoplax
-  layers::Int64                      # number of layers of cells
-  vertex::Array{Float64}             # cell vertices
-  cell::Array{Int64}                 # [i,j] index jth vertex of ith cell
-  layer::Vector{Array{Int64,1} }     # [i][j] index jth cell in ith layer
-  link::Array{Int64}                 # [i,:] index links between cells
-  perimeter                          #  perimeter vertex indices (3-tuple)
-  mapdepth::Int64                    # number of cell layers in sensory map
-end
 
-function make_trichoplax(layers, layerwidth, dlayers, mapdepth)
+function make_trichoplax(layers, mapdepth, mat)
 
-  (dvertex,dlink,dlayer) = delaunaydisc(dlayers, layerwidth)
-  nbrs=neighbours(dvertex,dlink,dlayer)
+#  (dvertex,dlink,dlayer) = delaunaydisc(dlayers, layerwidth)
+  nbrs=neighbours(mat.vertex,mat.edge,mat.layer)
 
   # make celllayers layers of hexagonal cells (Voronoi tesselation)
   ncells = 3*layers*(layers-1)+1
-  (vertex, cell, link, layer) = makebody(dvertex, nbrs, dlayer[1:layers+1])
+  (vertex, cell, link, layer) =
+                  makebody(mat.vertex, nbrs, mat.layer[1:layers+1])
 
   perimeter = findperimeter(cell, link, layer)
   vertex = smoothperimeter(vertex, perimeter...)
   #rfcenter = makereceptivefields(vertex, cell, layer,mapdepth);
 
 
-  (mapvertex,mapcell) = makecellmap(vertex, cell, layer,mapdepth);
+  (mapvertex,mapcell) = makecellmap(vertex, cell, layer, mapdepth);
 
 
   return Trichoplax(layers, vertex, cell, layer, link, perimeter, mapdepth)
@@ -42,8 +29,8 @@ end
 
 
 # MAIN
-dlayers = 5    # number of layers in Delaunay tesselation
-layers = 4   # number of body cell layers
+worldlayers = 5    # number of layers (rings) in mat
+bodylayers = 4   # number of body cell layers
 mapdepth = 1     # map layers
 layerwidth = 5.0
 # (dvertex,dlink,dlayer) = delaunaydisc(dlayers, layerwidth)
@@ -60,7 +47,9 @@ layerwidth = 5.0
 #
 # (mapvertex,mapcell) = makecellmap(vertex, cell, layer,mlayers);
 
-trichoplax = make_trichoplax(layers, layerwidth, dlayers, mapdepth)
+
+mat = discworld(worldlayers, layerwidth)
+trichoplax = make_trichoplax(bodylayers, mapdepth, mat)
 
 function draw(trichoplax::Trichoplax, color=:black)
   drawcells(trichoplax.vertex, trichoplax.cell, color)

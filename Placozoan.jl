@@ -15,31 +15,50 @@ using Distributions
 using Makie
 using Colors
 
-export delaunaydisc, neighbours, makebody, findperimeter,
+export Discworld, Trichoplax,
+                discworld, neighbours, makebody, findperimeter,
         smoothperimeter, makecellmap, makereceptivefields,
         drawdelaunaydisc, drawcells, drawskeleton
+
+struct Discworld
+  numlayers::Int64
+  vertex::Array{Float64}
+  edge::Array{Int64}
+  layer::Vector{Array{Int64,1} }
+end
+
+struct Trichoplax
+  numlayers::Int64                      # number of layers of cells
+  vertex::Array{Float64}             # cell vertices
+  cell::Array{Int64}                 # [i,j] index jth vertex of ith cell
+  layer::Vector{Array{Int64,1} }     # [i][j] index jth cell in ith layer
+  edge::Array{Int64}                 # [i,:] index links between cells
+  perimeter                          #  perimeter vertex indices (3-tuple)
+  mapdepth::Int64                    # number of cell layers in sensory map
+end
 
 
 normaldistribution = Normal()
 
-function delaunaydisc(nlayers, layerwidth)
-    # returns (nucleus, dlink, layer)
-    # nucleus = nCells x 2 coordinates of ith cell nucleus
-    # dlink = ndlink x indices of cell nuclei defining the dlink
-    # layer = ith row indexes cell nuclei in each layer
+function discworld(nlayers, layerwidth)
+    # Delaunay-triangulated disc
+    # returns (vertex, edge, layer)
+    # vertex = Float64 N x 2 coordinates
+    # link =  Int64 Nx2  pairs of vertex indices
+    # layer = ith row points to vertices in ith layer
     # MGP Dec 2019
 
 poswobble = .0025   # noise on cell location (re. layerwidth)
-ncells = 3*nlayers*(nlayers-1)+1
-nucleus = fill(0.0,ncells , 2)
-dlink = fill(0, 6*ncells, 2)
+nvertices = 3*nlayers*(nlayers-1)+1
+vertex = fill(0.0,nvertices , 2)
+edge = fill(0, 6*nvertices, 2)
 layer = fill(Int64[],nlayers)
 nlayer = vcat([1], [6*i for i in 1:nlayers-1]) # n cells in layer
-nlinkpercell = fill(0, ncells, 1)  # number of Delaunay links per cell
+nlinkpercell = fill(0, nvertices, 1)  # number of Delaunay links per cell
 icell = 1
-nucleus[icell,:] = [0.0 0.0]  # cell at origin
+vertex[icell,:] = [0.0 0.0]  # cell at origin
 layer[1,1] = [1]
-idlink =0
+iedge =0
 w = 0
 @inbounds for ilayer in 2:nlayers
     layer[ilayer,:] = [fill(0,nlayer[ilayer])]
@@ -57,46 +76,46 @@ w = 0
         dr = poswobble*dr
         icell = icell + 1
         layer[ilayer][j] = icell
-        nucleus[icell,:] =
+        vertex[icell,:] =
         (ilayer-1)*(1.0+dr)*layerwidth.*
         [ cos(2π*((j-1)/nlayer[ilayer])+w+dw)
           sin(2π*((j-1)/nlayer[ilayer])+w+dw) ]
 
         # Delaunay triangulation
         if j>1
-            idlink = idlink + 1
-            dlink[idlink, :] = [icell-1 icell]
+            iedge = iedge + 1
+            edge[iedge, :] = [icell-1 icell]
             nlinkpercell[icell-1] = nlinkpercell[icell-1]+1
             nlinkpercell[icell] = nlinkpercell[icell]+1
-            #lines!(nucleus[dlink[idlink,:],1], nucleus[dlink[idlink,:],2])
+            #lines!(vertex[edge[iedge,:],1], vertex[edge[iedge,:],2])
             #display(s)
         end
     end
-    idlink = idlink + 1
-    dlink[idlink, :] = [icell layer[ilayer][1]]
+    iedge = iedge + 1
+    edge[iedge, :] = [icell layer[ilayer][1]]
     nlinkpercell[icell] = nlinkpercell[icell]+1
     nlinkpercell[layer[ilayer][1]] = nlinkpercell[layer[ilayer][1]]+1
-    #lines!(nucleus[dlink[idlink,:],1], nucleus[dlink[idlink,:],2])
+    #lines!(vertex[edge[iedge,:],1], vertex[edge[iedge,:],2])
     #display(s)
 end
-# print((ncells, icell))
-# ncells = icell
-# nucleus = nucleus[1:ncells,:]
+# print((nvertices, icell))
+# nvertices = icell
+# vertex = vertex[1:nvertices,:]
 
-# scatter!(nucleus[:,1], nucleus[:,2], markersize = layerwidth/4.)
+# scatter!(vertex[:,1], vertex[:,2], markersize = layerwidth/4.)
 # @inbounds for i in 1:nlayers
-#      scatter!([nucleus[layer[i][1], 1]], [nucleus[layer[i][1],2]],
+#      scatter!([vertex[layer[i][1], 1]], [vertex[layer[i][1],2]],
 #      markersize = .5, color = :red);
 #  end
 # display(s)
 
 # complete Delaunay triangles
 @inbounds for j in 1:6      # center cell special case, 6 links
-    idlink = idlink + 1
-    dlink[idlink,:] = [1 j+1]
+    iedge = iedge + 1
+    edge[iedge,:] = [1 j+1]
     nlinkpercell[1] = nlinkpercell[1]+1
     nlinkpercell[j+1] = nlinkpercell[j+1]+1
-    #lines!(nucleus[dlink[idlink,:],1], nucleus[dlink[idlink,:],2])
+    #lines!(vertex[edge[iedge,:],1], vertex[edge[iedge,:],2])
     #display(s)
 end
 
@@ -105,12 +124,12 @@ end
     link = layer[ilayer+1][ilink[1:3]]
     @inbounds for i in 1:length(layer[ilayer])
         #println((ilayer, link))
-        @inbounds for j in 1:length(link)            #global idlink = idlink + 1
-            idlink = idlink + 1
-            dlink[idlink, :] = [layer[ilayer][i] link[j]]
+        @inbounds for j in 1:length(link)            #global iedge = iedge + 1
+            iedge = iedge + 1
+            edge[iedge, :] = [layer[ilayer][i] link[j]]
             nlinkpercell[layer[ilayer][i]] = nlinkpercell[layer[ilayer][i]]+1
             nlinkpercell[link[j]] = nlinkpercell[link[j]]+1
-            # lines!(nucleus[dlink[idlink,:],1], nucleus[dlink[idlink,:],2])
+            # lines!(vertex[edge[iedge,:],1], vertex[edge[iedge,:],2])
             # display(s)
             # sleep(.05)
         end
@@ -121,9 +140,10 @@ end
         #println(Link)
     end
 end
-dlink = dlink[1:idlink,:]
+edge = edge[1:iedge,:]
 
-return (nucleus, dlink, layer)
+#return (vertex, edge, layer)
+return Discworld(nlayers, vertex, edge, layer)
 
 end
 

@@ -2,6 +2,8 @@
 
 using Makie
 using Colors
+#using LinearAlgebra
+using Statistics
 using Placozoan
 
 
@@ -42,9 +44,42 @@ function draw(tridisc, color = RGB(.5,.5,.5), linewidth = 0.25)
 end
 
 
+function paint(trichoplax, color = :red)
+
+    nVertex = size(trichoplax.vertex, 1)
+    nCell = size(trichoplax.cell, 1)
+    vertex = fill(0.0, nVertex+nCell, 2) # will add centre vertex to each cell
+    for i in 1:nVertex
+        vertex[i,:] = trichoplax.vertex[i,:]
+    end
+    facet = fill(0,6*nCell,3) # 6 triangle facets per cell
+    nFacet = 0
+    for cell in 1:nCell
+        vertex[nVertex+cell, :] = mean(vertex[trichoplax.cell[cell,:],:], dims=1)
+        for i in 1:6
+            nFacet = nFacet + 1
+            i0 = trichoplax.cell[cell,i]
+            i1 = trichoplax.cell[cell,i%6+1]
+            facet[nFacet, :] = [nVertex+cell i0 i1]
+        end
+    end
+
+    # render cells
+    poly!(vertex, facet, color = rand(size(vertex,1)),
+            colormap = :blues)
+
+    #
+    # # render skeletons on top
+    # for link in 1:size(trichoplax.skeleton,1)
+    #     lines!(trichoplax.vertex[trichoplax.skeleton[link, :],1],
+    #            trichoplax.vertex[trichoplax.skeleton[link, :],2])
+    # end
+
+end
+
 # MAIN
-worldlayers = 16    # number of layers (rings) in mat
-bodylayers = 8   # number of body cell layers
+worldlayers = 8   # number of layers (rings) in mat
+bodylayers = 5   # number of body cell layers
 mapdepth = 2     # map layers
 layerwidth = 5.0
 

@@ -5,10 +5,8 @@ using Colors
 using Placozoan
 
 
-
 function make_trichoplax(layers, mapdepth, mat)
 
-#  (dvertex,dlink,dlayer) = delaunaydisc(dlayers, layerwidth)
   nbrs=neighbours(mat.vertex,mat.edge,mat.layer)
 
   # make celllayers layers of hexagonal cells (Voronoi tesselation)
@@ -18,46 +16,48 @@ function make_trichoplax(layers, mapdepth, mat)
 
   perimeter = findperimeter(cell, link, layer)
   vertex = smoothperimeter(vertex, perimeter...)
-  #rfcenter = makereceptivefields(vertex, cell, layer,mapdepth);
-
 
   (mapvertex,mapcell) = makecellmap(vertex, cell, layer, mapdepth);
 
+  return Trichoplax(layers, vertex, cell, layer, link, perimeter,
+                    mapdepth, mapvertex, mapcell)
+end
 
-  return Trichoplax(layers, vertex, cell, layer, link, perimeter, mapdepth)
+
+function draw(trichoplax::Trichoplax, color=:black, linewidth = 1.0)
+  drawcells(trichoplax.vertex, trichoplax.cell, color, linewidth)
+end
+
+function drawmap(trichoplax, color = :blue, linewidth = 0.5)
+  drawcells(trichoplax.mapvertex, trichoplax.mapcell, color, linewidth)
+
+end
+
+function draw(tridisc, color = RGB(.5,.5,.5), linewidth = 0.25)
+  for link in 1:size(tridisc.edge,1)
+      lines!(tridisc.vertex[tridisc.edge[link, :],1],
+             tridisc.vertex[tridisc.edge[link, :],2],
+             color=color, linewidth=linewidth)
+  end
 end
 
 
 # MAIN
-worldlayers = 5    # number of layers (rings) in mat
-bodylayers = 4   # number of body cell layers
-mapdepth = 1     # map layers
+worldlayers = 16    # number of layers (rings) in mat
+bodylayers = 8   # number of body cell layers
+mapdepth = 2     # map layers
 layerwidth = 5.0
-# (dvertex,dlink,dlayer) = delaunaydisc(dlayers, layerwidth)
-# nbrs=neighbours(dvertex,dlink,dlayer)
-#
-# # make celllayers layers of hexagonal cells (Voronoi tesselation)
-# ncells = 3*layers*(layers-1)+1
-# (vertex, cell, link, layer) = makebody(dvertex, nbrs, dlayer[1:layers+1])
-#
-# perimeter = findperimeter(cell, link, layer)
-# vertex = smoothperimeter(vertex, perimeter...)
-# rfcenter = makereceptivefields(vertex, cell, layer,mlayers);
-#
-#
-# (mapvertex,mapcell) = makecellmap(vertex, cell, layer,mlayers);
 
-
-mat = discworld(worldlayers, layerwidth)
+mat = Tridisc(worldlayers, layerwidth)
 trichoplax = make_trichoplax(bodylayers, mapdepth, mat)
 
-function draw(trichoplax::Trichoplax, color=:black)
-  drawcells(trichoplax.vertex, trichoplax.cell, color)
-end
+
 
 # Draw
 s = Scene(resolution = (800,800), scale_plot = false)
 draw(trichoplax, :red)
+drawmap(trichoplax, :orange, 1.0)
+draw(mat, RGB(.5, .5, 1.0))
 
 # # draw cell nuclei
 # scatter!(

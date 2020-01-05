@@ -15,12 +15,12 @@ using Distributions
 using Makie
 using Colors
 
-export Discworld, Trichoplax,
+export Tridisc, Trichoplax,
                 discworld, neighbours, makebody, findperimeter,
         smoothperimeter, makecellmap, makereceptivefields,
         drawdelaunaydisc, drawcells, drawskeleton
 
-struct Discworld
+struct Tridisc
   numlayers::Int64
   vertex::Array{Float64}
   edge::Array{Int64}
@@ -35,18 +35,31 @@ struct Trichoplax
   edge::Array{Int64}                 # [i,:] index links between cells
   perimeter                          #  perimeter vertex indices (3-tuple)
   mapdepth::Int64                    # number of cell layers in sensory map
+  mapvertex
+  mapcell
 end
 
 
 normaldistribution = Normal()
 
-function discworld(nlayers, layerwidth)
+
+
+
+function Tridisc(nlayers, layerwidth)
     # Delaunay-triangulated disc
     # returns (vertex, edge, layer)
     # vertex = Float64 N x 2 coordinates
     # link =  Int64 Nx2  pairs of vertex indices
     # layer = ith row points to vertices in ith layer
     # MGP Dec 2019
+
+#TODO: current version increases number of grid points by 6 per layer
+# but to preserve cell volumes (areas) the increase should be 2π ≈ 6.28
+# i.e. need to add an extra point to every 3rd layer + 1 every 6 etc
+
+#TODO: Currently maintain an array of indices to vertices in each layer
+# but since these are always consecutive numbers it should be sufficient
+# to keep track of the number of cells in each layer
 
 poswobble = .0025   # noise on cell location (re. layerwidth)
 nvertices = 3*nlayers*(nlayers-1)+1
@@ -143,7 +156,7 @@ end
 edge = edge[1:iedge,:]
 
 #return (vertex, edge, layer)
-return Discworld(nlayers, vertex, edge, layer)
+return Tridisc(nlayers, vertex, edge, layer)
 
 end
 

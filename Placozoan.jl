@@ -42,9 +42,6 @@ end
 
 normaldistribution = Normal()
 
-
-
-
 function Tridisc(nlayers, layerwidth)
     # Delaunay-triangulated disc
     # returns (vertex, edge, layer)
@@ -52,10 +49,6 @@ function Tridisc(nlayers, layerwidth)
     # link =  Int64 Nx2  pairs of vertex indices
     # layer = ith row points to vertices in ith layer
     # MGP Dec 2019
-
-#TODO: current version increases number of grid points by 6 per layer
-# but to preserve cell volumes (areas) the increase should be 2π ≈ 6.28
-# i.e. need to add an extra point to every 3rd layer + 1 every 6 etc
 
 #TODO: Currently maintain an array of indices to vertices in each layer
 # but since these are always consecutive numbers it should be sufficient
@@ -66,7 +59,19 @@ nvertices = 3*nlayers*(nlayers-1)+1
 vertex = fill(0.0,nvertices , 2)
 edge = fill(0, 6*nvertices, 2)
 layer = fill(Int64[],nlayers)
+nlayer = Vector{Int64}(undef,nlayers)
+
+nlayer[1] = 1
+xs = 0.0
+for i in 2:nlayers
+    fn = Float64(nlayer[i-1]) + 2.0π + xs
+    n = round(fn)
+    nlayer[i] = nlayer[i-1] + n
+    xs = fn - n
+end
+
 nlayer = vcat([1], [6*i for i in 1:nlayers-1]) # n cells in layer
+
 nlinkpercell = fill(0, nvertices, 1)  # number of Delaunay links per cell
 icell = 1
 vertex[icell,:] = [0.0 0.0]  # cell at origin
@@ -159,6 +164,7 @@ edge = edge[1:iedge,:]
 return Tridisc(nlayers, vertex, edge, layer)
 
 end
+
 
 
 function neighbours(nucleus, dlink, layer)
@@ -364,6 +370,24 @@ function smoothperimeter(vertex, op, cp, ip)
     end
 
     vertex
+end
+
+function Trichoplax(layers, mapdepth, mat)
+
+  nbrs=neighbours(mat.vertex,mat.edge,mat.layer)
+
+  # make celllayers layers of hexagonal cells (Voronoi tesselation)
+  ncells = 3*layers*(layers-1)+1
+  (vertex, cell, link, layer) =
+                  makebody(mat.vertex, nbrs, mat.layer[1:layers+1])
+
+  perimeter = findperimeter(cell, link, layer)
+  vertex = smoothperimeter(vertex, perimeter...)
+
+  (mapvertex,mapcell) = makecellmap(vertex, cell, layer, mapdepth);
+
+  return Trichoplax(layers, vertex, cell, layer, link, perimeter,
+                    mapdepth, mapvertex, mapcell)
 end
 
 

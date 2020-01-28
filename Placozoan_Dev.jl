@@ -16,7 +16,7 @@ function drawmap(trichoplax, color = :blue, linewidth = 0.5)
 
 end
 
-function draw(tridisc, color = RGB(.5,.5,.5), linewidth = 0.25)
+function draw(tridisc::Tridisc, color = RGB(.5,.5,.5), linewidth = 0.25)
   for link in 1:size(tridisc.edge,1)
       lines!(tridisc.vertex[tridisc.edge[link, :],1],
              tridisc.vertex[tridisc.edge[link, :],2],
@@ -59,18 +59,17 @@ function paint(trichoplax, color = :red)
 end
 
 # MAIN
-worldlayers = 12  # number of layers (rings) in mat
-bodylayers = 8   # number of body cell layers
+bodylayers = 12   # number of body cell layers
 mapdepth = 4     # map layers
-layerwidth = 5.0
+celldiam = 10.0
 
-mat = Tridisc(worldlayers, layerwidth)
-trichoplax = Trichoplax(bodylayers, mapdepth, mat)
+
+trichoplax = Trichoplax(bodylayers, celldiam, mapdepth)
 
 # Draw
 s = Scene(resolution = (800,800), scale_plot = false)
 draw(trichoplax, :red)
 #drawmap(trichoplax, :orange, 1.0)
-draw(mat, RGB(.5, .5, 1.0))
+draw(trichoplax.skeleton, RGB(.5, .5, 1.0))
 
 display(s)

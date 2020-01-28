@@ -28,6 +28,7 @@ struct Tridisc
 end
 
 struct Trichoplax
+  skeleton::Tridisc
   numlayers::Int64                      # number of layers of cells
   vertex::Array{Float64}             # cell vertices
   cell::Array{Int64}                 # [i,j] index jth vertex of ith cell
@@ -372,21 +373,23 @@ function smoothperimeter(vertex, op, cp, ip)
     vertex
 end
 
-function Trichoplax(layers, mapdepth, mat)
+function Trichoplax(layers, celldiam, mapdepth)
 
-  nbrs=neighbours(mat.vertex,mat.edge,mat.layer)
+    skeleton = Tridisc(layers+1, celldiam/2.0)
+
+  nbrs=neighbours(skeleton.vertex,skeleton.edge,skeleton.layer)
 
   # make celllayers layers of hexagonal cells (Voronoi tesselation)
   ncells = 3*layers*(layers-1)+1
   (vertex, cell, link, layer) =
-                  makebody(mat.vertex, nbrs, mat.layer[1:layers+1])
+                  makebody(skeleton.vertex, nbrs, skeleton.layer[1:layers+1])
 
   perimeter = findperimeter(cell, link, layer)
   vertex = smoothperimeter(vertex, perimeter...)
 
   (mapvertex,mapcell) = makecellmap(vertex, cell, layer, mapdepth);
 
-  return Trichoplax(layers, vertex, cell, layer, link, perimeter,
+  return Trichoplax(skeleton, layers, vertex, cell, layer, link, perimeter,
                     mapdepth, mapvertex, mapcell)
 end
 

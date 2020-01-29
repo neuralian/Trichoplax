@@ -15,12 +15,12 @@ using Distributions
 using Makie
 using Colors
 
-export Tridisc, Trichoplax,
-                discworld, neighbours, makebody, findperimeter,
+export Trichoplax,
+                discworld, neighbours, makebody, findperimetervertices,
         smoothperimeter, makecellmap, makereceptivefields,
-        drawdelaunaydisc, drawcells, drawskeleton
+        drawdelaunaydisc, drawcells, drawskeleton, findperimeteredges
 
-struct Tridisc
+struct Skeleton
   numlayers::Int64
   vertex::Array{Float64}
   edge::Array{Int64}
@@ -28,13 +28,14 @@ struct Tridisc
 end
 
 struct Trichoplax
-  skeleton::Tridisc
-  numlayers::Int64                      # number of layers of cells
+  skeleton::Skeleton
+  numlayers::Int64                   # number of layers of cells
+  celldiam::Float64
   vertex::Array{Float64}             # cell vertices
   cell::Array{Int64}                 # [i,j] index jth vertex of ith cell
   layer::Vector{Array{Int64,1} }     # [i][j] index jth cell in ith layer
   edge::Array{Int64}                 # [i,:] index links between cells
-  perimeter                          #  perimeter vertex indices (3-tuple)
+  skinvertex::Array{Int64}           #  skin vertex indices 
   mapdepth::Int64                    # number of cell layers in sensory map
   mapvertex
   mapcell
@@ -43,7 +44,7 @@ end
 
 normaldistribution = Normal()
 
-function Tridisc(nlayers, layerwidth)
+function Skeleton(nlayers, layerwidth)
     # Delaunay-triangulated disc
     # returns (vertex, edge, layer)
     # vertex = Float64 N x 2 coordinates
@@ -162,7 +163,7 @@ end
 edge = edge[1:iedge,:]
 
 #return (vertex, edge, layer)
-return Tridisc(nlayers, vertex, edge, layer)
+return Skeleton(nlayers, vertex, edge, layer)
 
 end
 
@@ -278,7 +279,7 @@ function makebody(nucleus, neighbour, dlayer)
 end #cells()
 
 
-function findperimeter(cell, vlink, clayer)
+function findperimetervertices(cell, vlink, clayer)
     # find vertices on edge of disc
     n = length(clayer[end])
     outerperimeter = fill(0, n+6) # linked only to perimeter vertices
@@ -375,7 +376,7 @@ end
 
 function Trichoplax(layers, celldiam, mapdepth)
 
-    skeleton = Tridisc(layers+1, celldiam/2.0)
+  skeleton = Skeleton(layers+1, celldiam)
 
   nbrs=neighbours(skeleton.vertex,skeleton.edge,skeleton.layer)
 
@@ -384,13 +385,15 @@ function Trichoplax(layers, celldiam, mapdepth)
   (vertex, cell, link, layer) =
                   makebody(skeleton.vertex, nbrs, skeleton.layer[1:layers+1])
 
-  perimeter = findperimeter(cell, link, layer)
-  vertex = smoothperimeter(vertex, perimeter...)
+  # perimeter vertices in 3 classes
+  perimetervertex = findperimetervertices(cell, link, layer)
+  # ordered vertices on perimeter
+  skinvertex = sort(vcat(perimetervertex[1],perimetervertex[2] ))
 
   (mapvertex,mapcell) = makecellmap(vertex, cell, layer, mapdepth);
 
-  return Trichoplax(skeleton, layers, vertex, cell, layer, link, perimeter,
-                    mapdepth, mapvertex, mapcell)
+  return Trichoplax(skeleton, layers, celldiam, vertex, cell, layer, link,
+       skinvertex, mapdepth, mapvertex, mapcell)
 end
 
 
@@ -493,12 +496,12 @@ end
 
 
 
-function drawskeleton(vertex, vlink)
-    # draw links between cell vertices (cytoskeleton)
-    for i in 1:size(vlink, 1)
-        lines!(vertex[vlink[i,:],1], vertex[vlink[i,:],2])
-    end
-end
+# function drawcells(vertex, vlink)
+#     # draw links between cell vertices (cytoskeleton)
+#     for i in 1:size(vlink, 1)
+#         lines!(vertex[vlink[i,:],1], vertex[vlink[i,:],2])
+#     end
+# end
 
 
 

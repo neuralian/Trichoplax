@@ -84,16 +84,20 @@ function deformationEnergy(trichoplax)
    nSkinVertices = length(s)
    j = sortperm(atan.(vt[s,1], vt[s,2])) # order of skin vertices anticlockwise
    for i in 2:nSkinVertices
-       dE = sqrt(sum((vt[s[j[i]],:] - vt[s[j[i-1]],:]).^2))
-       Ex = Ex + dE
-       println(dE)
+       Ex = Ex + sqrt(sum((vt[s[j[i]],:] - vt[s[j[i-1]],:]).^2))
    end
    Ex = Ex + sqrt(sum((v[s[j[nSkinVertices]],:] - v[s[j[1]],:]).^2))
    Ex = σ*Ex
 
    E = Es + Ex
 
-   return Es, Ex
+   return E
+
+end
+
+function deformationEnergy(trichoplax, skeletonVertex)
+    # deformation energy as a function of skeleton vertex coords
+    
 
 end
 

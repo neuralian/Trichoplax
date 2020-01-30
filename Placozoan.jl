@@ -18,13 +18,15 @@ using Colors
 export Trichoplax,
                 discworld, neighbours, makebody, findperimetervertices,
         smoothperimeter, makecellmap, makereceptivefields,
-        drawdelaunaydisc, drawcells, drawskeleton, findperimeteredges
+        drawdelaunaydisc, drawcells, drawskeleton, findperimeteredges,
+        peripheraltriangles
 
 struct Skeleton
+  vertex::Array{Float64,2}
+  edge::Array{Int64,2}
   numlayers::Int64
-  vertex::Array{Float64}
-  edge::Array{Int64}
-  layer::Vector{Array{Int64,1} }
+  layer::Vector{Array{Int64,1}}
+  neighbours::Array{Int64}
 end
 
 struct Trichoplax
@@ -35,7 +37,7 @@ struct Trichoplax
   cell::Array{Int64}                 # [i,j] index jth vertex of ith cell
   layer::Vector{Array{Int64,1} }     # [i][j] index jth cell in ith layer
   edge::Array{Int64}                 # [i,:] index links between cells
-  skinvertex::Array{Int64}           #  skin vertex indices 
+  skinvertex::Array{Int64}           #  skin vertex indices
   mapdepth::Int64                    # number of cell layers in sensory map
   mapvertex
   mapcell
@@ -51,11 +53,6 @@ function Skeleton(nlayers, layerwidth)
     # link =  Int64 Nx2  pairs of vertex indices
     # layer = ith row points to vertices in ith layer
     # MGP Dec 2019
-
-#TODO: Currently maintain an array of indices to vertices in each layer
-# but since these are always consecutive numbers it should be sufficient
-# to keep track of the number of cells in each layer
-
 poswobble = .0025   # noise on cell location (re. layerwidth)
 nvertices = 3*nlayers*(nlayers-1)+1
 vertex = fill(0.0,nvertices , 2)
@@ -162,18 +159,18 @@ end
 end
 edge = edge[1:iedge,:]
 
+nbrs=neighbours(vertex,edge,layer)
+
 #return (vertex, edge, layer)
-return Skeleton(nlayers, vertex, edge, layer)
+return Skeleton(vertex, edge, nlayers, layer, nbrs)
 
 end
 
 
 
 function neighbours(nucleus, dlink, layer)
-  # index the six neighbour nuclei of each nucleus (excepting outer layer)
-  # given output from delaunaydisc()...   (nb splatted argument)
-  # outer nucleus layer
-  # MGP Dec 2019
+  # index the neighbour nuclei of each nucleus
+  # each nucleus has 6 neighbours, except the outer layer which have 3 or 4
 
   ncells = size(nucleus, 1)
   neighbour = fill(0, ncells, 6)   # neighbour indices for each cell
@@ -189,15 +186,90 @@ function neighbours(nucleus, dlink, layer)
     neighbour[b, n_neighbour[b]] = a
   end
   # put neighbours in counterclockwise order
-  # nb row 1 is already ccw, skip external nuclei (less than 6 links)
-  @inbounds for i in 2:(ncells-length(layer[end]))
-    dx = nucleus[neighbour[i,:],1].-nucleus[i,1]
-    dy = nucleus[neighbour[i,:],2].-nucleus[i,2]
-    order = sortperm(atan.(dy,dx))
-    neighbour[i,:] = neighbour[i, order]
+  # nb row 1 is already ccw
+  @inbounds for i in 2:ncells
+    n = count(x->(x>0), neighbour[i,:])
+    dx = nucleus[neighbour[i,1:n],1].-nucleus[i,1]
+    dy = nucleus[neighbour[i,1:n],2].-nucleus[i,2]
+    theta = atan.(dy,dx) .- atan(nucleus[i,2], nucleus[i,1])
+    i0 = findall(x->(x<-π), theta)
+    theta[i0] = theta[i0] .+ 2π
+    i1 = findall(x->(x>π), theta)
+    theta[i1] = theta[i1] .- 2π
+    order = sortperm(theta)
+    neighbour[i,1:n] = neighbour[i, order]
   end
   neighbour
 end
+
+function peripheraltriangles(neighbour, layer)
+  # skeleton triangles that define peripheral cell vertices
+
+  # number of triangles is 2xnumber of vertices in next-to-last layer
+  # plus the number of vertices with only 3 neighbours
+  N = size(neighbour, 1)  # number of vertices in skeleton
+  n3 = 0
+  for i in 1:N
+    if count(x->(x>0), neighbour[i,:])==3
+        n3 = n3 + 1
+    end
+  end
+  numtriangles = size(layer[end-1])[1]*2+n3
+  triangle = fill(0,2*numtriangles,3 )
+
+  # start at last skeleton vertex and work backwards
+  n = N  # index skeleton vertex
+  n_nbrs = count(x->(x>0), neighbour[n,:])
+  i = 0   # index triangles
+  while n_nbrs < 6     # outer ring of skeleton vertices have < 6 neighbours
+        T = [n neighbour[n,1] neighbour[n,2]]
+        alreadyfound = false
+        for j in 1:i
+            if any(isequal(T[2]), triangle[j,:]) &&
+               any(isequal(T[3]), triangle[j,:])
+               alreadyfound = true
+               break
+           end
+       end
+       if !alreadyfound
+           i = i + 1
+           triangle[i,:] = T
+       end
+       if n_nbrs==4
+           T = [n neighbour[n,3] neighbour[n,4]]
+           alreadyfound = false
+           for j in 1:i
+               if any(isequal(T[2]), triangle[j,:]) &&
+                  any(isequal(T[3]), triangle[j,:])
+                  alreadyfound = true
+                  break
+              end
+          end
+          if !alreadyfound
+              i = i + 1
+              triangle[i,:] = T
+          end
+      end
+      T = [n neighbour[n,n_nbrs] neighbour[n,1]]
+      alreadyfound = false
+      for j in 1:i
+          if any(isequal(T[2]), triangle[j,:]) &&
+             any(isequal(T[3]), triangle[j,:])
+             alreadyfound = true
+             break
+         end
+     end
+     if !alreadyfound
+         i = i + 1
+         triangle[i,:] = T
+     end
+
+     n = n-1
+     n_nbrs = count(x->(x>0), neighbour[n,:])
+  end
+println(i, numtriangles)
+    triangle
+end # peripheraltriangles
 
 function makebody(nucleus, neighbour, dlayer)
   # construct cells
@@ -383,7 +455,9 @@ function Trichoplax(layers, celldiam, mapdepth)
   # make celllayers layers of hexagonal cells (Voronoi tesselation)
   ncells = 3*layers*(layers-1)+1
   (vertex, cell, link, layer) =
-                  makebody(skeleton.vertex, nbrs, skeleton.layer[1:layers+1])
+            makebody(skeleton.vertex,
+                    skeleton.neighbours,
+                    skeleton.layer[1:layers+1])
 
   # perimeter vertices in 3 classes
   perimetervertex = findperimetervertices(cell, link, layer)

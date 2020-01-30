@@ -95,9 +95,10 @@ function deformationEnergy(trichoplax)
 
 end
 
-function deformationEnergy(trichoplax, skeletonVertex)
-    # deformation energy as a function of skeleton vertex coords
-    
+function deformationEnergy(trichoplax, vertex)
+    # deformation energy as a function of skeleton and perimeter vertex coords
+
+
 
 end
 

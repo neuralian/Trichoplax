@@ -17,7 +17,7 @@ function drawmap(trichoplax, color = :blue, linewidth = 0.5)
 end
 
 function drawskeleton(trichoplax::Trichoplax,
-         color = RGB(.5,.5,.5), linewidth = 0.25)
+         color = RGB(.25,.65,.25), linewidth = 0.25)
   for link in 1:size(trichoplax.skeleton.edge,1)
       lines!(trichoplax.skeleton.vertex[trichoplax.skeleton.edge[link, :],1],
              trichoplax.skeleton.vertex[trichoplax.skeleton.edge[link, :],2],
@@ -104,7 +104,7 @@ end
 
 
 # MAIN
-bodylayers = 3    # number of body cell layers
+bodylayers = 2   # number of body cell layers
 mapdepth = 1     # map layers
 celldiam = 10.0
 
@@ -115,6 +115,6 @@ trichoplax = Trichoplax(bodylayers, celldiam, mapdepth)
 s = Scene(resolution = (800,800), scale_plot = false)
 draw(trichoplax, :red)
 #drawmap(trichoplax, :orange, 1.0)
-drawskeleton(trichoplax, RGB(.5, .5, 1.0))
+drawskeleton(trichoplax, RGB(.0, .65, .0), .5)
 
 display(s)

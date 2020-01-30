@@ -191,7 +191,8 @@ function neighbours(nucleus, dlink, layer)
     n = count(x->(x>0), neighbour[i,:])
     dx = nucleus[neighbour[i,1:n],1].-nucleus[i,1]
     dy = nucleus[neighbour[i,1:n],2].-nucleus[i,2]
-    theta = atan.(dy,dx) .- atan(nucleus[i,2], nucleus[i,1])
+    theta = atan.(dy,dx)
+    theta = theta .+ (π - atan(nucleus[i,2], nucleus[i,1]))
     i0 = findall(x->(x<-π), theta)
     theta[i0] = theta[i0] .+ 2π
     i1 = findall(x->(x>π), theta)
@@ -215,7 +216,7 @@ function peripheraltriangles(neighbour, layer)
     end
   end
   numtriangles = size(layer[end-1])[1]*2+n3
-  triangle = fill(0,2*numtriangles,3 )
+  triangle = fill(0,numtriangles+1,3 )
 
   # start at last skeleton vertex and work backwards
   n = N  # index skeleton vertex

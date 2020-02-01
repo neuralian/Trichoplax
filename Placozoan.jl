@@ -10,7 +10,6 @@
 
 module Placozoan
 
-
 using Distributions
 using Makie
 using Colors
@@ -216,60 +215,34 @@ function peripheraltriangles(neighbour, layer)
     end
   end
   numtriangles = size(layer[end-1])[1]*2+n3
-  triangle = fill(0,numtriangles+1,3 )
+  triangle = fill(0,numtriangles,3 )
 
   # start at last skeleton vertex and work backwards
   n = N  # index skeleton vertex
   n_nbrs = count(x->(x>0), neighbour[n,:])
   i = 0   # index triangles
   while n_nbrs < 6     # outer ring of skeleton vertices have < 6 neighbours
-        T = [n neighbour[n,1] neighbour[n,2]]
-        alreadyfound = false
-        for j in 1:i
-            if any(isequal(T[2]), triangle[j,:]) &&
-               any(isequal(T[3]), triangle[j,:])
+      for j in 2:n_nbrs
+          T = [n neighbour[n,j-1] neighbour[n,j]]
+          alreadyfound = false
+          for k in 1:i
+            if any(isequal(T[1]), triangle[k,:]) &&
+               any(isequal(T[2]), triangle[k,:]) &&
+               any(isequal(T[3]), triangle[k,:])
                alreadyfound = true
                break
+            end
+           end
+           if !alreadyfound
+               i = i + 1
+               triangle[i,:] = T
            end
        end
-       if !alreadyfound
-           i = i + 1
-           triangle[i,:] = T
-       end
-       if n_nbrs==4
-           T = [n neighbour[n,3] neighbour[n,4]]
-           alreadyfound = false
-           for j in 1:i
-               if any(isequal(T[2]), triangle[j,:]) &&
-                  any(isequal(T[3]), triangle[j,:])
-                  alreadyfound = true
-                  break
-              end
-          end
-          if !alreadyfound
-              i = i + 1
-              triangle[i,:] = T
-          end
-      end
-      T = [n neighbour[n,n_nbrs] neighbour[n,1]]
-      alreadyfound = false
-      for j in 1:i
-          if any(isequal(T[2]), triangle[j,:]) &&
-             any(isequal(T[3]), triangle[j,:])
-             alreadyfound = true
-             break
-         end
-     end
-     if !alreadyfound
-         i = i + 1
-         triangle[i,:] = T
-     end
-
      n = n-1
      n_nbrs = count(x->(x>0), neighbour[n,:])
   end
-println(i, numtriangles)
-    triangle
+  println(i, numtriangles)
+  triangle
 end # peripheraltriangles
 
 function makebody(nucleus, neighbour, dlayer)

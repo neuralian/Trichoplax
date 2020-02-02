@@ -21,21 +21,19 @@ export Trichoplax,
         distalskeleton
 
 struct Skeleton
-  numlayers::Int64
-  edgelength::Float64
-  vertex::Array{Float64,2}
-  edge::Array{Int64,2}
-  layer::Vector{Array{Int64,1}}
-  neighbour::Array{Int64}
+  numlayers::Int64                  # number of skeleton layers (celllayers + 1)
+  edgelength::Float64               # nominal edge length (= cell diameter)
+  vertex::Array{Float64,2}          # ?x2 vertices
+  edge::Array{Int64,2}              # ?x2 edges forming Delaunay Δ-ation
+  layer::Vector{Array{Int64,1}}     # [i][j] = jth vertex in ith layer
+  neighbour::Array{Int64,2}         # ?x6 neighbours of each vertex
+  distalΔ::Array{Int64,2}           # ?x3 vertices of outer layer of triangles
 end
 
 struct Trichoplax
-  numlayers::Int64                   # number of layers of cells
-  celldiam::Float64
   skeleton::Skeleton
   vertex::Array{Float64}             # cell vertices
   cell::Array{Int64}                 # [i,j] index jth vertex of ith cell
-  layer::Vector{Array{Int64,1} }     # [i][j] index jth cell in ith layer
   edge::Array{Int64}                 # [i,:] index links between cells
   skinvertex::Array{Int64}           #  skin vertex indices
   mapdepth::Int64                    # number of cell layers in sensory map
@@ -140,10 +138,11 @@ function Skeleton(nlayers, edgelength)
     end
     edge = edge[1:iedge,:]
 
-    neighbour=skeleton_neighbours(vertex,edge)
+    nbr=skeleton_neighbours(vertex,edge)
+    distalΔ = distalskeleton(nbr, layer)
 
     #return (vertex, edge, layer)
-    return Skeleton(nlayers, edgelength, vertex, edge, layer, neighbour)
+    return Skeleton(nlayers, edgelength, vertex, edge, layer, nbr, distalΔ)
 end
 
 function skeleton_neighbours(vertex, edge)
@@ -225,20 +224,17 @@ end # distalskeleton
 
 function makebody(skeleton)
   # construct cells
-  # returns (vertex, cell, edge, layer)
+  # returns (vertex, cell, edge)
   #  vertex = vertices of cell membrane (6 per cell)
   #  cell[i,:] = indices of 6 vertices of ith cell
   #  edge = Nx2 array of indices to ends of each membrane segment
-  #  layer = index of cells in each layer
-  #  e.g. cell[layer[end][1], :] points to vertices of first cell in last layer
-  #  vertex[cell[layer[end][1], :],:]  is 6x2 array of vertices of this cell
   # MGP Dec 2019
 
   # tolerance for merging vertices.
   tol = 0.1*skeleton.edgelength
 
   ncells = skeleton.layer[end-1][end]       #
-  vertex = fill(0.0, 6*ncells, 2 )  # vertex coordinates
+  vertex = fill(0.0, 6*(size(skeleton.layer,1)-1)^2, 2 )
   cell = fill(0, ncells, 6)         # vertex indices for each cell
   edge = fill(0, numEdges(ncells), 2)       # vertex indices for each edge
 
@@ -296,7 +292,8 @@ function makebody(skeleton)
         end # j==6
     end # for j
     end # for i
-  (vertex[1:nvertex,:], cell, edge, skeleton.layer[1:(end-1)])
+    println(nvertex)
+  (vertex[1:nvertex,:], cell, edge)
 end #cells()
 
 function findperimetervertices(cell, vlink, clayer)
@@ -399,17 +396,16 @@ function Trichoplax(numlayers, celldiameter, mapdepth)
   skeleton = Skeleton(numlayers+1, celldiameter)
 
   # make celllayers layers of hexagonal cells (Voronoi tesselation)
-  (vertex, cell, link, layer) = makebody(skeleton)
+  (vertex, cell, edge) = makebody(skeleton)
 
   # perimeter vertices in 3 classes
-  perimetervertex = findperimetervertices(cell, link, layer)
+  perimetervertex = []#findperimetervertices(cell, link, layer)
   # ordered vertices on perimeter
-  skinvertex = sort(vcat(perimetervertex[1],perimetervertex[2] ))
+  skinvertex = []#sort(vcat(perimetervertex[1],perimetervertex[2] ))
 
-  (mapvertex,mapcell) = makecellmap(vertex, cell, layer, mapdepth);
+  (mapvertex,mapcell) = ([], []) #makecellmap(vertex, cell, layer, mapdepth);
 
-  return Trichoplax(numlayers, celldiameter, skeleton,
-       vertex, cell, layer, link,
+  return Trichoplax(skeleton, vertex, cell, edge,
        skinvertex, mapdepth, mapvertex, mapcell)
 end
 
@@ -489,24 +485,5 @@ function makereceptivefields(vertex, cell, clayer, mapwidth)
 
     return rfcenter
 end
-
-# function drawdelaunaydisc(dlink,color = RGB(0.25, 0.25, 0.25), linewidth = 0.5)
-#     @inbounds for i = 1:size(dlink, 1)
-#       lines!(
-#         cellcentroid[dlink[i, :], 1],
-#         cellcentroid[dlink[i, :], 2],
-#         color = color, linewidth = linewidth
-#         )
-#     end
-# end
-
-
-
-# function drawcells(vertex, vlink)
-#     # draw links between cell vertices (cytoskeleton)
-#     for i in 1:size(vlink, 1)
-#         lines!(vertex[vlink[i,:],1], vertex[vlink[i,:],2])
-#     end
-# end
 
 end  # module Placozoan

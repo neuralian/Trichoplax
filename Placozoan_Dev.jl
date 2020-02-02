@@ -15,15 +15,7 @@ function draw(trichoplax::Trichoplax, color=:black, linewidth = 1.0)
                 color = color, linewidth=linewidth)
     end
 
-  # drawcells(trichoplax.vertex, trichoplax.cell, color, linewidth)
 end
-
-# function drawcells(vertex, cell, color = RGB(.45, .25, 0.0), linewidth=1.0)
-#     @inbounds for i in 1:size(cell,1)
-#         lines!(vertex[cell[i,[1:6; 1]],1], vertex[cell[i,[1:6; 1]],2],
-#                 color = color, linewidth=linewidth)
-#     end
-# end
 
 function drawmap(trichoplax, color = :blue, linewidth = 0.5)
   drawcells(trichoplax.mapvertex, trichoplax.mapcell, color, linewidth)
@@ -68,44 +60,43 @@ function paint(trichoplax, color = :red)
 end
 
 
-function deformationEnergy(trichoplax)
-    # mechanical energy stored in deformation of trichoplax skeleton
-    # + surface energy.
-    #   skeleton links are springs with rest length celldiam, Es = 1/2k(x-xo)^2
-    #   surface energy of external cell membrane segment of length L, Ex = σL
+function skeletonEnergy(trichoplax)
+    #  potential energy in skeleton deformation + surface energy.
+    #   skeleton edges are linear springs Es = (1/2)k(r-ro)^2
+    #   surface energy σ per unit length of exposed membrane
 
 
     k2 = 1.0  # half of cytoskeleton spring constant (k/2)
-    σ = 100.0  # surface energy density
+    σ = 1.0e8  # surface energy density
 
     Es = 0.0
-
-    # aliases to simplify code
-    vs = trichoplax.skeleton.vertex
-    e = trichoplax.skeleton.edge
-    r0 = trichoplax.celldiam
-
    # elastic energy in skeleton deformation
-   for i in 1:size(e,1)
-       r = sqrt(sum((vs[e[i,:],1] - vs[e[i,:],2]).^2))
-       Es = Es + k2*(r - r0)^2
+   for i in 1:size(trichoplax.skeleton.edge,1)
+       r = sqrt(sum(
+            ( trichoplax.skeleton.vertex[trichoplax.skeleton.edge[i,:],1] -
+              trichoplax.skeleton.vertex[trichoplax.skeleton.edge[i,:],2] ).^2))
+       Es = Es + k2*(r - trichoplax.skeleton.edgelength)^2
    end
 
    # surface energy of external membranes
-   Ex = 0.0
-   vt = trichoplax.vertex
-   s = trichoplax.skinvertex
-   nSkinVertices = length(s)
-   j = sortperm(atan.(vt[s,1], vt[s,2])) # order of skin vertices anticlockwise
-   for i in 2:nSkinVertices
-       Ex = Ex + sqrt(sum((vt[s[j[i]],:] - vt[s[j[i-1]],:]).^2))
+   Lx = 0.0    # initialize external surface length to 0
+   # x & y coords of external vertices
+   x = convert(Vector{Float64},
+    mean(trichoplax.skeleton.vertex[trichoplax.skeleton.distalΔ[:,:], 1],
+    dims = 2)[:])
+   y = convert(Vector{Float64},
+    mean(trichoplax.skeleton.vertex[trichoplax.skeleton.distalΔ[:,:], 2],
+    dims = 2)[:])
+   # length of external surface, sum lengths of external edge segments
+   n = length(x)
+   for i in 2:n
+       Lx = Lx + sqrt( (x[i]-x[i-1]).^2 + (y[i]-y[i-1]).^2)
    end
-   Ex = Ex + sqrt(sum((v[s[j[nSkinVertices]],:] - v[s[j[1]],:]).^2))
-   Ex = σ*Ex
+   # include edge from last to first vertex (close the loop)
+   Lx = Lx + sqrt( (x[n]-x[1]).^2 + (y[n]-y[1]).^2)
 
-   E = Es + Ex
-
-   return E
+   # total energy is elastic + surface energy
+    return (Es + σ*Lx)
 
 end
 
@@ -118,12 +109,12 @@ end
 
 
 # MAIN
-bodylayers = 3 # number of body cell layers
+bodylayers = 8 # number of body cell layers
 mapdepth = 1     # map layers
 celldiam = 10.0
 
 
-trichoplax = Trichoplax(bodylayers, celldiam, mapdepth)
+@time trichoplax = Trichoplax(bodylayers, celldiam, mapdepth)
 
 # Draw
 s = Scene(resolution = (800,800), scale_plot = false)

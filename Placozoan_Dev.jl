@@ -8,8 +8,22 @@ using Placozoan
 
 
 function draw(trichoplax::Trichoplax, color=:black, linewidth = 1.0)
-  drawcells(trichoplax.vertex, trichoplax.cell, color, linewidth)
+
+    @inbounds for i in 1:size(trichoplax.cell,1)
+        lines!(trichoplax.vertex[trichoplax.cell[i,[1:6; 1]],1],
+               trichoplax.vertex[trichoplax.cell[i,[1:6; 1]],2],
+                color = color, linewidth=linewidth)
+    end
+
+  # drawcells(trichoplax.vertex, trichoplax.cell, color, linewidth)
 end
+
+# function drawcells(vertex, cell, color = RGB(.45, .25, 0.0), linewidth=1.0)
+#     @inbounds for i in 1:size(cell,1)
+#         lines!(vertex[cell[i,[1:6; 1]],1], vertex[cell[i,[1:6; 1]],2],
+#                 color = color, linewidth=linewidth)
+#     end
+# end
 
 function drawmap(trichoplax, color = :blue, linewidth = 0.5)
   drawcells(trichoplax.mapvertex, trichoplax.mapcell, color, linewidth)
@@ -61,7 +75,7 @@ function deformationEnergy(trichoplax)
     #   surface energy of external cell membrane segment of length L, Ex = σL
 
 
-    hk = 1.0  # half of cytoskeleton spring constant (k/2)
+    k2 = 1.0  # half of cytoskeleton spring constant (k/2)
     σ = 100.0  # surface energy density
 
     Es = 0.0
@@ -74,7 +88,7 @@ function deformationEnergy(trichoplax)
    # elastic energy in skeleton deformation
    for i in 1:size(e,1)
        r = sqrt(sum((vs[e[i,:],1] - vs[e[i,:],2]).^2))
-       Es = Es + hk*(r - r0)^2
+       Es = Es + k2*(r - r0)^2
    end
 
    # surface energy of external membranes
@@ -104,7 +118,7 @@ end
 
 
 # MAIN
-bodylayers = 2   # number of body cell layers
+bodylayers = 3 # number of body cell layers
 mapdepth = 1     # map layers
 celldiam = 10.0
 

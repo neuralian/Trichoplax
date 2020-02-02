@@ -15,23 +15,24 @@ using Makie
 using Colors
 
 export Trichoplax,
-                discworld, neighbours, makebody, findperimetervertices,
+                discworld, neighbour, makebody, findperimetervertices,
         smoothperimeter, makecellmap, makereceptivefields,
         drawdelaunaydisc, drawcells, drawskeleton, findperimeteredges,
-        peripheraltriangles
+        distalskeleton
 
 struct Skeleton
+  numlayers::Int64
+  edgelength::Float64
   vertex::Array{Float64,2}
   edge::Array{Int64,2}
-  numlayers::Int64
   layer::Vector{Array{Int64,1}}
-  neighbours::Array{Int64}
+  neighbour::Array{Int64}
 end
 
 struct Trichoplax
-  skeleton::Skeleton
   numlayers::Int64                   # number of layers of cells
   celldiam::Float64
+  skeleton::Skeleton
   vertex::Array{Float64}             # cell vertices
   cell::Array{Int64}                 # [i,j] index jth vertex of ith cell
   layer::Vector{Array{Int64,1} }     # [i][j] index jth cell in ith layer
@@ -42,156 +43,134 @@ struct Trichoplax
   mapcell
 end
 
-
 normaldistribution = Normal()
 
-function Skeleton(nlayers, layerwidth)
+numEdges(num_cells) = num_cells*6 + 9*num_cells*(num_cells-1)
+
+function Skeleton(nlayers, edgelength)
     # Delaunay-triangulated disc
     # returns (vertex, edge, layer)
     # vertex = Float64 N x 2 coordinates
     # link =  Int64 Nx2  pairs of vertex indices
     # layer = ith row points to vertices in ith layer
     # MGP Dec 2019
-poswobble = .0025   # noise on cell location (re. layerwidth)
-nvertices = 3*nlayers*(nlayers-1)+1
-vertex = fill(0.0,nvertices , 2)
-edge = fill(0, 6*nvertices, 2)
-layer = fill(Int64[],nlayers)
-nlayer = Vector{Int64}(undef,nlayers)
 
-nlayer[1] = 1
-xs = 0.0
-for i in 2:nlayers
-    fn = Float64(nlayer[i-1]) + 2.0π + xs
-    n = round(fn)
-    nlayer[i] = nlayer[i-1] + n
-    xs = fn - n
-end
+    poswobble = .0025   # noise on cell location (re. edgewidth)
+    nvertices = 3*nlayers*(nlayers-1)+1
+    vertex = fill(0.0,nvertices , 2)
+    edge = fill(0, 6*nvertices, 2)
+    layer = fill(Int64[],nlayers)
+    nlayer = Vector{Int64}(undef,nlayers)
 
-nlayer = vcat([1], [6*i for i in 1:nlayers-1]) # n cells in layer
+    nlayer[1] = 1
+    xs = 0.0
+    for i in 2:nlayers
+        fn = Float64(nlayer[i-1]) + 2.0π + xs
+        n = round(fn)
+        nlayer[i] = nlayer[i-1] + n
+        xs = fn - n
+    end
 
-nlinkpercell = fill(0, nvertices, 1)  # number of Delaunay links per cell
-icell = 1
-vertex[icell,:] = [0.0 0.0]  # cell at origin
-layer[1,1] = [1]
-iedge =0
-w = 0
-@inbounds for ilayer in 2:nlayers
-    layer[ilayer,:] = [fill(0,nlayer[ilayer])]
-    w = w + 2.0*(rand(1)[1] - 0.5)/nlayer[ilayer]
-    @inbounds for j in 1:nlayer[ilayer]
-        dw = rand(normaldistribution)
-        while abs(dw)>3.0
+    nlayer = vcat([1], [6*i for i in 1:nlayers-1]) # n cells in layer
+
+    nlinkpercell = fill(0, nvertices, 1)  # number of Delaunay links per cell
+    icell = 1
+    vertex[icell,:] = [0.0 0.0]  # cell at origin
+    layer[1,1] = [1]
+    iedge =0
+    w = 0
+    @inbounds for ilayer in 2:nlayers
+        layer[ilayer,:] = [fill(0,nlayer[ilayer])]
+        w = w + 2.0*(rand(1)[1] - 0.5)/nlayer[ilayer]
+        @inbounds for j in 1:nlayer[ilayer]
             dw = rand(normaldistribution)
-        end
-        dw= .1*dw/(ilayer*layerwidth)
-        dr = rand(normaldistribution)
-        while abs(dr)>3.0
+            while abs(dw)>3.0
+                dw = rand(normaldistribution)
+            end
+            dw= .1*dw/(ilayer*edgelength)
             dr = rand(normaldistribution)
-        end
-        dr = poswobble*dr
-        icell = icell + 1
-        layer[ilayer][j] = icell
-        vertex[icell,:] =
-        (ilayer-1)*(1.0+dr)*layerwidth.*
-        [ cos(2π*((j-1)/nlayer[ilayer])+w+dw)
-          sin(2π*((j-1)/nlayer[ilayer])+w+dw) ]
+            while abs(dr)>3.0
+                dr = rand(normaldistribution)
+            end
+            dr = poswobble*dr
+            icell = icell + 1
+            layer[ilayer][j] = icell
+            vertex[icell,:] =
+            (ilayer-1)*(1.0+dr)*edgelength.*
+            [ cos(2π*((j-1)/nlayer[ilayer])+w+dw)
+              sin(2π*((j-1)/nlayer[ilayer])+w+dw) ]
 
-        # Delaunay triangulation
-        if j>1
-            iedge = iedge + 1
-            edge[iedge, :] = [icell-1 icell]
-            nlinkpercell[icell-1] = nlinkpercell[icell-1]+1
-            nlinkpercell[icell] = nlinkpercell[icell]+1
-            #lines!(vertex[edge[iedge,:],1], vertex[edge[iedge,:],2])
-            #display(s)
+            # Delaunay triangulation
+            if j>1
+                iedge = iedge + 1
+                edge[iedge, :] = [icell-1 icell]
+                nlinkpercell[icell-1] = nlinkpercell[icell-1]+1
+                nlinkpercell[icell] = nlinkpercell[icell]+1
+            end
+        end
+        iedge = iedge + 1
+        edge[iedge, :] = [icell layer[ilayer][1]]
+        nlinkpercell[icell] = nlinkpercell[icell]+1
+        nlinkpercell[layer[ilayer][1]] = nlinkpercell[layer[ilayer][1]]+1
+    end
+
+    # complete Delaunay triangles
+    @inbounds for j in 1:6      # center cell special case, 6 links
+        iedge = iedge + 1
+        edge[iedge,:] = [1 j+1]
+        nlinkpercell[1] = nlinkpercell[1]+1
+        nlinkpercell[j+1] = nlinkpercell[j+1]+1
+    end
+
+    @inbounds for ilayer in 2:nlayers-1
+        ilink = [ nlayer[ilayer+1] 1 2]
+        link = layer[ilayer+1][ilink[1:3]]
+        @inbounds for i in 1:length(layer[ilayer])
+            #println((ilayer, link))
+            @inbounds for j in 1:length(link)            #global iedge = iedge + 1
+                iedge = iedge + 1
+                edge[iedge, :] = [layer[ilayer][i] link[j]]
+                nlinkpercell[layer[ilayer][i]] = nlinkpercell[layer[ilayer][i]]+1
+                nlinkpercell[link[j]] = nlinkpercell[link[j]]+1
+            end
+            if i<length(layer[ilayer])
+                link = link[end] .+ collect(0:(5-nlinkpercell[layer[ilayer][i+1]]))
+            end
         end
     end
-    iedge = iedge + 1
-    edge[iedge, :] = [icell layer[ilayer][1]]
-    nlinkpercell[icell] = nlinkpercell[icell]+1
-    nlinkpercell[layer[ilayer][1]] = nlinkpercell[layer[ilayer][1]]+1
-    #lines!(vertex[edge[iedge,:],1], vertex[edge[iedge,:],2])
-    #display(s)
-end
-# print((nvertices, icell))
-# nvertices = icell
-# vertex = vertex[1:nvertices,:]
+    edge = edge[1:iedge,:]
 
-# scatter!(vertex[:,1], vertex[:,2], markersize = layerwidth/4.)
-# @inbounds for i in 1:nlayers
-#      scatter!([vertex[layer[i][1], 1]], [vertex[layer[i][1],2]],
-#      markersize = .5, color = :red);
-#  end
-# display(s)
+    neighbour=skeleton_neighbours(vertex,edge)
 
-# complete Delaunay triangles
-@inbounds for j in 1:6      # center cell special case, 6 links
-    iedge = iedge + 1
-    edge[iedge,:] = [1 j+1]
-    nlinkpercell[1] = nlinkpercell[1]+1
-    nlinkpercell[j+1] = nlinkpercell[j+1]+1
-    #lines!(vertex[edge[iedge,:],1], vertex[edge[iedge,:],2])
-    #display(s)
+    #return (vertex, edge, layer)
+    return Skeleton(nlayers, edgelength, vertex, edge, layer, neighbour)
 end
 
-@inbounds for ilayer in 2:nlayers-1
-    ilink = [ nlayer[ilayer+1] 1 2]
-    link = layer[ilayer+1][ilink[1:3]]
-    @inbounds for i in 1:length(layer[ilayer])
-        #println((ilayer, link))
-        @inbounds for j in 1:length(link)            #global iedge = iedge + 1
-            iedge = iedge + 1
-            edge[iedge, :] = [layer[ilayer][i] link[j]]
-            nlinkpercell[layer[ilayer][i]] = nlinkpercell[layer[ilayer][i]]+1
-            nlinkpercell[link[j]] = nlinkpercell[link[j]]+1
-            # lines!(vertex[edge[iedge,:],1], vertex[edge[iedge,:],2])
-            # display(s)
-            # sleep(.05)
-        end
-        #println((link[end],nlinkpercell[layer[ilayer][i+1]] ))
-        if i<length(layer[ilayer])
-            link = link[end] .+ collect(0:(5-nlinkpercell[layer[ilayer][i+1]]))
-        end
-        #println(Link)
-    end
-end
-edge = edge[1:iedge,:]
+function skeleton_neighbours(vertex, edge)
+  # list neighbour vertices of each vertex
+  # each vertex has 6 neighbours, except in outermost layer which have 3 or 4
 
-nbrs=neighbours(vertex,edge,layer)
-
-#return (vertex, edge, layer)
-return Skeleton(vertex, edge, nlayers, layer, nbrs)
-
-end
-
-
-
-function neighbours(nucleus, dlink, layer)
-  # index the neighbour nuclei of each nucleus
-  # each nucleus has 6 neighbours, except the outer layer which have 3 or 4
-
-  ncells = size(nucleus, 1)
+  ncells = size(vertex, 1)
   neighbour = fill(0, ncells, 6)   # neighbour indices for each cell
-  n_neighbour = fill(0, ncells)       # number of neighbours found
+  n_neighbour = fill(0, ncells)       # number of neighbour found
 
-  # find neighbours of each cell
-  @inbounds for i in 1:size(dlink,1)
-    a = dlink[i,1]
-    b = dlink[i,2]
+  # find neighbour of each cell
+  @inbounds for i in 1:size(edge,1)
+    a = edge[i,1]
+    b = edge[i,2]
     n_neighbour[a] = n_neighbour[a]+1
     n_neighbour[b] = n_neighbour[b]+1
     neighbour[a, n_neighbour[a]] = b
     neighbour[b, n_neighbour[b]] = a
   end
-  # put neighbours in counterclockwise order
+  # sort into counterclockwise order
   # nb row 1 is already ccw
   @inbounds for i in 2:ncells
     n = count(x->(x>0), neighbour[i,:])
-    dx = nucleus[neighbour[i,1:n],1].-nucleus[i,1]
-    dy = nucleus[neighbour[i,1:n],2].-nucleus[i,2]
+    dx = vertex[neighbour[i,1:n],1].-vertex[i,1]
+    dy = vertex[neighbour[i,1:n],2].-vertex[i,2]
     theta = atan.(dy,dx)
-    theta = theta .+ (π - atan(nucleus[i,2], nucleus[i,1]))
+    theta = theta .+ (π - atan(vertex[i,2], vertex[i,1]))
     i0 = findall(x->(x<-π), theta)
     theta[i0] = theta[i0] .+ 2π
     i1 = findall(x->(x>π), theta)
@@ -202,79 +181,75 @@ function neighbours(nucleus, dlink, layer)
   neighbour
 end
 
-function peripheraltriangles(neighbour, layer)
-  # skeleton triangles that define peripheral cell vertices
+function distalskeleton(neighbour, layer)
+    # skeleton triangles that define peripheral cell vertices
 
-  # number of triangles is 2xnumber of vertices in next-to-last layer
-  # plus the number of vertices with only 3 neighbours
-  N = size(neighbour, 1)  # number of vertices in skeleton
-  n3 = 0
-  for i in 1:N
-    if count(x->(x>0), neighbour[i,:])==3
-        n3 = n3 + 1
+    # number of triangles is 2xnumber of vertices in next-to-last layer
+    # plus the number of vertices with only 3 neighbour
+    N = size(neighbour, 1)  # number of vertices in skeleton
+    n3 = 0
+    for i = 1:N
+        if count(x -> (x > 0), neighbour[i, :]) == 3
+            n3 = n3 + 1
+        end
     end
-  end
-  numtriangles = size(layer[end-1])[1]*2+n3
-  triangle = fill(0,numtriangles,3 )
+    numtriangles = size(layer[end-1])[1] * 2 + n3
+    triangle = fill(0, numtriangles, 3)
 
-  # start at last skeleton vertex and work backwards
-  n = N  # index skeleton vertex
-  n_nbrs = count(x->(x>0), neighbour[n,:])
-  i = 0   # index triangles
-  while n_nbrs < 6     # outer ring of skeleton vertices have < 6 neighbours
-      for j in 2:n_nbrs
-          T = [n neighbour[n,j-1] neighbour[n,j]]
-          alreadyfound = false
-          for k in 1:i
-            if any(isequal(T[1]), triangle[k,:]) &&
-               any(isequal(T[2]), triangle[k,:]) &&
-               any(isequal(T[3]), triangle[k,:])
-               alreadyfound = true
-               break
+    # start at last skeleton vertex and work backwards
+    n = N  # index skeleton vertex
+    n_nbrs = count(x -> (x > 0), neighbour[n, :])
+    i = 0   # index triangles
+    while n_nbrs < 6     # outer ring of skeleton vertices have < 6 neighbour
+        for j = 2:n_nbrs
+            T = [n neighbour[n, j-1] neighbour[n, j]]
+            alreadyfound = false
+            for k = 1:i
+                if any(isequal(T[1]), triangle[k, :]) &&
+                   any(isequal(T[2]), triangle[k, :]) &&
+                   any(isequal(T[3]), triangle[k, :])
+                    alreadyfound = true
+                    break
+                end
             end
-           end
-           if !alreadyfound
-               i = i + 1
-               triangle[i,:] = T
-           end
-       end
-     n = n-1
-     n_nbrs = count(x->(x>0), neighbour[n,:])
-  end
-  println(i, numtriangles)
-  triangle
-end # peripheraltriangles
+            if !alreadyfound
+                i = i + 1
+                triangle[i, :] = T
+            end
+        end
+        n = n - 1
+        n_nbrs = count(x -> (x > 0), neighbour[n, :])
+    end
+    triangle
+end # distalskeleton
 
-function makebody(nucleus, neighbour, dlayer)
+function makebody(skeleton)
   # construct cells
-  # returns (vertex, cell, vlink, clayer)
+  # returns (vertex, cell, edge, layer)
   #  vertex = vertices of cell membrane (6 per cell)
   #  cell[i,:] = indices of 6 vertices of ith cell
-  #  vlink = Nx2 array of indices to ends of each membrane segment
-  #  clayer = index of cells in each layer
-  #  e.g. cell[clayer[end][1], :] points to vertices of first cell in last layer
-  #  vertex[cell[clayer[end][1], :],:]  is 6x2 array of vertices of this cell
+  #  edge = Nx2 array of indices to ends of each membrane segment
+  #  layer = index of cells in each layer
+  #  e.g. cell[layer[end][1], :] points to vertices of first cell in last layer
+  #  vertex[cell[layer[end][1], :],:]  is 6x2 array of vertices of this cell
   # MGP Dec 2019
 
   # tolerance for merging vertices.
-  # nb assuming nucleus_1 is next to nucleus_2, so distance between them
-  # is cell diameter
-  tol = 0.1*sqrt((nucleus[1,1]-nucleus[2,1])^2 + (nucleus[1,2]-nucleus[2,2])^2)
+  tol = 0.1*skeleton.edgelength
 
-
-  ncells = dlayer[end-1][end]       #
+  ncells = skeleton.layer[end-1][end]       #
   vertex = fill(0.0, 6*ncells, 2 )  # vertex coordinates
   cell = fill(0, ncells, 6)         # vertex indices for each cell
-  vlink = fill(0, 6*ncells, 2)       # vertex indices for each vlink
+  edge = fill(0, numEdges(ncells), 2)       # vertex indices for each edge
 
   nvertex = 0
-  nvlink = 0
+  nedge = 0
   @inbounds for i in 1:ncells
       for j in 1:6
-        k = neighbour[i,j]
-        m = neighbour[i, j%6+1]
-        x = (nucleus[i,1] + nucleus[k,1] + nucleus[m,1])/3.
-        y = (nucleus[i,2] + nucleus[k,2] + nucleus[m,2])/3.
+        k = skeleton.neighbour[i,j]
+        m = skeleton.neighbour[i, j%6+1]
+        x = sum(skeleton.vertex[[i k m],1])/3.
+        y = sum(skeleton.vertex[[i k m],2])/3.
         vertex_exists = false
         @inbounds for n in 1:nvertex
             if sqrt( (x-vertex[n,1])^2 + (y-vertex[n,2])^2) < tol
@@ -289,41 +264,40 @@ function makebody(nucleus, neighbour, dlayer)
                 cell[i,j] = nvertex
         end # !vertex_exists
 
-        # build list of vlinks (cell membrane segments)
-        vlink_exists = false
+        # build list of edges (cell membrane segments)
+        edge_exists = false
         if j>1
-            e = sort([cell[i,j-1] cell[i,j]], dims=2)  # vlink
-            @inbounds for i1 in 1:nvlink
-                if vec(e)==vlink[i1,:]
-                    vlink_exists = true
+            e = sort([cell[i,j-1] cell[i,j]], dims=2)  # edge
+            @inbounds for i1 in 1:nedge
+                if vec(e)==edge[i1,:]
+                    edge_exists = true
                     break
                 end
             end # for i1
-            if !vlink_exists
-            nvlink = nvlink + 1
-            vlink[nvlink,:] = e
-            end # !vlink_exists
+            if !edge_exists
+            nedge = nedge + 1
+            edge[nedge,:] = e
+            end # !edge_exists
         end # if j>1
-        # 6th vlink links last and first vertex
-        vlink_exists = false
+        # 6th edge links last and first vertex
+        edge_exists = false
         if j==6
             e = sort([cell[i,j] cell[i,1]], dims=2)
-            for i1 in 1:nvlink
-                if vec(e)==vlink[i1,:]
-                    vlink_exists = true
+            for i1 in 1:nedge
+                if vec(e)==edge[i1,:]
+                    edge_exists = true
                     break
                 end
             end # for i1
-            if !vlink_exists
-                nvlink = nvlink + 1
-                vlink[nvlink,:] = e
-            end # !vlink_exists
+            if !edge_exists
+                nedge = nedge + 1
+                edge[nedge,:] = e
+            end # !edge_exists
         end # j==6
     end # for j
     end # for i
-  (vertex[1:nvertex,:], cell, vlink[1:nvlink, :], dlayer[1:(end-1)])
+  (vertex[1:nvertex,:], cell, edge, skeleton.layer[1:(end-1)])
 end #cells()
-
 
 function findperimetervertices(cell, vlink, clayer)
     # find vertices on edge of disc
@@ -420,18 +394,12 @@ function smoothperimeter(vertex, op, cp, ip)
     vertex
 end
 
-function Trichoplax(layers, celldiam, mapdepth)
+function Trichoplax(numlayers, celldiameter, mapdepth)
 
-  skeleton = Skeleton(layers+1, celldiam)
-
-  nbrs=neighbours(skeleton.vertex,skeleton.edge,skeleton.layer)
+  skeleton = Skeleton(numlayers+1, celldiameter)
 
   # make celllayers layers of hexagonal cells (Voronoi tesselation)
-  ncells = 3*layers*(layers-1)+1
-  (vertex, cell, link, layer) =
-            makebody(skeleton.vertex,
-                    skeleton.neighbours,
-                    skeleton.layer[1:layers+1])
+  (vertex, cell, link, layer) = makebody(skeleton)
 
   # perimeter vertices in 3 classes
   perimetervertex = findperimetervertices(cell, link, layer)
@@ -440,10 +408,10 @@ function Trichoplax(layers, celldiam, mapdepth)
 
   (mapvertex,mapcell) = makecellmap(vertex, cell, layer, mapdepth);
 
-  return Trichoplax(skeleton, layers, celldiam, vertex, cell, layer, link,
+  return Trichoplax(numlayers, celldiameter, skeleton,
+       vertex, cell, layer, link,
        skinvertex, mapdepth, mapvertex, mapcell)
 end
-
 
 function makecellmap(vertex, cell, clayer, mapwidth)
     # reflect outer layers of cells into environment
@@ -487,7 +455,6 @@ function makecellmap(vertex, cell, clayer, mapwidth)
     end
 
     (mapvertex, mapcell)
-
 end
 
 function makereceptivefields(vertex, cell, clayer, mapwidth)
@@ -521,26 +488,17 @@ function makereceptivefields(vertex, cell, clayer, mapwidth)
     end
 
     return rfcenter
-
 end
 
-
-function drawdelaunaydisc(dlink,color = RGB(0.25, 0.25, 0.25), linewidth = 0.5)
-    @inbounds for i = 1:size(dlink, 1)
-      lines!(
-        cellcentroid[dlink[i, :], 1],
-        cellcentroid[dlink[i, :], 2],
-        color = color, linewidth = linewidth
-        )
-    end
-end
-
-function drawcells(vertex, cell, color = RGB(.45, .25, 0.0), linewidth=1.0)
-    @inbounds for i in 1:size(cell,1)
-        lines!(vertex[cell[i,[1:6; 1]],1], vertex[cell[i,[1:6; 1]],2],
-                color = color, linewidth=linewidth)
-    end
-end
+# function drawdelaunaydisc(dlink,color = RGB(0.25, 0.25, 0.25), linewidth = 0.5)
+#     @inbounds for i = 1:size(dlink, 1)
+#       lines!(
+#         cellcentroid[dlink[i, :], 1],
+#         cellcentroid[dlink[i, :], 2],
+#         color = color, linewidth = linewidth
+#         )
+#     end
+# end
 
 
 
@@ -550,7 +508,5 @@ end
 #         lines!(vertex[vlink[i,:],1], vertex[vlink[i,:],2])
 #     end
 # end
-
-
 
 end  # module Placozoan

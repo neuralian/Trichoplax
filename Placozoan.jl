@@ -39,6 +39,10 @@ struct Trichoplax
   mapdepth::Int64                    # number of cell layers in sensory map
   mapvertex
   mapcell
+  k2::Array{Float64,1}  # half of cytoskeleton spring constant (k/2)
+  σ::Array{Float64,1}   # surface energy density
+  # nb fields are immutable
+  #    Declaring k2 & σ as arrays allows access via e.g. trichoplax.k2[]
 end
 
 normaldistribution = Normal()
@@ -406,7 +410,7 @@ function Trichoplax(numlayers, celldiameter, mapdepth)
   (mapvertex,mapcell) = ([], []) #makecellmap(vertex, cell, layer, mapdepth);
 
   return Trichoplax(skeleton, vertex, cell, edge,
-       skinvertex, mapdepth, mapvertex, mapcell)
+       skinvertex, mapdepth, mapvertex, mapcell, [1.0], [1.0])
 end
 
 function makecellmap(vertex, cell, clayer, mapwidth)

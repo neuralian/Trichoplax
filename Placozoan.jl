@@ -12,7 +12,7 @@
 #
 # using Distributions
 using Makie
-# using Colors
+using Colors
 
 # export Trichoplax,
 #                 discworld, neighbour, makebody, findperimetervertices,
@@ -22,7 +22,7 @@ using Makie
 
 struct Skeleton
     vertex::Array{Float64,2}          # ?x2 vertices
-    #edge::Array{Int64,2}              # ?x2 edges forming Delaunay Δ-ation
+    link::Array{Int64,2}              # ?x2 edges forming Delaunay Δ-ation
     edgelength::Float64               # nominal edge length (= cell diameter)
     layercount::Array{Int64,1}        # vertices in ith layer
     neighbour::Array{Int64,2}         # 6 neighbours of each internal vertex
@@ -50,7 +50,7 @@ end
 
 # normaldistribution = Normal()
 
-numEdges(num_cells) = num_cells*6 + 9*num_cells*(num_cells-1)
+#numLinks(num_cells) = num_cells*6 + 9*num_cells*(num_cells-1)
 
 function skeletonlayercount(n_cell_layers)
     # number of vertices in each skeleton layer given number of cell layers
@@ -120,6 +120,36 @@ function neighbours(v, layercount)
     end
 
     return neighbour
+end
+
+function links(v,neighbour, layercount)
+    # links between skeleton vertices (= links between cells)
+
+    numLinks(nlayers) = 3*nlayers*(3*nlayers-1)
+    nCells = sum(layercount[1:(end-1)])
+    nLinks = numLinks(size(layercount,1)-1)
+
+    link = fill(0, nLinks, 2)
+    countLink = 0  # number of links found
+
+    for i in 1:nCells
+        for j in 1:6
+            # candidate link from ith cell to its jth neighbour
+            candidate = sort([i neighbour[i,j]], dims=2)
+            already_found = false
+            for k in 1:countLink
+                if candidate==link[k,:]'
+                    already_found = true
+                    break
+                end
+            end
+            if !already_found
+                countLink = countLink + 1
+                link[countLink,:] = candidate
+            end
+        end
+    end
+   return link
 end
 
 function plotneighbours(v, nbrs)
@@ -218,9 +248,18 @@ function draw(trichoplax::Trichoplax, color=:black, linewidth = .25)
                trichoplax.vertex[trichoplax.cell[i,[1:6; 1]],2],
                 color = color, linewidth=linewidth)
     end
-
 end
 
+function drawskeleton(trichoplax::Trichoplax,
+         color = RGB(.25,.65,.25), linewidth = 0.25)
+  tsv = trichoplax.skeleton.vertex
+  link = trichoplax.skeleton.link
+
+  for i in 1:size(link,1)
+      lines!(tsv[link[i, :],1], tsv[link[i, :],2],
+             color=color, linewidth=linewidth)
+  end
+end
 
 function skeletonEnergy(vertex::Vector{Float64}, trichoplax::Trichoplax)
 #  potential energy in skeleton deformation + surface energy.
@@ -289,10 +328,10 @@ function Skeleton(n_cell_layers, cell_diameter)
     layercount = skeletonlayercount(n_cell_layers)
     vertex = skeletonvertices(layercount, cell_diameter)
     neighbour = neighbours(vertex, layercount)
-
+    link = links(vertex,neighbour, layercount)
     # distalΔ = distalskeleton(nbr, layer)
 
-    return Skeleton(vertex, cell_diameter, layercount, neighbour)
+    return Skeleton(vertex, link, cell_diameter, layercount, neighbour)
 end
 
 # function findperimetervertices(cell, vlink, clayer)

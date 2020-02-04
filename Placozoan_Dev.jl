@@ -1,10 +1,10 @@
 # Placozoan_Dev.jl
 
-using Makie
-using Colors
-#using LinearAlgebra
-using Statistics
-using Placozoan
+# using Makie
+# using Colors
+# #using LinearAlgebra
+# using Statistics
+# using Placozoan
 
 
 
@@ -14,14 +14,7 @@ function drawmap(trichoplax, color = :blue, linewidth = 0.5)
 
 end
 
-function drawskeleton(trichoplax::Trichoplax,
-         color = RGB(.25,.65,.25), linewidth = 0.25)
-  for link in 1:size(trichoplax.skeleton.edge,1)
-      lines!(trichoplax.skeleton.vertex[trichoplax.skeleton.edge[link, :],1],
-             trichoplax.skeleton.vertex[trichoplax.skeleton.edge[link, :],2],
-             color=color, linewidth=linewidth)
-  end
-end
+
 
 
 function paint(trichoplax, color = :red)
@@ -96,21 +89,21 @@ end
 
 
 # MAIN
-bodylayers = 3 # number of body cell layers
-mapdepth = 1     # map layers
+bodylayers = 4 # number of body cell layers
+# mapdepth = 1     # map layers
 celldiam = 10.0
 
 
 
 
-@time trichoplax = Trichoplax(bodylayers, celldiam, mapdepth)
-trichoplax.k2[] = 1.0   # cytoskeleton spring constant /2
-trichoplax.σ[] =25.0    # cell surface energy density
+@time trichoplax = Trichoplax(bodylayers, celldiam)
+# trichoplax.k2[] = 1.0   # cytoskeleton spring constant /2
+# trichoplax.σ[] =25.0    # cell surface energy density
 
 # Draw
 s = Scene(resolution = (800,800), scale_plot = false)
-draw(trichoplax, :red)
+draw(trichoplax, RGB(.85, .35, .25), 2.0)
 #drawmap(trichoplax, :orange, 1.0)
-drawskeleton(trichoplax, RGB(.0, .65, .0), .5)
+drawskeleton(trichoplax, RGB(.45, .0, .5), .5)
 
 display(s)

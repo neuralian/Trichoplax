@@ -8,486 +8,489 @@
 #
 # MGP 2019-2020
 
-module Placozoan
-
-using Distributions
+# module Placozoan
+#
+# using Distributions
 using Makie
-using Colors
+# using Colors
 
-export Trichoplax,
-                discworld, neighbour, makebody, findperimetervertices,
-        smoothperimeter, makecellmap, makereceptivefields,
-        drawdelaunaydisc, drawcells, drawskeleton, findperimeteredges,
-        distalskeleton
+# export Trichoplax,
+#                 discworld, neighbour, makebody, findperimetervertices,
+#         smoothperimeter, makecellmap, makereceptivefields,
+#         drawdelaunaydisc, drawcells, drawskeleton, findperimeteredges,
+#         distalskeleton
 
 struct Skeleton
-  numlayers::Int64                  # number of skeleton layers (celllayers + 1)
-  edgelength::Float64               # nominal edge length (= cell diameter)
-  vertex::Array{Float64,2}          # ?x2 vertices
-  edge::Array{Int64,2}              # ?x2 edges forming Delaunay Δ-ation
-  layer::Vector{Array{Int64,1}}     # [i][j] = jth vertex in ith layer
-  neighbour::Array{Int64,2}         # ?x6 neighbours of each vertex
-  distalΔ::Array{Int64,2}           # ?x3 vertices of outer layer of triangles
+    vertex::Array{Float64,2}          # ?x2 vertices
+    #edge::Array{Int64,2}              # ?x2 edges forming Delaunay Δ-ation
+    edgelength::Float64               # nominal edge length (= cell diameter)
+    layercount::Array{Int64,1}        # vertices in ith layer
+    neighbour::Array{Int64,2}         # 6 neighbours of each internal vertex
+    # distalΔ::Array{Int64,2}         # ?x3 vertices of outer layer of triangles
 end
 
 struct Trichoplax
-  skeleton::Skeleton
-  vertex::Array{Float64}             # cell vertices
-  cell::Array{Int64}                 # [i,j] index jth vertex of ith cell
-  edge::Array{Int64}                 # [i,:] index links between cells
-  skinvertex::Array{Int64}           #  skin vertex indices
-  mapdepth::Int64                    # number of cell layers in sensory map
-  mapvertex
-  mapcell
-  k2::Array{Float64,1}  # half of cytoskeleton spring constant (k/2)
-  σ::Array{Float64,1}   # surface energy density
-  # nb fields are immutable
-  #    Declaring k2 & σ as arrays allows access via e.g. trichoplax.k2[]
+    nlayers::Int64
+    skeleton::Skeleton
+    vertex::Array{Float64}    # cell vertices
+    cell::Array{Int64}        # index vertices for each cell
+    triangle::Array{Int64,2}  # skeleton vertex triangles containing
+                              #    cell vertices
+    skinstart::Int64          # triangle[skinstart:end,:] gives skin vertices
+    # edge::Array{Int64}                 # [i,:] index links between cells
+    # skinvertex::Array{Int64}           #  skin vertex indices
+    # mapdepth::Int64                    # number of cell layers in sensory map
+    # mapvertex
+    # mapcell
+    # k2::Array{Float64,1}  # half of cytoskeleton spring constant (k/2)
+    # σ::Array{Float64,1}   # surface energy density
+    # nb fields are immutable
+    #    Declaring k2 & σ as arrays allows access via e.g. trichoplax.k2[]
 end
 
-normaldistribution = Normal()
+# normaldistribution = Normal()
 
 numEdges(num_cells) = num_cells*6 + 9*num_cells*(num_cells-1)
 
-function Skeleton(nlayers, edgelength)
-    # Delaunay-triangulated disc
-    # returns (vertex, edge, layer)
-    # vertex = Float64 N x 2 coordinates
-    # link =  Int64 Nx2  pairs of vertex indices
-    # layer = ith row points to vertices in ith layer
-    # MGP Dec 2019
+function skeletonlayercount(n_cell_layers)
+    # number of vertices in each skeleton layer given number of cell layers
 
-    poswobble = .0025   # noise on cell location (re. edgewidth)
-    nvertices = 3*nlayers*(nlayers-1)+1
-    vertex = fill(0.0,nvertices , 2)
-    edge = fill(0, 6*nvertices, 2)
-    layer = fill(Int64[],nlayers)
-    nlayer = Vector{Int64}(undef,nlayers)
-
-    nlayer[1] = 1
-    xs = 0.0
-    for i in 2:nlayers
-        fn = Float64(nlayer[i-1]) + 2.0π + xs
-        n = round(fn)
-        nlayer[i] = nlayer[i-1] + n
-        xs = fn - n
-    end
-
-    nlayer = vcat([1], [6*i for i in 1:nlayers-1]) # n cells in layer
-
-    nlinkpercell = fill(0, nvertices, 1)  # number of Delaunay links per cell
-    icell = 1
-    vertex[icell,:] = [0.0 0.0]  # cell at origin
-    layer[1,1] = [1]
-    iedge =0
-    w = 0
-    @inbounds for ilayer in 2:nlayers
-        layer[ilayer,:] = [fill(0,nlayer[ilayer])]
-        w = w + 2.0*(rand(1)[1] - 0.5)/nlayer[ilayer]
-        @inbounds for j in 1:nlayer[ilayer]
-            dw = rand(normaldistribution)
-            while abs(dw)>3.0
-                dw = rand(normaldistribution)
-            end
-            dw= .1*dw/(ilayer*edgelength)
-            dr = rand(normaldistribution)
-            while abs(dr)>3.0
-                dr = rand(normaldistribution)
-            end
-            dr = poswobble*dr
-            icell = icell + 1
-            layer[ilayer][j] = icell
-            vertex[icell,:] =
-            (ilayer-1)*(1.0+dr)*edgelength.*
-            [ cos(2π*((j-1)/nlayer[ilayer])+w+dw)
-              sin(2π*((j-1)/nlayer[ilayer])+w+dw) ]
-
-            # Delaunay triangulation
-            if j>1
-                iedge = iedge + 1
-                edge[iedge, :] = [icell-1 icell]
-                nlinkpercell[icell-1] = nlinkpercell[icell-1]+1
-                nlinkpercell[icell] = nlinkpercell[icell]+1
-            end
-        end
-        iedge = iedge + 1
-        edge[iedge, :] = [icell layer[ilayer][1]]
-        nlinkpercell[icell] = nlinkpercell[icell]+1
-        nlinkpercell[layer[ilayer][1]] = nlinkpercell[layer[ilayer][1]]+1
-    end
-
-    # complete Delaunay triangles
-    @inbounds for j in 1:6      # center cell special case, 6 links
-        iedge = iedge + 1
-        edge[iedge,:] = [1 j+1]
-        nlinkpercell[1] = nlinkpercell[1]+1
-        nlinkpercell[j+1] = nlinkpercell[j+1]+1
-    end
-
-    @inbounds for ilayer in 2:nlayers-1
-        ilink = [ nlayer[ilayer+1] 1 2]
-        link = layer[ilayer+1][ilink[1:3]]
-        @inbounds for i in 1:length(layer[ilayer])
-            #println((ilayer, link))
-            @inbounds for j in 1:length(link)            #global iedge = iedge + 1
-                iedge = iedge + 1
-                edge[iedge, :] = [layer[ilayer][i] link[j]]
-                nlinkpercell[layer[ilayer][i]] = nlinkpercell[layer[ilayer][i]]+1
-                nlinkpercell[link[j]] = nlinkpercell[link[j]]+1
-            end
-            if i<length(layer[ilayer])
-                link = link[end] .+ collect(0:(5-nlinkpercell[layer[ilayer][i+1]]))
-            end
-        end
-    end
-    edge = edge[1:iedge,:]
-
-    nbr=skeleton_neighbours(vertex,edge)
-    distalΔ = distalskeleton(nbr, layer)
-
-    #return (vertex, edge, layer)
-    return Skeleton(nlayers, edgelength, vertex, edge, layer, nbr, distalΔ)
+   return vcat([1], [6*i for i in 1:n_cell_layers])
 end
 
-function skeleton_neighbours(vertex, edge)
-  # list neighbour vertices of each vertex
-  # each vertex has 6 neighbours, except in outermost layer which have 3 or 4
+function skeletonvertices(layercount, edgelength)
+    #
 
-  ncells = size(vertex, 1)
-  neighbour = fill(0, ncells, 6)   # neighbour indices for each cell
-  n_neighbour = fill(0, ncells)       # number of neighbour found
+    nlayers = length(layercount)
+    nvertices = sum(layercount)
+    vertex = fill(0.0, nvertices, 2)  # vertex 1 is [0,0]
 
-  # find neighbour of each cell
-  @inbounds for i in 1:size(edge,1)
-    a = edge[i,1]
-    b = edge[i,2]
-    n_neighbour[a] = n_neighbour[a]+1
-    n_neighbour[b] = n_neighbour[b]+1
-    neighbour[a, n_neighbour[a]] = b
-    neighbour[b, n_neighbour[b]] = a
+    i = 1                         # initial vertex index
+    for j in 2:nlayers            # for each layer
+        r = (sqrt(3)/2)*(j-1)*edgelength      # base radius
+        for k in 1:layercount[j]  # for each vertex in layer
+            i = i + 1
+            θ = 2π*(k-1)/layercount[j]
+            vertex[i,:] = r*[cos(θ) sin(θ)]
+        end
+    end
+    return vertex
+end
+
+function vertexdistance(v)
+    # D[i,j] = distance from ith to jth vertex
+
+    n = size(v,1)
+    D = fill(0.0, n, n)
+    for i in 1:n
+        for j in 1:n
+            D[i,j] = sqrt( (v[i,1]-v[j,1])^2 + (v[i,2]-v[j,2])^2 )
+        end
+    end
+
+    return D
+end
+
+function neighbours(v, layercount)
+    # 6 neighbours of each skeleton vertex, not including outer layer
+    # sorted into counterclockwise order
+
+    n = sum(layercount[1:(end-1)])   # number of vertices with 6 neighbours
+    D = vertexdistance(v)
+    neighbour = fill(0, n, 6)
+
+    # closest 6 neighbours of each vertex
+    for i in 1:n
+        order = sortperm(D[:,i])  # list vertices in order of distance from ith
+        neighbour[i, :] = order[2:7] # nb closest vertex order[1]==self
+    end
+
+    # sort neighbours anticlockwise around self
+    for i in 1:n
+      dx = v[neighbour[i,:],1].-v[i,1]
+      dy = v[neighbour[i,:],2].-v[i,2]
+      θ = atan.(dy,dx)
+      θ = θ .+ (π - atan(v[i,2], v[i,1]))
+      i0 = findall(x->(x<-π), θ)
+      θ[i0] = θ[i0] .+ 2π
+      i1 = findall(x->(x>π), θ)
+      θ[i1] = θ[i1] .- 2π
+      order = sortperm(θ)
+      neighbour[i,:] = neighbour[i, order]
+    end
+
+    return neighbour
+end
+
+function plotneighbours(v, nbrs)
+    for i in 1:size(nbrs,1)
+        for j = 1:6
+            plot!(vec([v[i,1] v[nbr[i,j],1]]), vec([v[i,2] v[nbr[i,j],2]]))
+        end
+    end
+
+end
+
+function makecells(skeleton)
+    # cell vertices given skeleton vertices v & neighbours nbr
+    # also returns index of vertices for each cell
+    #  and index of skeleton triangles containing cell vertices
+    #  so that cell vertices can be quickly updated when skeleton moves
+
+    tol = .01*skeleton.edgelength
+
+    nCells = size(skeleton.neighbour,1)
+    nVertices = 6*(size(skeleton.layercount,1)-1)^2
+    vertex = fill(0.0, nVertices, 2 )
+    triangle = fill(0, nVertices, 3) # skeleton triangle containing vertex
+    cell = fill(0, nCells, 6)  # index 6 vertices per cell
+
+    v = skeleton.vertex  # alias for code clarity (nb. no copy, v is a pointer)
+    nbr = skeleton.neighbour
+
+    n_vertex = 0
+    n_cell = 0
+    found_index = 0
+    for i_cell in 1:nCells
+        for j in 1:6
+            k = j==6 ? 1 : j+1
+            # compute cell vertex coords at centre of skeleton (i,j,k) triangle
+            x = sum([v[i_cell,1] v[nbr[i_cell,j],1] v[nbr[i_cell,k],1]])/3.
+            y = sum([v[i_cell,2] v[nbr[i_cell,j],2] v[nbr[i_cell,k],2]])/3.
+
+            # is vertex already found?
+            already_found = false
+            for i_vertex in 1:n_vertex
+                if (abs(x-vertex[i_vertex,1])<tol) &&
+                   (abs(y-vertex[i_vertex,2])<tol)
+                    already_found = true
+                    found_index = i_vertex
+                    break
+                end
+            end
+            if already_found                   # point to existing vertex
+                cell[i_cell,j] = found_index
+            else                               # create new vertex
+                n_vertex = n_vertex + 1        # and record triangle containing it
+                vertex[n_vertex,:] = [x,y]
+                cell[i_cell, j] = n_vertex
+                triangle[n_vertex,:] = [i_cell nbr[i_cell,j] nbr[i_cell,k]]
+            end
+
+        end
+    end
+
+    return (vertex, cell, triangle)
+
+end
+
+function updatecells(trichoplax)
+    #    function updatecells(v,triangle)
+
+    n = size(trichoplax.triangle, 1)
+    vertex = fill(0.0, n, 2)
+    for i in 1:n
+        vertex[i,:] = sum(v[trichoplax.triangle[i,:],:], dims=1)/3.
+    end
+    return vertex
+end
+
+
+function skinvertex(trichoplax)
+    # external vertices
+
+    i0 = trichoplax.skinstart
+    n = size(trichoplax.triangle, 1) - i0 + 1
+    skinvertex = fill(0.0, n, 2)
+    v = trichoplax.skeleton.vertex
+    for i in 1:n
+        skinvertex[i,:] = sum(v[trichoplax.triangle[i+i0-1,:],:], dims=1)/3.
+    end
+    return skinvertex
+end
+
+
+
+function draw(trichoplax::Trichoplax, color=:black, linewidth = .25)
+
+    @inbounds for i in 1:size(trichoplax.cell,1)
+        lines!(trichoplax.vertex[trichoplax.cell[i,[1:6; 1]],1],
+               trichoplax.vertex[trichoplax.cell[i,[1:6; 1]],2],
+                color = color, linewidth=linewidth)
+    end
+
+end
+
+
+function skeletonEnergy(vertex::Vector{Float64}, trichoplax::Trichoplax)
+#  potential energy in skeleton deformation + surface energy.
+#   skeleton edges are linear springs Es = (1/2)k(r-ro)^2
+#   surface energy σ per unit length of exposed membrane
+#  skeleton energy with specified vertices
+# (vertex = trichoplax.skeleton.vertex[:], i.e. nv x 2 flattened to 2*nv x 1
+k2 = 1.0  # half of cytoskeleton spring constant (k/2)
+σ = 1.0  # surface energy density
+    Es = 0.0
+    nv = size(trichoplax.skeleton.vertex,1)
+    for i in 1:size(trichoplax.skeleton.edge,1)
+        r = sqrt(  ( vertex[trichoplax.skeleton.edge[i,1]] -
+                     vertex[trichoplax.skeleton.edge[i,2]]    ) ^2 +
+                   ( vertex[trichoplax.skeleton.edge[i,1]+nv] -
+                     vertex[trichoplax.skeleton.edge[i,2]+nv] ) ^2
+                )
+        Es = Es + k2*(r - trichoplax.skeleton.edgelength)^2
+
+    end
+
+    # surface energy of external membranes
+    Lx = 0.0    # initialize external surface length to 0
+    sv = skinvertex
+    n = length(x)
+    for i in 2:n
+        Lx = Lx + sqrt( (x[i]-x[i-1]).^2 + (y[i]-y[i-1]).^2)
+    end
+    # include edge from last to first vertex (close the loop)
+    Lx = Lx + sqrt( (x[n]-x[1]).^2 + (y[n]-y[1]).^2)
+
+    #println(Es, ", ", σ*Lx)
+     return (Es +  σ*Lx)
+
+
+end
+
+function skeletonEnergyGradient(dv, vertex::Vector{Float64}, trichoplax::Trichoplax)
+
+    n = length(vertex)
+    ∇ = fill(0.0, n )
+    E0 = skeletonEnergy(vertex, trichoplax)
+    for i in 1:n
+        vertex[i] = vertex[i] + dv
+        ∇[i] = (skeletonEnergy(vertex, trichoplax) - E0)/dv
+        vertex[i] = vertex[i] - dv
+    end
+    ∇
+end
+
+
+function morph(trichoplax)
+  s = size(trichoplax.skeleton.vertex)
+  for t = 1:100
+      v = trichoplax.skeleton.vertex[:]
+      ∇ = skeletonEnergyGradient(.01, v, trichoplax)
+      trichoplax.skeleton.vertex[:,:] = reshape(v - .005*∇, s...)
   end
-  # sort into counterclockwise order
-  # nb row 1 is already ccw
-  @inbounds for i in 2:ncells
-    n = count(x->(x>0), neighbour[i,:])
-    dx = vertex[neighbour[i,1:n],1].-vertex[i,1]
-    dy = vertex[neighbour[i,1:n],2].-vertex[i,2]
-    theta = atan.(dy,dx)
-    theta = theta .+ (π - atan(vertex[i,2], vertex[i,1]))
-    i0 = findall(x->(x<-π), theta)
-    theta[i0] = theta[i0] .+ 2π
-    i1 = findall(x->(x>π), theta)
-    theta[i1] = theta[i1] .- 2π
-    order = sortperm(theta)
-    neighbour[i,1:n] = neighbour[i, order]
-  end
-  neighbour
+
+  trichoplax
 end
 
-function distalskeleton(neighbour, layer)
-    # skeleton triangles that define peripheral cell vertices
 
-    # number of triangles is 2xnumber of vertices in next-to-last layer
-    # plus the number of vertices with only 3 neighbour
-    N = size(neighbour, 1)  # number of vertices in skeleton
-    n3 = 0
-    for i = 1:N
-        if count(x -> (x > 0), neighbour[i, :]) == 3
-            n3 = n3 + 1
-        end
-    end
-    numtriangles = size(layer[end-1])[1] * 2 + n3
-    triangle = fill(0, numtriangles, 3)
+function Skeleton(n_cell_layers, cell_diameter)
 
-    # start at last skeleton vertex and work backwards
-    n = N  # index skeleton vertex
-    n_nbrs = count(x -> (x > 0), neighbour[n, :])
-    i = 0   # index triangles
-    while n_nbrs < 6     # outer ring of skeleton vertices have < 6 neighbour
-        for j = 2:n_nbrs
-            T = [n neighbour[n, j-1] neighbour[n, j]]
-            alreadyfound = false
-            for k = 1:i
-                if any(isequal(T[1]), triangle[k, :]) &&
-                   any(isequal(T[2]), triangle[k, :]) &&
-                   any(isequal(T[3]), triangle[k, :])
-                    alreadyfound = true
-                    break
-                end
-            end
-            if !alreadyfound
-                i = i + 1
-                triangle[i, :] = T
-            end
-        end
-        n = n - 1
-        n_nbrs = count(x -> (x > 0), neighbour[n, :])
-    end
-    triangle
-end # distalskeleton
+    layercount = skeletonlayercount(n_cell_layers)
+    vertex = skeletonvertices(layercount, cell_diameter)
+    neighbour = neighbours(vertex, layercount)
 
-function makebody(skeleton)
-  # construct cells
-  # returns (vertex, cell, edge)
-  #  vertex = vertices of cell membrane (6 per cell)
-  #  cell[i,:] = indices of 6 vertices of ith cell
-  #  edge = Nx2 array of indices to ends of each membrane segment
-  # MGP Dec 2019
+    # distalΔ = distalskeleton(nbr, layer)
 
-  # tolerance for merging vertices.
-  tol = 0.1*skeleton.edgelength
-
-  ncells = skeleton.layer[end-1][end]       #
-  vertex = fill(0.0, 6*(size(skeleton.layer,1)-1)^2, 2 )
-  cell = fill(0, ncells, 6)         # vertex indices for each cell
-  edge = fill(0, numEdges(ncells), 2)       # vertex indices for each edge
-
-  nvertex = 0
-  nedge = 0
-  @inbounds for i in 1:ncells
-      for j in 1:6
-        k = skeleton.neighbour[i,j]
-        m = skeleton.neighbour[i, j%6+1]
-        x = sum(skeleton.vertex[[i k m],1])/3.
-        y = sum(skeleton.vertex[[i k m],2])/3.
-        vertex_exists = false
-        @inbounds for n in 1:nvertex
-            if sqrt( (x-vertex[n,1])^2 + (y-vertex[n,2])^2) < tol
-                cell[i,j]=n  # point to existing vertex
-                vertex_exists = true
-                break
-            end
-        end
-        if !vertex_exists # add new vertex and point to it
-                nvertex = nvertex+1
-                vertex[nvertex,:] = [x y]
-                cell[i,j] = nvertex
-        end # !vertex_exists
-
-        # build list of edges (cell membrane segments)
-        edge_exists = false
-        if j>1
-            e = sort([cell[i,j-1] cell[i,j]], dims=2)  # edge
-            @inbounds for i1 in 1:nedge
-                if vec(e)==edge[i1,:]
-                    edge_exists = true
-                    break
-                end
-            end # for i1
-            if !edge_exists
-            nedge = nedge + 1
-            edge[nedge,:] = e
-            end # !edge_exists
-        end # if j>1
-        # 6th edge links last and first vertex
-        edge_exists = false
-        if j==6
-            e = sort([cell[i,j] cell[i,1]], dims=2)
-            for i1 in 1:nedge
-                if vec(e)==edge[i1,:]
-                    edge_exists = true
-                    break
-                end
-            end # for i1
-            if !edge_exists
-                nedge = nedge + 1
-                edge[nedge,:] = e
-            end # !edge_exists
-        end # j==6
-    end # for j
-    end # for i
-    println(nvertex)
-  (vertex[1:nvertex,:], cell, edge)
-end #cells()
-
-function findperimetervertices(cell, vlink, clayer)
-    # find vertices on edge of disc
-    n = length(clayer[end])
-    outerperimeter = fill(0, n+6) # linked only to perimeter vertices
-    cornerperimeter = fill(0, n)  # linked to 1 outer and 1 internal vertex
-    innerperimeter = fill(0, n)   # internal vertices linked to corner vertices
-
-
-    # outerperimeter (outer perimeter) vertices have no vlinks to internal vertices
-    no = 0
-    @inbounds for i in 1:n  # for each cell in outer layer
-        @inbounds for v in 1:6  # vertices with < 3  links ..
-            if sum(vlink[:]'.==cell[clayer[end][i],v])<3
-                no = no + 1
-                outerperimeter[no] = cell[clayer[end][i],v]
-            end
-        end
-    end
-
-    # cornerperimeter (inner perimeter) vertices
-    # are vlinked to outerperimeter vertices + 1 internal vertex
-    nc = 0
-    @inbounds for i in 1:length(outerperimeter)
-        @inbounds for j in 1:size(vlink,1) # for each vlink
-            if  (vlink[j,1]==outerperimeter[i])    &  # 1st of jth vlink links to ith vertex
-                 !any(outerperimeter.==vlink[j,2]) &   # and not to any other outerperimeter vertex
-                 !any(cornerperimeter.==vlink[j,2])     # and hasn't already been found
-               nc = nc+1
-               cornerperimeter[nc] = vlink[j,2]         # found a corner perimeter vertex
-           elseif (vlink[j,2]==outerperimeter[i]) &   # ditto for 2nd element in jth vlink
-                 !any(outerperimeter.==vlink[j,1]) &
-                 !any(cornerperimeter.==vlink[j,1])
-               nc = nc+1
-               cornerperimeter[nc] = vlink[j,1]
-            end
-        end
-    end
-
-    # internal vertices are vlinked to inner perimeter vertices
-    # (used to align lateral membranes of perimeter cells orthogonal to skin )
-    ni = 0
-    @inbounds for i in 1:length(cornerperimeter)
-        @inbounds for j in 1:size(vlink,1)
-            if (vlink[j,1]==cornerperimeter[i])    & # 1st in jth vlink is a corner
-                !any(outerperimeter.==vlink[j,2]) & # AND 2nd is not a perimeter cell
-                !any(innerperimeter.==vlink[j,2])   # AND not already found
-               ni = ni + 1
-               innerperimeter[ni] = vlink[j,2]    # found interior link to corner
-            elseif (vlink[j,2]==cornerperimeter[i])    & # 2nd in jth vlink is a corner
-                   !any(outerperimeter.==vlink[j,1]) & # AND 1st is not a perimeter cell
-                   !any(innerperimeter.==vlink[j,1])   # AND not already found
-                  ni = ni + 1
-                  innerperimeter[ni] = vlink[j,1]    # found interior link to corner
-            end
-        end
-    end
-    (outerperimeter, cornerperimeter, innerperimeter)
+    return Skeleton(vertex, cell_diameter, layercount, neighbour)
 end
 
-function smoothperimeter(vertex, op, cp, ip)
-    # move perimeter vertices onto a circle
+# function findperimetervertices(cell, vlink, clayer)
+#     # find vertices on edge of disc
+#     n = length(clayer[end])
+#     outerperimeter = fill(0, n+6) # linked only to perimeter vertices
+#     cornerperimeter = fill(0, n)  # linked to 1 outer and 1 internal vertex
+#     innerperimeter = fill(0, n)   # internal vertices linked to corner vertices
+#
+#
+#     # outerperimeter (outer perimeter) vertices have no vlinks to internal vertices
+#     no = 0
+#     @inbounds for i in 1:n  # for each cell in outer layer
+#         @inbounds for v in 1:6  # vertices with < 3  links ..
+#             if sum(vlink[:]'.==cell[clayer[end][i],v])<3
+#                 no = no + 1
+#                 outerperimeter[no] = cell[clayer[end][i],v]
+#             end
+#         end
+#     end
+#
+#     # cornerperimeter (inner perimeter) vertices
+#     # are vlinked to outerperimeter vertices + 1 internal vertex
+#     nc = 0
+#     @inbounds for i in 1:length(outerperimeter)
+#         @inbounds for j in 1:size(vlink,1) # for each vlink
+#             if  (vlink[j,1]==outerperimeter[i])    &  # 1st of jth vlink links to ith vertex
+#                  !any(outerperimeter.==vlink[j,2]) &   # and not to any other outerperimeter vertex
+#                  !any(cornerperimeter.==vlink[j,2])     # and hasn't already been found
+#                nc = nc+1
+#                cornerperimeter[nc] = vlink[j,2]         # found a corner perimeter vertex
+#            elseif (vlink[j,2]==outerperimeter[i]) &   # ditto for 2nd element in jth vlink
+#                  !any(outerperimeter.==vlink[j,1]) &
+#                  !any(cornerperimeter.==vlink[j,1])
+#                nc = nc+1
+#                cornerperimeter[nc] = vlink[j,1]
+#             end
+#         end
+#     end
+#
+#     # internal vertices are vlinked to inner perimeter vertices
+#     # (used to align lateral membranes of perimeter cells orthogonal to skin )
+#     ni = 0
+#     @inbounds for i in 1:length(cornerperimeter)
+#         @inbounds for j in 1:size(vlink,1)
+#             if (vlink[j,1]==cornerperimeter[i])    & # 1st in jth vlink is a corner
+#                 !any(outerperimeter.==vlink[j,2]) & # AND 2nd is not a perimeter cell
+#                 !any(innerperimeter.==vlink[j,2])   # AND not already found
+#                ni = ni + 1
+#                innerperimeter[ni] = vlink[j,2]    # found interior link to corner
+#             elseif (vlink[j,2]==cornerperimeter[i])    & # 2nd in jth vlink is a corner
+#                    !any(outerperimeter.==vlink[j,1]) & # AND 1st is not a perimeter cell
+#                    !any(innerperimeter.==vlink[j,1])   # AND not already found
+#                   ni = ni + 1
+#                   innerperimeter[ni] = vlink[j,1]    # found interior link to corner
+#             end
+#         end
+#     end
+#     (outerperimeter, cornerperimeter, innerperimeter)
+# end
+#
+# function smoothperimeter(vertex, op, cp, ip)
+#     # move perimeter vertices onto a circle
+#
+#     No = length(op)
+#     Nc = length(ip)
+#     ro = fill(0.0, No)  # radii of outer vertices
+#     ri = fill(0.0, Nc)  # radii of internal vertices
+#
+#     Ro = 0.0
+#     @inbounds for i in 1:No
+#         Ro  = Ro + sqrt(vertex[op[i],1]^2 + vertex[op[i],2]^2)
+#         ro[i] = sqrt(vertex[op[i],1]^2 + vertex[op[i],2]^2)
+#     end
+#     Rc = 0.0
+#     @inbounds for i in 1:Nc
+#         Rc = Rc + sqrt(vertex[cp[i],1]^2 + vertex[cp[i],2]^2)
+#         ri[i] = sqrt(vertex[ip[i],1]^2 + vertex[ip[i],2]^2)
+#     end
+#
+#     # mean radius of perimeter vertices
+#     R = (Ro/No + Rc/Nc)/2.0
+#
+#     # shift corner vertices to projection of inner vertices onto mean radius
+#     @inbounds for i in 1:Nc
+#         vertex[cp[i],1] = vertex[ip[i],1]*R/ri[i]
+#         vertex[cp[i],2] = vertex[ip[i],2]*R/ri[i]
+#     end
+#
+#     @inbounds for i in 1:No
+#         vertex[op[i],1] = vertex[op[i],1]*R/ro[i]
+#         vertex[op[i],2] = vertex[op[i],2]*R/ro[i]
+#     end
+#
+#     vertex
+# end
 
-    No = length(op)
-    Nc = length(ip)
-    ro = fill(0.0, No)  # radii of outer vertices
-    ri = fill(0.0, Nc)  # radii of internal vertices
+function Trichoplax(n_cell_layers, cell_diameter)
 
-    Ro = 0.0
-    @inbounds for i in 1:No
-        Ro  = Ro + sqrt(vertex[op[i],1]^2 + vertex[op[i],2]^2)
-        ro[i] = sqrt(vertex[op[i],1]^2 + vertex[op[i],2]^2)
-    end
-    Rc = 0.0
-    @inbounds for i in 1:Nc
-        Rc = Rc + sqrt(vertex[cp[i],1]^2 + vertex[cp[i],2]^2)
-        ri[i] = sqrt(vertex[ip[i],1]^2 + vertex[ip[i],2]^2)
-    end
+    # skeleton is a triangulated disc  (Delaunay triangulation)
+    # triangle edge length = cell_diameter
+    # each internal vertex (ie except for outer layer) will be a cell centre
+    skeleton = Skeleton(n_cell_layers, cell_diameter)
 
-    # mean radius of perimeter vertices
-    R = (Ro/No + Rc/Nc)/2.0
+    #  vertices of hexagonal cells are at centres of triangles
+    # (Voronoi tesselation)
+    # cell[i,:] indexes the vertices of ith cell
+    # triangle[i,:] indexes skeleton vertices for rapid updating cell vertices
+    #               when skeleton moves
+   (vertex, cell, triangle) = makecells(skeleton)
 
-    # shift corner vertices to projection of inner vertices onto mean radius
-    @inbounds for i in 1:Nc
-        vertex[cp[i],1] = vertex[ip[i],1]*R/ri[i]
-        vertex[cp[i],2] = vertex[ip[i],2]*R/ri[i]
-    end
+  # # perimeter vertices in 3 classes
+  # perimetervertex = []#findperimetervertices(cell, link, layer)
+  # # ordered vertices on perimeter
+  # skinvertex = []#sort(vcat(perimetervertex[1],perimetervertex[2] ))
+  #
+  # (mapvertex,mapcell) = ([], []) #makecellmap(vertex, cell, layer, mapdepth);
 
-    @inbounds for i in 1:No
-        vertex[op[i],1] = vertex[op[i],1]*R/ro[i]
-        vertex[op[i],2] = vertex[op[i],2]*R/ro[i]
-    end
+  skinstart = 6*(n_cell_layers-1)^2+1 # index to first skin triangle
 
-    vertex
+  return Trichoplax(n_cell_layers, skeleton, vertex, cell, triangle, skinstart)
 end
 
-function Trichoplax(numlayers, celldiameter, mapdepth)
+# function makecellmap(vertex, cell, clayer, mapwidth)
+#     # reflect outer layers of cells into environment
+#     # by reflecting mapWidth layers of cells around body perimeter
+#     # into annular region of width senseRange
+#
+#     ncells = size(cell,1)
+#
+#     #number of cell layers in body
+#     nlayers = Int64((3+sqrt(9+12*(ncells-1)))/6)
+#
+#     #number of cells in map (outer celldepth layers)
+#     nmap = ncells - (3*(nlayers-mapwidth)*(nlayers-mapwidth-1) + 1)
+#
+#     # duplicate body
+#     mapcell = fill(0, nmap, 6)
+#
+#     nvertex = size(vertex,1)
+#     @inbounds for i in 1:nmap  #size(cell,1)
+#         @inbounds for j in 1:6
+#             mapcell[i,j] = cell[ncells-i+1,j]
+#         end
+#     end
+#
+#     # minimum cell index in pCell
+#     i0 = findmin(mapcell)[1]
+#
+#     # copy the required vertices, shift indices to coincide
+#     #pVertex = copy(vertex[i0:end,:])
+#     nmapvertex = nvertex-i0+1
+#     mapvertex = fill(0.0, nmapvertex,2 )
+#     mapcell = mapcell.-(i0-1)
+#
+#     # project vertices beyond skin
+#     Rs = sqrt(vertex[end,1]^2 + vertex[end,2]^2) # skin radius
+#     Rc = sqrt(vertex[2,1]^2 + vertex[2,2]^2)  # cell radius
+#     @inbounds for i in 1:nmapvertex
+#        R0 = sqrt(vertex[i0+i-1,1]^2 + vertex[i0+i-1,2]^2)
+#        R1 = Rs + (Rs-R0)*(Rs/R0)^2
+#        mapvertex[i,:] = vertex[i0+i-1,:].*R1/R0
+#     end
+#
+#     (mapvertex, mapcell)
+# end
+#
+# function makereceptivefields(vertex, cell, clayer, mapwidth)
+#     # construct receptive field centers
+#     # by reflecting centroids of mapping cells
+#     # into annular region of width senseRange
+#
+#     ncells = size(cell,1)
+#
+#     #number of cell layers in body
+#     nlayers = Int64((3+sqrt(9+12*(ncells-1)))/6)
+#
+#     # number of cells in map (outer celldepth layers)
+#     nmap = ncells - (3*(nlayers-mapwidth)*(nlayers-mapwidth-1) + 1)
+#
+#     # index of cell (centroid) preceding first cell in map
+#     i0 = 3*(nlayers-mapwidth)*(nlayers-mapwidth-1)+1
+#
+#     # array of rf centers
+#     rfcenter = fill(0.0, nmap,2)
+#
+#     # project vertices beyond skin
+#     Rs = sqrt(vertex[end,1]^2 + vertex[end,2]^2) # skin radius
+#     Rc = sqrt(vertex[2,1]^2 + vertex[2,2]^2)  # cell radius
+#     @inbounds for i in 1:nmap
+#         x = mean(vertex[cell[i0+i,:],1])
+#         y = mean(vertex[cell[i0+i,:],2])
+#         R0 = sqrt(x^2 + y^2)
+#         R1 = Rs + (Rs-R0)*(Rs/R0)^2
+#        rfcenter[i,:] = [x*R1/R0 y*R1/R0]
+#     end
+#
+#     return rfcenter
+# end
 
-  skeleton = Skeleton(numlayers+1, celldiameter)
-
-  # make celllayers layers of hexagonal cells (Voronoi tesselation)
-  (vertex, cell, edge) = makebody(skeleton)
-
-  # perimeter vertices in 3 classes
-  perimetervertex = []#findperimetervertices(cell, link, layer)
-  # ordered vertices on perimeter
-  skinvertex = []#sort(vcat(perimetervertex[1],perimetervertex[2] ))
-
-  (mapvertex,mapcell) = ([], []) #makecellmap(vertex, cell, layer, mapdepth);
-
-  return Trichoplax(skeleton, vertex, cell, edge,
-       skinvertex, mapdepth, mapvertex, mapcell, [1.0], [1.0])
-end
-
-function makecellmap(vertex, cell, clayer, mapwidth)
-    # reflect outer layers of cells into environment
-    # by reflecting mapWidth layers of cells around body perimeter
-    # into annular region of width senseRange
-
-    ncells = size(cell,1)
-
-    #number of cell layers in body
-    nlayers = Int64((3+sqrt(9+12*(ncells-1)))/6)
-
-    #number of cells in map (outer celldepth layers)
-    nmap = ncells - (3*(nlayers-mapwidth)*(nlayers-mapwidth-1) + 1)
-
-    # duplicate body
-    mapcell = fill(0, nmap, 6)
-
-    nvertex = size(vertex,1)
-    @inbounds for i in 1:nmap  #size(cell,1)
-        @inbounds for j in 1:6
-            mapcell[i,j] = cell[ncells-i+1,j]
-        end
-    end
-
-    # minimum cell index in pCell
-    i0 = findmin(mapcell)[1]
-
-    # copy the required vertices, shift indices to coincide
-    #pVertex = copy(vertex[i0:end,:])
-    nmapvertex = nvertex-i0+1
-    mapvertex = fill(0.0, nmapvertex,2 )
-    mapcell = mapcell.-(i0-1)
-
-    # project vertices beyond skin
-    Rs = sqrt(vertex[end,1]^2 + vertex[end,2]^2) # skin radius
-    Rc = sqrt(vertex[2,1]^2 + vertex[2,2]^2)  # cell radius
-    @inbounds for i in 1:nmapvertex
-       R0 = sqrt(vertex[i0+i-1,1]^2 + vertex[i0+i-1,2]^2)
-       R1 = Rs + (Rs-R0)*(Rs/R0)^2
-       mapvertex[i,:] = vertex[i0+i-1,:].*R1/R0
-    end
-
-    (mapvertex, mapcell)
-end
-
-function makereceptivefields(vertex, cell, clayer, mapwidth)
-    # construct receptive field centers
-    # by reflecting centroids of mapping cells
-    # into annular region of width senseRange
-
-    ncells = size(cell,1)
-
-    #number of cell layers in body
-    nlayers = Int64((3+sqrt(9+12*(ncells-1)))/6)
-
-    # number of cells in map (outer celldepth layers)
-    nmap = ncells - (3*(nlayers-mapwidth)*(nlayers-mapwidth-1) + 1)
-
-    # index of cell (centroid) preceding first cell in map
-    i0 = 3*(nlayers-mapwidth)*(nlayers-mapwidth-1)+1
-
-    # array of rf centers
-    rfcenter = fill(0.0, nmap,2)
-
-    # project vertices beyond skin
-    Rs = sqrt(vertex[end,1]^2 + vertex[end,2]^2) # skin radius
-    Rc = sqrt(vertex[2,1]^2 + vertex[2,2]^2)  # cell radius
-    @inbounds for i in 1:nmap
-        x = mean(vertex[cell[i0+i,:],1])
-        y = mean(vertex[cell[i0+i,:],2])
-        R0 = sqrt(x^2 + y^2)
-        R1 = Rs + (Rs-R0)*(Rs/R0)^2
-       rfcenter[i,:] = [x*R1/R0 y*R1/R0]
-    end
-
-    return rfcenter
-end
-
-end  # module Placozoan
+# end  # module Placozoan

@@ -89,7 +89,7 @@
 
 
 # MAIN
-bodylayers = 8 # number of body cell layers
+bodylayers = 5 # number of body cell layers
 # mapdepth = 1     # map layers
 celldiam = 10.0
 
@@ -97,8 +97,10 @@ celldiam = 10.0
 
 
 @time trichoplax = Trichoplax(bodylayers, celldiam)
-trichoplax.k2[] = 1.0   # cytoskeleton spring constant /2
+trichoplax.k2[] = 1.0    # cytoskeleton spring constant /2
 trichoplax.σ[]  = 25.0   # cell surface energy density
+trichoplax.ρ[]  = 5.e-2    # cell turgor pressure energy per unit volume
+
 
 # Draw
 s = Scene(resolution = (800,800), scale_plot = false)
@@ -108,7 +110,7 @@ drawskeleton(trichoplax, RGB(.45, .0, .5), .5)
 
 display(s)
 
-trichoplax = morph(trichoplax)
+@time trichoplax = morph(trichoplax)
 
 draw(trichoplax, RGB(.25, .85, .25), 2)
 

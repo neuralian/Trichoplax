@@ -107,3 +107,9 @@ draw(trichoplax, RGB(.85, .35, .25), 2.0)
 drawskeleton(trichoplax, RGB(.45, .0, .5), .5)
 
 display(s)
+
+trichoplax = morph(trichoplax)
+
+draw(trichoplax, RGB(.25, .85, .25), 2)
+
+display(s)

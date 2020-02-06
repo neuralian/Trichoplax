@@ -62,7 +62,6 @@ end
 
 function skeletonvertices(layercount, edgelength)
     #
-
     nlayers = length(layercount)
     nvertices = sum(layercount)
     vertex = fill(0.0, nvertices, 2)  # vertex 1 is [0,0]
@@ -199,9 +198,9 @@ function Trichoplax(n_cell_layers, cell_diameter)
     #               when skeleton moves
    (vertex, cell, triangle, skintriangle) = makecells(skeleton)
 
-  edge = cytoskeleton(vertex, cell)
+  edge = celledges(cell)
 
-(skin, skinvertex) =  getskin(vertex, skintriangle)
+  (skin, skinvertex) =  getskin(vertex, skeleton.vertex, skintriangle)
 
   skeleton_springconstant = 2.0
   cell_surface_energy_density = 25.0
@@ -276,7 +275,7 @@ function makecells(skeleton)
 
 end
 
-function cytoskeleton(vertex, cell)
+function celledges(cell)
     # cytoskeleton links (cell edges) from cell vertices
     # vertex = nVertex X 2 coordinates of all vertices
     # cell  = nCell x 6 index of vertices for each cell
@@ -287,9 +286,10 @@ function cytoskeleton(vertex, cell)
     nfoundedges = 0
 
     for i in 1:nCells
-        v0 = vertex[cell[i,end]]
+        e0 = cell[i,end]
         for j in 1:6
-            candidate_edge = sort([v0 vertex[cell[i,j]]], dims=2)
+            e1 = cell[i,j]
+            candidate_edge = sort([e0 e1], dims=2)
             already_found = false
             for k in 1:nfoundedges
                 if candidate_edge == edge[k,:]'
@@ -301,10 +301,11 @@ function cytoskeleton(vertex, cell)
                 nfoundedges = nfoundedges + 1
                 edge[nfoundedges,:] = candidate_edge
             end
+            e0 = e1
         end
     end
 
-    return edge
+    return edge[1:nfoundedges,:]
 end
 
 function cellverticesfromskeleton(trichoplax)
@@ -321,7 +322,7 @@ function cellverticesfromskeleton(trichoplax)
 end
 
 
-function getskin(cellvertex, skintriangle)
+function getskin(cellvertex, skeletonvertex, skintriangle)
     # compute external vertex coordinates (skin vertices)
     # from skeleton skin triangles
     # and index these vertices in cell vertex array
@@ -330,14 +331,15 @@ function getskin(cellvertex, skintriangle)
     skinvertex = fill(0.0, n, 2) # vertex coords
     skin = fill(0,n)             # index skin vertices in trichoplax.vertex
     nfoundskin = 0
-    v = cellvertex
+    vc = cellvertex
+    vs = skeletonvertex
     # vertex match tolerance 1% of distance between vertex 1 and 2
-    tol = ( (v[1,1] - v[2,1])^2 + (v[1,2] - v[2,2])^2 )*(.01)^2
+    tol = ( (vc[1,1] - vc[2,1])^2 + (vc[1,2] - vc[2,2])^2 )*(.01)^2
     for i in 1:n
-        skinvertex[i,:] = sum(v[trichoplax.skintriangle[i,:],:], dims=1)/3.
-        for j in 1:size(trichoplax.vertex,1)
-            if ((skinvertex[i,1] - v[j,1])^2 +
-                (skinvertex[i,2] - v[j,2])^2 ) < tol
+        skinvertex[i,:] = sum(vs[skintriangle[i,:],:], dims=1)/3.
+        for j in 1:size(vc,1)
+            if ((skinvertex[i,1] - vc[j,1])^2 +
+                (skinvertex[i,2] - vc[j,2])^2 ) < tol
                 nfoundskin = nfoundskin + 1
                 skin[nfoundskin] = j
                 break
@@ -408,6 +410,9 @@ function shapeEnergy(trichoplax::Trichoplax)
     #   skeleton edges are linear springs Es = (1/2)k(r-ro)^2
     #   surface energy σ per unit length of exposed membrane
 
+    # update cell vertices from skeleton vertices
+    trichoplax = cellverticesfromskeleton(trichoplax)
+
     # elastic energy in cytoskeleton
     # TODO: using skeleton edge length as proxy for cell edge length
     Es = 0.0
@@ -420,11 +425,11 @@ function shapeEnergy(trichoplax::Trichoplax)
     end
 
     # surface energy of external membranes
-    Δ = trichoplax.skintriangle
     Lx = 0.0
-    v0 = sum(v[Δ[end,:], :], dims=1)/3.0  # last skin vertex
-    for i in 1:size(Δ,1)
-        v1 = sum(v[Δ[i,:], :], dims=1)/3.0  # next skin vertex
+    skin = trichoplax.skin
+    v0 = v[skin[end],:]
+    for i in 1:length(skin)
+        v1 = v[skin[i],:]
         Lx = Lx + sqrt( (v1[1]-v0[1])^2 + (v1[2]-v0[2])^2)
         v0 = v1
     end
@@ -433,35 +438,40 @@ function shapeEnergy(trichoplax::Trichoplax)
      return (Es +  trichoplax.σ[]*Lx)
 end
 
-function shapeEnergyGradient(dv::Float64, vertex::Array{Float64,2},
-                             trichoplax::Trichoplax)
+function shapeEnergyGradient(dv::Float64, trichoplax::Trichoplax)
 
-    n = size(vertex)
-    ∇ = fill(0.0, n )
-    E0 = shapeEnergy(vertex, trichoplax)
+    v = trichoplax.skeleton.vertex
+    n = size(v)
+    ∇E = fill(0.0, n )
+
+
+
+    E0 = shapeEnergy(trichoplax)
     dv = dv*trichoplax.skeleton.edgelength[]
     for i in 1:n[1]
         for j in 1:n[2]
-            vertex[i,j] = vertex[i,j] + dv  # + perturb (i,j)th coordinate
-            ∂Eplus = shapeEnergy(vertex, trichoplax)
-            vertex[i,j] = vertex[i,j] - 2.0*dv  # - perturb (i,j)th coordinate
-            ∂Eminus = shapeEnergy(vertex, trichoplax)
-            ∇[i,j] = (∂Eplus-∂Eminus)/(2.0*dv) # ∂E/∂v_ij
-            vertex[i,j] = vertex[i,j] + dv      # put (i,j)th coordinate back
+            v[i,j] = v[i,j] + dv  # + perturb (i,j)th coordinate
+            ∂Eplus = shapeEnergy(trichoplax)
+            v[i,j] = v[i,j] - 2.0*dv  # - perturb (i,j)th coordinate
+            ∂Eminus = shapeEnergy(trichoplax)
+            ∇E[i,j] = (∂Eplus-∂Eminus)/(2.0*dv) # ∂E/∂v_ij
+            v[i,j] = v[i,j] + dv      # put (i,j)th coordinate back
         end
     end
-    ∇
+    ∇E
 end
 
 
 function morph(trichoplax, rate::Float64 = .01, nsteps::Int64 = 100)
 
   for t = 1:nsteps
-      ∇ = shapeEnergyGradient(1e-4, trichoplax.skeleton.vertex, trichoplax)
+      ∇ = shapeEnergyGradient(1e-4, trichoplax)
       trichoplax.skeleton.vertex[:,:] = trichoplax.skeleton.vertex - rate*∇
   end
 
-  trichoplax
+  trichoplax = cellverticesfromskeleton(trichoplax)
+
+  return trichoplax
 end
 
 

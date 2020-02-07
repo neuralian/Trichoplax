@@ -218,9 +218,9 @@ function cellvolume(vertex)
         v = 0.0
         for j in 1:6
             k = j % 6 + 1
-            v = v + vertex[j,1]*vertex[k,2] - vertex[k,1]*vertex[j,2]
+            v = v + vertex[i,1]*vertex[k,2] - vertex[k,1]*vertex[i,2]
         end
-        volume[i] = v/2.0
+        volume[i] = abs(v/2.0)
     end
 
     return volume
@@ -232,12 +232,25 @@ function cellvolume(vertex, i)
     v = 0.0
     for j in 1:6
         k = j % 6 + 1
-        v = v + vertex[j,1]*vertex[k,2] - vertex[k,1]*vertex[j,2]
+        v = v + vertex[i,1]*vertex[k,2] - vertex[k,1]*vertex[i,2]
     end
 
-    return v/2.0
+    return abs(v/2.0)
 end
 
+function cVolume(x,y)
+    # volume (area in 2D) of cell with vertices x (Mx2)
+
+    V = 0.0
+    for i in 1:6
+        j = i % 6 + 1
+        V = V + x[i]*y[j] - x[j]*y[i]
+    end
+
+    return (abs(V/2.0))
+
+
+end
 
 function makecells(skeleton)
     # cell vertices given skeleton vertices v & neighbours nbr

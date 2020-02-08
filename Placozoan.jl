@@ -64,7 +64,7 @@ function Skeleton(n_cell_layers, cell_diameter)
 
     layercount = skeletonlayercount(n_cell_layers)
     vertex = skeletonvertices(layercount, cell_diameter)
-    neighbour = neighbours(vertex, layercount)
+    neighbour = skeletonvertexneighbours(vertex, layercount)
     link = links(vertex,neighbour, layercount)
     # distalΔ = distalskeleton(nbr, layer)
 
@@ -88,7 +88,7 @@ function Trichoplax(n_cell_layers, cell_diameter)
   edge = celledges(cell)
 
   nVertices = size(vertex,1)
-  (n_neighbour, neighbour) = neighboursofcellvertices(nVertices, edge)
+  (n_neighbour, neighbour) = cellvertexneighbours(nVertices, edge)
   (n_vertexcells, vertexcells) = cellscontainingcellvertices(nVertices, cell)
 
   (skin, skinvertex) =  getskin(vertex, skeleton.vertex, skintriangle)
@@ -145,7 +145,7 @@ function vertexdistance(v)
     return D
 end
 
-function neighbours(v, layercount)
+function skeletonvertexneighbours(v, layercount)
     # 6 neighbours of each skeleton vertex, not including outer layer
     # sorted into counterclockwise order
 
@@ -218,7 +218,7 @@ function links(v,neighbour, layercount)
    return link
 end
 
-function neighboursofcellvertices(nVertex, edge)
+function cellvertexneighbours(nVertex, edge)
     # list neighbours of each vertex (vertices with an edge to this)
 
     #nVertex = size(vertex, 1)
@@ -261,17 +261,21 @@ function cellscontainingcellvertices(nVertex, cell)
     return (n_cellshere, cellshere)
 end
 
-function skinneighboursofskinvertices(neighbour, skin)
-    # index skin vertices connected to each skin vertex
-    # neighbour = index of neighbours of each vertex
-    #   ( output from neighboursofcellvertices() )
-    # skin = index of vertices in skin
-    #   ( output from getskin() )
-
-    # TODO: which rows of neighbour are skin vertices? Within these rows,
-    #       which columns are also skin vertices?
-
-end
+# function skinneighboursofskinvertices(nVertex, neighbour, skin)
+#     # index skin vertices connected to each skin vertex
+#     # neighbour = index of neighbours of each vertex
+#     #   ( output from cellvertexneighbours() )
+#     # skin = index of vertices in skin
+#     #   ( output from getskin() )
+#
+#     # TODO: which rows of neighbour are skin vertices? Within these rows,
+#     #       which columns are also skin vertices?
+#
+#     neighbour = fill(0, nVertex, 2) # each skin vertex has 2 skin neighbours
+#     for i in 1:nVertex
+#         for j in 1:neighbour[]
+#
+# end
 
 function cellvolume(vertex)
     # cell volumes (area in 2D) from cell vertices

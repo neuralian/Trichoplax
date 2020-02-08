@@ -37,7 +37,7 @@ struct Trichoplax
     triangle::Array{Int64,2}   # skeleton Delaunay triangles
     skintriangle::Array{Int64,2} # triangles for skin vertices
     vertex::Array{Float64,2}   # cell vertices, each is centroid of triangle
-    cell::Array{Int64, 2}      # 6 vertices for each cell
+    cell::Array{Int64, 2}      # 6 vertis for each cell
     edge::Array{Int64}         # [i,:] index links between cells
     volume::Array{Float64,1}   # volume (area) of each cell
     # skinvertex::Array{Int64}           #  skin vertex indices
@@ -45,6 +45,10 @@ struct Trichoplax
     # mapvertex
     # mapcell
     skin::Array{Int64}         # index to cell vertices on exterior surface
+    n_neighbour::Array{Int64,1}         # number of neighbours for each vertex
+    neighbour::Array{Int64,2}  # neighbours of each vertex
+    n_vertexcells::Array{Int64,1}  # number of cells containing each vertex
+    vertexcells::Array{Int64,2} # index of cells containing each vertex
     k2::Array{Float64,1}  # half of cytoskeleton spring constant (k/2)
     ρ::Array{Float64,1}   # cell pressure constant \rho (energy/volume)
     σ::Array{Float64,1}   # surface energy density
@@ -83,6 +87,10 @@ function Trichoplax(n_cell_layers, cell_diameter)
 
   edge = celledges(cell)
 
+  nVertices = size(vertex,1)
+  (n_neighbour, neighbour) = neighboursofcellvertices(nVertices, edge)
+  (n_vertexcells, vertexcells) = cellscontainingcellvertices(nVertices, cell)
+
   (skin, skinvertex) =  getskin(vertex, skeleton.vertex, skintriangle)
 
   volume = cellvolume(vertex)
@@ -93,6 +101,7 @@ function Trichoplax(n_cell_layers, cell_diameter)
 
   return Trichoplax(n_cell_layers, skeleton, triangle,
                     skintriangle, vertex, cell, edge, volume, skin,
+                    n_neighbour, neighbour, n_vertexcells, vertexcells,
                     [skeleton_springconstant/2.0],
                     [cell_pressureconstant],
                     [cell_surface_energy_density])
@@ -209,6 +218,61 @@ function links(v,neighbour, layercount)
    return link
 end
 
+function neighboursofcellvertices(nVertex, edge)
+    # list neighbours of each vertex (vertices with an edge to this)
+
+    #nVertex = size(vertex, 1)
+    nEdge = size(edge,1)
+    println(nVertex, ", ", nEdge)
+    neighbour = fill(0, nVertex, 3)
+    n_neighbour = fill(0, nVertex)  # number of edges connected to ith vertex
+    for i in 1:nVertex
+        neighbourcount = 0
+        for j in 1:nEdge
+            if any(edge[j,:].==i)      # found edge containing ith vertex
+                # next neighbour is the other vertex in the link
+                # (the one that is not i)
+                neighbourcount = neighbourcount + 1
+                neighbour[i, neighbourcount] = findfirst(edge[j,:].!=i)
+            end
+        end
+        n_neighbour[i] = neighbourcount
+    end
+    return (n_neighbour, neighbour)
+end
+
+function cellscontainingcellvertices(nVertex, cell)
+    # list cells containing each vertex
+
+    #nVertex = size(vertex, 1)
+    nCell = size(cell,1)
+    cellshere = fill(0, nVertex, 3)
+    n_cellshere = fill(0, nVertex)
+    for i in 1:nVertex
+        cellcount = 0
+        for j in 1:nCell
+            if any(cell[j,:].==i)
+                cellcount = cellcount + 1
+                cellshere[i, cellcount] = j
+            end
+        end
+        n_cellshere[i] = cellcount
+    end
+    return (n_cellshere, cellshere)
+end
+
+function skinneighboursofskinvertices(neighbour, skin)
+    # index skin vertices connected to each skin vertex
+    # neighbour = index of neighbours of each vertex
+    #   ( output from neighboursofcellvertices() )
+    # skin = index of vertices in skin
+    #   ( output from getskin() )
+
+    # TODO: which rows of neighbour are skin vertices? Within these rows,
+    #       which columns are also skin vertices?
+
+end
+
 function cellvolume(vertex)
     # cell volumes (area in 2D) from cell vertices
 
@@ -236,20 +300,6 @@ function cellvolume(vertex, i)
     end
 
     return abs(v/2.0)
-end
-
-function cVolume(x,y)
-    # volume (area in 2D) of cell with vertices x (Mx2)
-
-    V = 0.0
-    for i in 1:6
-        j = i % 6 + 1
-        V = V + x[i]*y[j] - x[j]*y[i]
-    end
-
-    return (abs(V/2.0))
-
-
 end
 
 function makecells(skeleton)
@@ -317,8 +367,7 @@ function makecells(skeleton)
 end
 
 function celledges(cell)
-    # cytoskeleton links (cell edges) from cell vertices
-    # vertex = nVertex X 2 coordinates of all vertices
+    # construct cytoskeleton links (cell edges) from cell vertex indices
     # cell  = nCell x 6 index of vertices for each cell
 
     nCells = size(cell,1)
@@ -433,9 +482,11 @@ function skeletonEnergy(v::Array{Float64,2}, trichoplax::Trichoplax)
     Es = 0.0
     link = trichoplax.skeleton.link   # alias for code readability
     nVertex = size(trichoplax.skeleton.vertex,1)
+    p = 8
+    q = 1.0/p
     for i in 1:size(trichoplax.skeleton.link,1)
-        r = sqrt(  ( v[link[i,1],1] - v[link[i,2],1] ) ^2 +
-                   ( v[link[i,1],2] - v[link[i,2],2] ) ^2 )
+        r = (  ( v[link[i,1],1] - v[link[i,2],1] ) ^p +
+                   ( v[link[i,1],2] - v[link[i,2],2] ) ^p )^q
         Es = Es + trichoplax.k2[]*(r - trichoplax.skeleton.edgelength[])^2
     end
 
@@ -476,7 +527,7 @@ function shapeEnergy(trichoplax::Trichoplax)
     # pressure
     Ep = 0.0
     for i in 1:size(trichoplax.cell, 1)
-        Ep = Ep + (cellvolume(v,i)-trichoplax.volume[i])^2
+        Ep = Ep + (cellvolume(v,i)-trichoplax.volume[i])^12
     end
 
 
@@ -528,6 +579,7 @@ function morph(trichoplax, rate::Float64 = .005, nsteps::Int64 = 25)
   #trichoplax = cellverticesfromskeleton(trichoplax)
 
   return trichoplax
+
 end
 
 

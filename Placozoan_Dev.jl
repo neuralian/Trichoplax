@@ -97,7 +97,7 @@ celldiam = 10.0
 
 
 @time trichoplax = Trichoplax(bodylayers, celldiam)
-trichoplax.k2[] = 1.0    # cytoskeleton spring constant /2
+trichoplax.k2[] = 1.0e-2    # cytoskeleton spring constant /2
 trichoplax.σ[]  = 1.0e1   # cell surface energy density
 trichoplax.ρ[]  = 1.0e2    # cell turgor pressure energy per unit volume
 

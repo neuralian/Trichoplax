@@ -261,7 +261,7 @@ function cellscontainingcellvertices(nVertex, cell)
     return (n_cellshere, cellshere)
 end
 
-function skinneighboursofskinvertices(nVertex, neighbour, skin)
+function skinneighboursofskinvertices(neighbour, skin)
     # index skin vertices connected to each skin vertex
     # neighbour = index of neighbours of each vertex
     #   ( output from cellvertexneighbours() )
@@ -271,17 +271,18 @@ function skinneighboursofskinvertices(nVertex, neighbour, skin)
     # nb inefficient code but it's simpler to search everywhere than only
     #    where the answer could be
 
-    skin_neighbour = fill(0, nVertex, 2) # each skin vertex has 2 skin neighbours
-    for i in 1:nVertex
+    nSkinvertices = size(skin,1)
+    skin_neighbour = fill(0, nSkinvertices, 2) # each skin vertex has 2 skin neighbours
+    for i in 1:nSkinvertices
         n_neighbours = 0
         for j in 1:3
-            if any(skin.==neighbour[i,j])
+            if any(skin.==neighbour[skin[i],j])
                 n_neighbours = n_neighbours + 1
-                skin_neighbour[i,n_neighbours] = neighbour[i,j]
+                skin_neighbour[i,n_neighbours] = neighbour[skin[i],j]
             end
         end
     end
-    return neighbour
+    return skin_neighbour
 end
 
 function cellvolume(vertex)
@@ -555,6 +556,8 @@ function shapeEnergy(trichoplax::Trichoplax)
     # println(Es, ", ", trichoplax.σ[]*Lx)
      return (Es +  trichoplax.ρ[]*Ep + trichoplax.σ[]*Lx)
 end
+
+
 
 function shapeEnergyGradient(dv::Float64, trichoplax::Trichoplax)
 

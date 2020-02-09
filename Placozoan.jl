@@ -233,7 +233,7 @@ function cellvertexneighbours(nVertex, edge)
                 # next neighbour is the other vertex in the link
                 # (the one that is not i)
                 neighbourcount = neighbourcount + 1
-                neighbour[i, neighbourcount] = findfirst(edge[j,:].!=i)
+                neighbour[i, neighbourcount] = edge[j,findfirst(edge[j,:].!=i)]
             end
         end
         n_neighbour[i] = neighbourcount

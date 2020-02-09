@@ -261,21 +261,28 @@ function cellscontainingcellvertices(nVertex, cell)
     return (n_cellshere, cellshere)
 end
 
-# function skinneighboursofskinvertices(nVertex, neighbour, skin)
-#     # index skin vertices connected to each skin vertex
-#     # neighbour = index of neighbours of each vertex
-#     #   ( output from cellvertexneighbours() )
-#     # skin = index of vertices in skin
-#     #   ( output from getskin() )
-#
-#     # TODO: which rows of neighbour are skin vertices? Within these rows,
-#     #       which columns are also skin vertices?
-#
-#     neighbour = fill(0, nVertex, 2) # each skin vertex has 2 skin neighbours
-#     for i in 1:nVertex
-#         for j in 1:neighbour[]
-#
-# end
+function skinneighboursofskinvertices(nVertex, neighbour, skin)
+    # index skin vertices connected to each skin vertex
+    # neighbour = index of neighbours of each vertex
+    #   ( output from cellvertexneighbours() )
+    # skin = index of vertices in skin
+    #   ( output from getskin() )
+
+    # nb inefficient code but it's simpler to search everywhere than only
+    #    where the answer could be
+
+    skin_neighbour = fill(0, nVertex, 2) # each skin vertex has 2 skin neighbours
+    for i in 1:nVertex
+        n_neighbours = 0
+        for j in 1:3
+            if any(skin.==neighbour[i,j])
+                n_neighbours = n_neighbours + 1
+                skin_neighbour[i,n_neighbours] = neighbour[i,j]
+            end
+        end
+    end
+    return neighbour
+end
 
 function cellvolume(vertex)
     # cell volumes (area in 2D) from cell vertices

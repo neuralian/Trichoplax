@@ -89,7 +89,7 @@
 
 
 # MAIN
-bodylayers = 2 # number of body cell layers
+bodylayers = 24 # number of body cell layers
 # mapdepth = 1     # map layers
 celldiam = 10.0
 
@@ -112,6 +112,6 @@ display(s)
 
 @time trichoplax = morph(trichoplax, .005, 100)
 
-draw(trichoplax, RGB(.95, .1, .1), 2)
+draw(trichoplax, RGB(.25, .95, .1), 2)
 
 display(s)

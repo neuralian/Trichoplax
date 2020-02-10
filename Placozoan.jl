@@ -49,6 +49,7 @@ struct Trichoplax
     neighbour::Array{Int64,2}  # neighbours of each vertex
     n_vertexcells::Array{Int64,1}  # number of cells containing each vertex
     vertexcells::Array{Int64,2} # index of cells containing each vertex
+    skin_neighbour::Array{Int64,2}  # 2 skin neighbours for each skin vertex
     k2::Array{Float64,1}  # half of cytoskeleton spring constant (k/2)
     ρ::Array{Float64,1}   # cell pressure constant \rho (energy/volume)
     σ::Array{Float64,1}   # surface energy density
@@ -93,18 +94,33 @@ function Trichoplax(n_cell_layers, cell_diameter)
 
   (skin, skinvertex) =  getskin(vertex, skeleton.vertex, skintriangle)
 
+  skin_neighbour = skinneighboursofskinvertices(neighbour, skin)
+
   volume = cellvolume(vertex)
 
   skeleton_springconstant = 2.0
   cell_surface_energy_density = 25.0
   cell_pressureconstant = 1.0
 
-  return Trichoplax(n_cell_layers, skeleton, triangle,
-                    skintriangle, vertex, cell, edge, volume, skin,
-                    n_neighbour, neighbour, n_vertexcells, vertexcells,
-                    [skeleton_springconstant/2.0],
-                    [cell_pressureconstant],
-                    [cell_surface_energy_density])
+  return Trichoplax(    n_cell_layers,
+                        skeleton,
+                        triangle,
+                        skintriangle,
+                        vertex,
+                        cell,
+                        edge,
+                        volume,
+                        skin,
+                        n_neighbour,
+                        neighbour,
+                        n_vertexcells,
+                        vertexcells,
+                        skin_neighbour,
+                        [skeleton_springconstant/2.0],
+                        [cell_pressureconstant],
+                        [cell_surface_energy_density]
+
+                        )
 end
 
 function skeletonlayercount(n_cell_layers)
@@ -557,8 +573,6 @@ function shapeEnergy(trichoplax::Trichoplax)
      return (Es +  trichoplax.ρ[]*Ep + trichoplax.σ[]*Lx)
 end
 
-
-
 function shapeEnergyGradient(dv::Float64, trichoplax::Trichoplax)
 
     v = trichoplax.vertex
@@ -582,11 +596,69 @@ function shapeEnergyGradient(dv::Float64, trichoplax::Trichoplax)
     ∇E
 end
 
+function localShapeEnergy(i::Int64, trichoplax::Trichoplax)
+    #  component of potential energy that depends on the ith vertex
+
+    Es = 0.0
+    v = trichoplax.vertex
+    nbr = trichoplax.neighbour
+
+    # cytoskeleton spring energy
+    for j in 1:trichoplax.n_neighbour[i]
+        r = sqrt(  ( v[i,1] - v[nbr[i,j],1] ) ^2 +
+                   ( v[i,2] - v[nbr[i,j],2] ) ^2 )
+        Es = Es + trichoplax.k2[]*(r - trichoplax.skeleton.edgelength[])^2
+    end
+
+    # cell turgor pressure
+    Ep = 0.0
+    tv = trichoplax.vertexcells
+    for j in trichoplax.n_vertexcells[i]
+        Ep = Ep + (cellvolume(v,tv[i,j])-
+                    trichoplax.volume[tv[i,j]])^4
+    end
+
+
+    # surface energy of external membranes
+    # proportional to length of skin segments each side of skin
+    Lx = 0.0
+    if any(trichoplax.skin.==i)   # if i is a skin vertex
+        j = findfirst(trichoplax.skin.==i)[]   # which skin vertex?
+        snbr = trichoplax.skin_neighbour[j, :]
+        Lx = sqrt( (v[i,1]-v[snbr[1],1])^2 + (v[i,2]-v[snbr[1],2])^2 +
+                   (v[i,1]-v[snbr[2],1])^2 + (v[i,2]-v[snbr[2],2])^2)
+    end
+
+    # println(Es, ", ", trichoplax.σ[]*Lx)
+     return (Es +  trichoplax.ρ[]*Ep + trichoplax.σ[]*Lx)
+end
+
+
+function localShapeEnergyGradient(dv::Float64, trichoplax::Trichoplax)
+
+    v = trichoplax.vertex
+    n = size(v)
+    ∇E = fill(0.0, n )
+
+    #E0 = shapeEnergy(trichoplax)
+    dv = dv*trichoplax.skeleton.edgelength[]
+    for i in 1:n[1]
+        for j in 1:2
+            v[i,j] = v[i,j] + dv  # + perturb (i,j)th coordinate
+            ∂Eplus = localShapeEnergy(i, trichoplax)
+            v[i,j] = v[i,j] - 2.0*dv  # - perturb (i,j)th coordinate
+            ∂Eminus = localShapeEnergy(i, trichoplax)
+            ∇E[i,j] = (∂Eplus-∂Eminus)/(2.0*dv) # ∂E/∂v_ij
+            v[i,j] = v[i,j] + dv      # put (i,j)th coordinate back
+        end
+    end
+    ∇E
+end
 
 function morph(trichoplax, rate::Float64 = .005, nsteps::Int64 = 25)
 
   @inbounds for t = 1:nsteps
-      ∇ = shapeEnergyGradient(1e-4, trichoplax)
+      ∇ = localShapeEnergyGradient(1e-4, trichoplax)
       trichoplax.vertex[:,:] = trichoplax.vertex - rate*∇
   end
 

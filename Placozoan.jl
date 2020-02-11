@@ -33,18 +33,22 @@ end
 
 struct Trichoplax
     nlayers::Int64
-    skeleton::Skeleton
+    celldiameter::Float64      # nominal cell diameter when constructed
+    # skeleton::Skeleton
     triangle::Array{Int64,2}   # skeleton Delaunay triangles
     skintriangle::Array{Int64,2} # triangles for skin vertices
     vertex::Array{Float64,2}   # cell vertices, each is centroid of triangle
     cell::Array{Int64, 2}      # 6 vertis for each cell
     edge::Array{Int64}         # [i,:] index links between cells
+    edgelength::Array{Float64,1}  # edge rest lengths
     volume::Array{Float64,1}   # volume (area) of each cell
     # skinvertex::Array{Int64}           #  skin vertex indices
     # mapdepth::Int64                    # number of cell layers in sensory map
     # mapvertex
     # mapcell
     skin::Array{Int64}         # index to cell vertices on exterior surface
+    n_edges2::Array{Int64,1}   # number of edges at ith vertex
+    edge2::Array{Int64,2}     # index of edges at ith vertex
     n_neighbour::Array{Int64,1}         # number of neighbours for each vertex
     neighbour::Array{Int64,2}  # neighbours of each vertex
     n_vertexcells::Array{Int64,1}  # number of cells containing each vertex
@@ -87,30 +91,36 @@ function Trichoplax(n_cell_layers, cell_diameter)
    (vertex, cell, triangle, skintriangle) = makecells(skeleton)
 
   edge = celledges(cell)
+  edgelength = edgelengths(edge, vertex)
 
   nVertices = size(vertex,1)
   (n_neighbour, neighbour) = cellvertexneighbours(nVertices, edge)
   (n_vertexcells, vertexcells) = cellscontainingcellvertices(nVertices, cell)
 
+  (n_edges2, edge2) = edges2vertex(nVertices, edge)
+
   (skin, skinvertex) =  getskin(vertex, skeleton.vertex, skintriangle)
 
   skin_neighbour = skinneighboursofskinvertices(neighbour, skin)
 
-  volume = cellvolume(vertex)
+  volume = ones(size(cell,1))*cellvolume(vertex, cell)[1]
 
   skeleton_springconstant = 2.0
   cell_surface_energy_density = 25.0
   cell_pressureconstant = 1.0
 
   return Trichoplax(    n_cell_layers,
-                        skeleton,
+                        cell_diameter,
                         triangle,
                         skintriangle,
                         vertex,
                         cell,
                         edge,
+                        edgelength,
                         volume,
                         skin,
+                        n_edges2,
+                        edge2,
                         n_neighbour,
                         neighbour,
                         n_vertexcells,
@@ -257,6 +267,26 @@ function cellvertexneighbours(nVertex, edge)
     return (n_neighbour, neighbour)
 end
 
+
+function edges2vertex(nVertex, edge)
+    # list edges that connect to each vertex
+
+    nEdge = size(edge,1)
+    edge2 = fill(0, nVertex, 3)
+    n_edges2 = fill(0, nVertex)  # number of edges connected to ith vertex
+    for i in 1:nVertex
+        edgecount = 0
+        for j in 1:nEdge
+            if any(edge[j,:].==i)      # jth edge contains ith vertex
+                edgecount = edgecount + 1
+                edge2[i, edgecount] = j
+            end
+        end
+        n_edges2[i] = edgecount
+    end
+    return (n_edges2, edge2)
+end
+
 function cellscontainingcellvertices(nVertex, cell)
     # list cells containing each vertex
 
@@ -301,16 +331,17 @@ function skinneighboursofskinvertices(neighbour, skin)
     return skin_neighbour
 end
 
-function cellvolume(vertex)
+function cellvolume(vertex, cell)
     # cell volumes (area in 2D) from cell vertices
 
-    nCells = size(vertex,1)
+    nCells = size(cell,1)
     volume = fill(0.0, nCells )
     for i in 1:nCells
         v = 0.0
         for j in 1:6
             k = j % 6 + 1
-            v = v + vertex[i,1]*vertex[k,2] - vertex[k,1]*vertex[i,2]
+            v = v + vertex[cell[i,j],1]*vertex[cell[i,k],2] -
+                    vertex[cell[i,j],2]*vertex[cell[i,k],1]
         end
         volume[i] = abs(v/2.0)
     end
@@ -318,13 +349,13 @@ function cellvolume(vertex)
     return volume
 end
 
-function cellvolume(vertex, i)
-    # volume of ith cell (area in 2D) from cell vertices
+function cellvolume(vertex)
+    # cell volume given 6 vertices
 
     v = 0.0
     for j in 1:6
         k = j % 6 + 1
-        v = v + vertex[i,1]*vertex[k,2] - vertex[k,1]*vertex[i,2]
+        v = v + vertex[j,1]*vertex[k,2] - vertex[k,1]*vertex[j,2]
     end
 
     return abs(v/2.0)
@@ -426,6 +457,17 @@ function celledges(cell)
     return edge[1:nfoundedges,:]
 end
 
+function edgelengths(edge::Array{Int64,2}, vertex::Array{Float64,2})
+
+    nedge = size(edge,1)
+    edgelength = fill(0.0, nedge)
+    for i in 1:nedge
+        edgelength[i] = sqrt( (vertex[edge[i,1],1] - vertex[edge[i,2],1])^2 +
+                              (vertex[edge[i,1],2] - vertex[edge[i,2],2])^2 )
+    end
+    return edgelength
+end
+
 function cellverticesfromskeleton(trichoplax)
     #    (re-)compute cell vertices from skeleton vertices
 
@@ -477,14 +519,13 @@ function draw(trichoplax::Trichoplax, color=:black, linewidth = .25)
     end
 end
 
-function drawskeleton(trichoplax::Trichoplax,
+function drawskeleton(skeleton::Skeleton,
          color = RGB(.25,.65,.25), linewidth = 0.25)
-  tsv = trichoplax.skeleton.vertex
-  link = trichoplax.skeleton.link
 
   for i in 1:size(link,1)
-      lines!(tsv[link[i, :],1], tsv[link[i, :],2],
-             color=color, linewidth=linewidth)
+      lines!(   skeleton.vertex[skeleton.link[i, :],1],
+                skeleton.vertex[skeleton.link[i, :],2],
+                color=color, linewidth=linewidth)
   end
 end
 
@@ -599,23 +640,29 @@ end
 function localShapeEnergy(i::Int64, trichoplax::Trichoplax)
     #  component of potential energy that depends on the ith vertex
 
-    Es = 0.0
+    Es = 0.0   # elastic energy in edges
+    Le = 0.0   # edge length
     v = trichoplax.vertex
-    nbr = trichoplax.neighbour
+    edge = trichoplax.edge
+    edge2 = trichoplax.edge2
 
     # cytoskeleton spring energy
-    for j in 1:trichoplax.n_neighbour[i]
-        r = sqrt(  ( v[i,1] - v[nbr[i,j],1] ) ^2 +
-                   ( v[i,2] - v[nbr[i,j],2] ) ^2 )
-        Es = Es + trichoplax.k2[]*(r - trichoplax.skeleton.edgelength[])^2
+    for j in 1:trichoplax.n_edges2[i]
+        k = edge2[i,j]  # edge index of jth edge at ith vertex
+        e = edge[k, :]     # vertex index of jth edge at ith vertex
+        r = sqrt( ( v[e[1],1] - v[e[2],1] ) ^2 + ( v[e[1],2] - v[e[2],2] ) ^2 )
+        Le = Le + r
+        Es = Es + trichoplax.k2[]*(r - trichoplax.edgelength[k])^2
     end
 
     # cell turgor pressure
     Ep = 0.0
     tv = trichoplax.vertexcells
-    for j in trichoplax.n_vertexcells[i]
-        Ep = Ep + (cellvolume(v,tv[i,j])-
-                    trichoplax.volume[tv[i,j]])^4
+    tc = trichoplax.cell
+    for j in 1:trichoplax.n_vertexcells[i]
+        cellvertices = v[tc[tv[i,j],:],:]
+        Ep = Ep + (cellvolume(cellvertices)-
+                    trichoplax.volume[tv[i,j]])^2
     end
 
 
@@ -630,7 +677,7 @@ function localShapeEnergy(i::Int64, trichoplax::Trichoplax)
     end
 
     # println(Es, ", ", trichoplax.σ[]*Lx)
-     return (Es +  trichoplax.ρ[]*Ep + trichoplax.σ[]*Lx)
+     return (Es +  trichoplax.ρ[]*Ep + trichoplax.σ[]*Lx )
 end
 
 
@@ -640,16 +687,15 @@ function localShapeEnergyGradient(dv::Float64, trichoplax::Trichoplax)
     n = size(v)
     ∇E = fill(0.0, n )
 
-    #E0 = shapeEnergy(trichoplax)
-    dv = dv*trichoplax.skeleton.edgelength[]
     for i in 1:n[1]
         for j in 1:2
+            v_save = v[i,j]
             v[i,j] = v[i,j] + dv  # + perturb (i,j)th coordinate
             ∂Eplus = localShapeEnergy(i, trichoplax)
             v[i,j] = v[i,j] - 2.0*dv  # - perturb (i,j)th coordinate
             ∂Eminus = localShapeEnergy(i, trichoplax)
             ∇E[i,j] = (∂Eplus-∂Eminus)/(2.0*dv) # ∂E/∂v_ij
-            v[i,j] = v[i,j] + dv      # put (i,j)th coordinate back
+            v[i,j] =v_save      # put (i,j)th coordinate back
         end
     end
     ∇E
@@ -658,7 +704,7 @@ end
 function morph(trichoplax, rate::Float64 = .005, nsteps::Int64 = 25)
 
   @inbounds for t = 1:nsteps
-      ∇ = localShapeEnergyGradient(1e-4, trichoplax)
+      ∇ = localShapeEnergyGradient(1e-4*trichoplax.celldiameter, trichoplax)
       trichoplax.vertex[:,:] = trichoplax.vertex - rate*∇
   end
 

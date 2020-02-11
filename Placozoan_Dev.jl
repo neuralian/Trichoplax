@@ -89,29 +89,62 @@
 
 
 # MAIN
-bodylayers = 24 # number of body cell layers
+bodylayers = 12 # number of body cell layers
 # mapdepth = 1     # map layers
 celldiam = 10.0
+SceneWidth = bodylayers*celldiam
 
 
 
 
 @time trichoplax = Trichoplax(bodylayers, celldiam)
 trichoplax.k2[] = 1.0e-2    # cytoskeleton spring constant /2
-trichoplax.σ[]  = 1.0e1   # cell surface energy density
-trichoplax.ρ[]  = 1.0e2    # cell turgor pressure energy per unit volume
+trichoplax.σ[]  = 1.0e2   # cell surface energy density
+trichoplax.ρ[]  = 1.0e0 #1.0e2    # cell turgor pressure energy per unit volume
 
 
 # Draw
-s = Scene(resolution = (800,800), scale_plot = false)
+scene = Scene(resolution = (800,800), scale_plot = false)
 draw(trichoplax, RGB(.85, .1, .1), 0.65)
 #drawmap(trichoplax, :orange, 1.0)
-drawskeleton(trichoplax, RGB(.65, .65, .65), .5)
 
-display(s)
+# display(scene)
+#
+# sleep(1.0)
 
-@time trichoplax = morph(trichoplax, .005, 100)
+@time trichoplax = morph(trichoplax, .001, 100)
+scene = Scene(resolution = (800,800), scale_plot = false,
+    limits=FRect(-SceneWidth, -SceneWidth, 2*SceneWidth, 2*SceneWidth))
+draw(trichoplax, RGB(.75, .25, .1), 1)
 
-draw(trichoplax, RGB(.25, .95, .1), 2)
+display(scene)
+sleep(1.0)
 
-display(s)
+for i in 1:size(trichoplax.cell,1)
+    if sum(trichoplax.vertex[trichoplax.cell[i,:],1])/6.0 > 80.
+        trichoplax.volume[i] = trichoplax.volume[i]*0.5
+    end
+    if sum(trichoplax.vertex[trichoplax.cell[i,:],1])/6.0 < -80.
+        trichoplax.volume[i] = trichoplax.volume[i]*2.0
+    end
+end
+
+# @time trichoplax = morph(trichoplax, .001, 100)
+# scene = Scene(resolution = (800,800), scale_plot = false,
+#     limits=FRect(-SceneWidth, -SceneWidth, 2*SceneWidth, 2*SceneWidth))
+# draw(trichoplax, RGB(.75, .25, .1), 1)
+#
+# display(scene)
+
+
+
+record(scene, "trichoplaxdev.mp4", 1:25) do i
+    global trichoplax
+    @time trichoplax = morph(trichoplax, .0005, 1)
+    scene = Scene(resolution = (800,800), scale_plot = false,
+        limits=FRect(-SceneWidth, -SceneWidth, 2*SceneWidth, 2*SceneWidth))
+    draw(trichoplax, RGB(.75, .25, .1), 1)
+    display(scene)
+    sleep(.1)
+
+end

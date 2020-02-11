@@ -32,6 +32,8 @@ struct Skeleton
 end
 
 struct Trichoplax
+    potential::Array{Float64,1}   # membrane potential per cell
+    calcium::Array{Float64,1}     # [calcium] per cell
     nlayers::Int64
     celldiameter::Float64      # nominal cell diameter when constructed
     # skeleton::Skeleton
@@ -42,38 +44,38 @@ struct Trichoplax
     edge::Array{Int64}         # [i,:] index links between cells
     edgelength::Array{Float64,1}  # edge rest lengths
     volume::Array{Float64,1}   # volume (area) of each cell
-    # skinvertex::Array{Int64}           #  skin vertex indices
-    # mapdepth::Int64                    # number of cell layers in sensory map
+    # mapdepth::Int64          # number of cell layers in sensory map
     # mapvertex
     # mapcell
     skin::Array{Int64}         # index to cell vertices on exterior surface
-    n_edges2::Array{Int64,1}   # number of edges at ith vertex
-    edge2::Array{Int64,2}     # index of edges at ith vertex
-    n_neighbour::Array{Int64,1}         # number of neighbours for each vertex
-    neighbour::Array{Int64,2}  # neighbours of each vertex
+    n_edges2vertex::Array{Int64,1}   # number of edges at ith vertex
+    edge2vertex::Array{Int64,2}     # index of edges at ith vertex
+    n_neighbourvertex::Array{Int64,1}   # number of neighbours for each vertex
+    neighbourvertex::Array{Int64,2}  # neighbours of each vertex
+    n_neighbourcell::Array{Int64,1}  # number of neighbours for each cell
+    neighbourcell::Array{Int64,2}  # neighbours of each cell
     n_vertexcells::Array{Int64,1}  # number of cells containing each vertex
     vertexcells::Array{Int64,2} # index of cells containing each vertex
     skin_neighbour::Array{Int64,2}  # 2 skin neighbours for each skin vertex
     k2::Array{Float64,1}  # half of cytoskeleton spring constant (k/2)
     ρ::Array{Float64,1}   # cell pressure constant \rho (energy/volume)
     σ::Array{Float64,1}   # surface energy density
+    dt::Array{Float64,1}  # simulation time step length (seconds)
     # nb fields are immutable
     #    Declaring k2 & σ as arrays allows access via e.g. trichoplax.k2[]
 end
 
 # normaldistribution = Normal()
 
-#numLinks(num_cells) = num_cells*6 + 9*num_cells*(num_cells-1)
-
 function Skeleton(n_cell_layers, cell_diameter)
 
     layercount = skeletonlayercount(n_cell_layers)
     vertex = skeletonvertices(layercount, cell_diameter)
-    neighbour = skeletonvertexneighbours(vertex, layercount)
-    link = links(vertex,neighbour, layercount)
+    neighbourvertex = skeletonvertexneighbours(vertex, layercount)
+    link = links(vertex,neighbourvertex, layercount)
     # distalΔ = distalskeleton(nbr, layer)
 
-    return Skeleton(vertex, link, [cell_diameter], layercount, neighbour)
+    return Skeleton(vertex, link, [cell_diameter], layercount, neighbourvertex)
 end
 
 function Trichoplax(n_cell_layers, cell_diameter)
@@ -94,22 +96,30 @@ function Trichoplax(n_cell_layers, cell_diameter)
   edgelength = edgelengths(edge, vertex)
 
   nVertices = size(vertex,1)
-  (n_neighbour, neighbour) = cellvertexneighbours(nVertices, edge)
+  (n_neighbourvertex, neighbourvertex) = cellvertexneighbours(nVertices, edge)
   (n_vertexcells, vertexcells) = cellscontainingcellvertices(nVertices, cell)
 
-  (n_edges2, edge2) = edges2vertex(nVertices, edge)
+  (n_neighbourcell, neighbourcell) = cellneighbours(skeleton)
+
+  (n_edges2vertex, edge2vertex) = edges2vertex(nVertices, edge)
 
   (skin, skinvertex) =  getskin(vertex, skeleton.vertex, skintriangle)
 
-  skin_neighbour = skinneighboursofskinvertices(neighbour, skin)
+  skin_neighbour = skinneighboursofskinvertices(neighbourvertex, skin)
 
   volume = ones(size(cell,1))*cellvolume(vertex, cell)[1]
+
+  potential = zeros(size(cell,1))
+  calcium = zeros(size(cell,1))
 
   skeleton_springconstant = 2.0
   cell_surface_energy_density = 25.0
   cell_pressureconstant = 1.0
+  dt = .001
 
-  return Trichoplax(    n_cell_layers,
+  return Trichoplax(    potential,
+                        calcium,
+                        n_cell_layers,
                         cell_diameter,
                         triangle,
                         skintriangle,
@@ -119,17 +129,19 @@ function Trichoplax(n_cell_layers, cell_diameter)
                         edgelength,
                         volume,
                         skin,
-                        n_edges2,
-                        edge2,
-                        n_neighbour,
-                        neighbour,
+                        n_edges2vertex,
+                        edge2vertex,
+                        n_neighbourvertex,
+                        neighbourvertex,
+                        n_neighbourcell,
+                        neighbourcell,
                         n_vertexcells,
                         vertexcells,
                         skin_neighbour,
                         [skeleton_springconstant/2.0],
                         [cell_pressureconstant],
-                        [cell_surface_energy_density]
-
+                        [cell_surface_energy_density],
+                        [dt]
                         )
 end
 
@@ -177,18 +189,18 @@ function skeletonvertexneighbours(v, layercount)
 
     n = sum(layercount[1:(end-1)])   # number of vertices with 6 neighbours
     D = vertexdistance(v)
-    neighbour = fill(0, n, 6)
+    neighbourvertex = fill(0, n, 6)
 
     # closest 6 neighbours of each vertex
     for i in 1:n
         order = sortperm(D[:,i])  # list vertices in order of distance from ith
-        neighbour[i, :] = order[2:7] # nb closest vertex order[1]==self
+        neighbourvertex[i, :] = order[2:7] # nb closest vertex order[1]==self
     end
 
     # sort neighbours anticlockwise around self
     for i in 1:n
-      dx = v[neighbour[i,:],1].-v[i,1]
-      dy = v[neighbour[i,:],2].-v[i,2]
+      dx = v[neighbourvertex[i,:],1].-v[i,1]
+      dy = v[neighbourvertex[i,:],2].-v[i,2]
       θ = atan.(dy,dx)
       θ = θ .+ (π - atan(v[i,2], v[i,1]))
       i0 = findall(x->(x<-π), θ)
@@ -196,13 +208,13 @@ function skeletonvertexneighbours(v, layercount)
       i1 = findall(x->(x>π), θ)
       θ[i1] = θ[i1] .- 2π
       order = sortperm(θ)
-      neighbour[i,:] = neighbour[i, order]
+      neighbourvertex[i,:] = neighbourvertex[i, order]
     end
 
-    return neighbour
+    return neighbourvertex
 end
 
-function links(v,neighbour, layercount)
+function links(v,neighbourvertex, layercount)
     # links between skeleton vertices (= links between cells)
 
     numLinks(nlayers) = 3*nlayers*(3*nlayers-1)+layercount[end]
@@ -214,8 +226,8 @@ function links(v,neighbour, layercount)
 
     for i in 1:nCells
         for j in 1:6
-            # candidate link from ith cell to its jth neighbour
-            candidate = sort([i neighbour[i,j]], dims=2)
+            # candidate link from ith cell to its jth neighbourvertex
+            candidate = sort([i neighbourvertex[i,j]], dims=2)
             already_found = false
             for k in 1:countLink
                 if candidate==link[k,:]'
@@ -250,41 +262,58 @@ function cellvertexneighbours(nVertex, edge)
     #nVertex = size(vertex, 1)
     nEdge = size(edge,1)
     println(nVertex, ", ", nEdge)
-    neighbour = fill(0, nVertex, 3)
-    n_neighbour = fill(0, nVertex)  # number of edges connected to ith vertex
+    neighbourvertex = fill(0, nVertex, 3)
+    n_neighbourvertex = fill(0, nVertex)  # number of edges connected to ith vertex
     for i in 1:nVertex
         neighbourcount = 0
         for j in 1:nEdge
             if any(edge[j,:].==i)      # found edge containing ith vertex
-                # next neighbour is the other vertex in the link
+                # next neighbourvertex is the other vertex in the link
                 # (the one that is not i)
                 neighbourcount = neighbourcount + 1
-                neighbour[i, neighbourcount] = edge[j,findfirst(edge[j,:].!=i)]
+                neighbourvertex[i, neighbourcount] = edge[j,findfirst(edge[j,:].!=i)]
             end
         end
-        n_neighbour[i] = neighbourcount
+        n_neighbourvertex[i] = neighbourcount
     end
-    return (n_neighbour, neighbour)
+    return (n_neighbourvertex, neighbourvertex)
 end
 
+function cellneighbours(skeleton)
+    # neighbouring cells for each cell
+    # cells are centred on skeleton vertices, so cell neighbours
+    #    are skeleton vertex neighbours, except for the outermost layer
+    #    whose neighbour vertices are outside the body.
+
+    nCells = sum(skeleton.layercount[1:(end-1)])
+    neighbourcell = fill(0.0, nCells, 6)
+    n_neighbourcell = fill(0, nCells)
+    for i in 1:nCells
+        nbr = skeleton.neighbour[i,:]
+        j = findall(nbr.<=nCells)  # which neigbours are cells
+        n_neighbourcell[i] = length(j)
+        neighbourcell[i,1:n_neighbourcell[i]] = j   # copy
+    end
+    return (n_neighbourcell, neighbourcell)
+end
 
 function edges2vertex(nVertex, edge)
     # list edges that connect to each vertex
 
     nEdge = size(edge,1)
-    edge2 = fill(0, nVertex, 3)
-    n_edges2 = fill(0, nVertex)  # number of edges connected to ith vertex
+    edge2vertex = fill(0, nVertex, 3)
+    n_edges2vertex = fill(0, nVertex)  # number of edges connected to ith vertex
     for i in 1:nVertex
         edgecount = 0
         for j in 1:nEdge
             if any(edge[j,:].==i)      # jth edge contains ith vertex
                 edgecount = edgecount + 1
-                edge2[i, edgecount] = j
+                edge2vertex[i, edgecount] = j
             end
         end
-        n_edges2[i] = edgecount
+        n_edges2vertex[i] = edgecount
     end
-    return (n_edges2, edge2)
+    return (n_edges2vertex, edge2vertex)
 end
 
 function cellscontainingcellvertices(nVertex, cell)
@@ -307,9 +336,9 @@ function cellscontainingcellvertices(nVertex, cell)
     return (n_cellshere, cellshere)
 end
 
-function skinneighboursofskinvertices(neighbour, skin)
+function skinneighboursofskinvertices(neighbourvertex, skin)
     # index skin vertices connected to each skin vertex
-    # neighbour = index of neighbours of each vertex
+    # neighbourvertex = index of neighbours of each vertex
     #   ( output from cellvertexneighbours() )
     # skin = index of vertices in skin
     #   ( output from getskin() )
@@ -322,9 +351,9 @@ function skinneighboursofskinvertices(neighbour, skin)
     for i in 1:nSkinvertices
         n_neighbours = 0
         for j in 1:3
-            if any(skin.==neighbour[skin[i],j])
+            if any(skin.==neighbourvertex[skin[i],j])
                 n_neighbours = n_neighbours + 1
-                skin_neighbour[i,n_neighbours] = neighbour[skin[i],j]
+                skin_neighbour[i,n_neighbours] = neighbourvertex[skin[i],j]
             end
         end
     end
@@ -422,7 +451,6 @@ function makecells(skeleton)
      skintriangle = triangle[ii[sortperm(θ)],:]
 
     return (vertex, cell, triangle, skintriangle)
-
 end
 
 function celledges(cell)
@@ -480,7 +508,6 @@ function cellverticesfromskeleton(trichoplax)
 
     return trichoplax
 end
-
 
 function getskin(cellvertex, skeletonvertex, skintriangle)
     # compute external vertex coordinates (skin vertices)
@@ -644,11 +671,11 @@ function localShapeEnergy(i::Int64, trichoplax::Trichoplax)
     Le = 0.0   # edge length
     v = trichoplax.vertex
     edge = trichoplax.edge
-    edge2 = trichoplax.edge2
+    edge2vertex = trichoplax.edge2vertex
 
     # cytoskeleton spring energy
-    for j in 1:trichoplax.n_edges2[i]
-        k = edge2[i,j]  # edge index of jth edge at ith vertex
+    for j in 1:trichoplax.n_edges2vertex[i]
+        k = edge2vertex[i,j]  # edge index of jth edge at ith vertex
         e = edge[k, :]     # vertex index of jth edge at ith vertex
         r = sqrt( ( v[e[1],1] - v[e[2],1] ) ^2 + ( v[e[1],2] - v[e[2],2] ) ^2 )
         Le = Le + r
@@ -680,7 +707,6 @@ function localShapeEnergy(i::Int64, trichoplax::Trichoplax)
      return (Es +  trichoplax.ρ[]*Ep + trichoplax.σ[]*Lx )
 end
 
-
 function localShapeEnergyGradient(dv::Float64, trichoplax::Trichoplax)
 
     v = trichoplax.vertex
@@ -711,8 +737,26 @@ function morph(trichoplax, rate::Float64 = .005, nsteps::Int64 = 25)
   #trichoplax = cellverticesfromskeleton(trichoplax)
 
   return trichoplax
-
 end
+
+# function diffusepotential(trichoplax, rate)
+#     # propagate graded potential across cells,
+#     # rate const = per second, each cell distributes this much of
+#     # its current 
+#
+#     v = fill(0.0, size(trichoplax.cell,1))
+#     tv = trichoplax.potential
+#     tn = trichoplax.neighbourcell
+#     n_tn = trichoplax.n_neighbourcell
+#     r = rate*trichoplax.dt
+#     for i in 1:size(trichoplax.cell,1)
+#         for j in 1:n_tn[i]
+#             dv = r*tv[tn[i,j]]  # total amount taken from neighbour
+#             v[i] = v[i] + r*/n_tn[tn[i,j]]
+#         end
+#     end
+#
+# end
 
 
 #     ncells = size(cell,1)

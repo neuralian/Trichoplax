@@ -89,7 +89,7 @@
 
 
 # MAIN
-bodylayers = 12 # number of body cell layers
+bodylayers = 4 # number of body cell layers
 # mapdepth = 1     # map layers
 celldiam = 10.0
 SceneWidth = bodylayers*celldiam
@@ -138,13 +138,13 @@ end
 
 
 
-record(scene, "trichoplaxdev.mp4", 1:25) do i
-    global trichoplax
-    @time trichoplax = morph(trichoplax, .0005, 1)
-    scene = Scene(resolution = (800,800), scale_plot = false,
-        limits=FRect(-SceneWidth, -SceneWidth, 2*SceneWidth, 2*SceneWidth))
-    draw(trichoplax, RGB(.75, .25, .1), 1)
-    display(scene)
-    sleep(.1)
-
-end
+# record(scene, "trichoplaxdev.mp4", 1:25) do i
+#     global trichoplax
+#     @time trichoplax = morph(trichoplax, .0005, 1)
+#     scene = Scene(resolution = (800,800), scale_plot = false,
+#         limits=FRect(-SceneWidth, -SceneWidth, 2*SceneWidth, 2*SceneWidth))
+#     draw(trichoplax, RGB(.75, .25, .1), 1)
+#     display(scene)
+#     sleep(.1)
+#
+# end

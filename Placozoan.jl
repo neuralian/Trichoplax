@@ -13,6 +13,7 @@
 # using Distributions
 using Makie
 using Colors
+using ColorSchemes
 
 # export Trichoplax,
 #                 discworld, neighbour, makebody, findperimetervertices,
@@ -183,6 +184,10 @@ function vertexdistance(v)
     return D
 end
 
+function meanvec(x::Array{Float64})
+    return sum(x[:])/length(x)
+end
+
 function skeletonvertexneighbours(v, layercount)
     # 6 neighbours of each skeleton vertex, not including outer layer
     # sorted into counterclockwise order
@@ -286,13 +291,13 @@ function cellneighbours(skeleton)
     #    whose neighbour vertices are outside the body.
 
     nCells = sum(skeleton.layercount[1:(end-1)])
-    neighbourcell = fill(0.0, nCells, 6)
+    neighbourcell = fill(0, nCells, 6)
     n_neighbourcell = fill(0, nCells)
     for i in 1:nCells
         nbr = skeleton.neighbour[i,:]
         j = findall(nbr.<=nCells)  # which neigbours are cells
         n_neighbourcell[i] = length(j)
-        neighbourcell[i,1:n_neighbourcell[i]] = j   # copy
+        neighbourcell[i,1:n_neighbourcell[i]] = nbr[j]  # copy
     end
     return (n_neighbourcell, neighbourcell)
 end
@@ -546,6 +551,41 @@ function draw(trichoplax::Trichoplax, color=:black, linewidth = .25)
     end
 end
 
+function potentialmap(trichoplax::Trichoplax, imap::Int64=1)
+    # draw trichoplax with colormapping from potential
+    # each hexagonal cell is rendered as 6 triangles radiating from centre
+
+   # colormap choices
+    cmap = (ColorSchemes.mint,   #1
+            ColorSchemes.viridis,   #2
+            ColorSchemes.inferno,   #3
+            ColorSchemes.hot,       #4
+            ColorSchemes.copper,    #5
+            ColorSchemes.inferno,   #6
+            ColorSchemes.avocado       #7
+            )
+
+    connect = [ 1  2  3
+                1  3  4
+                1  4  5
+                1  5  6
+                1  6  7
+                1  7  2]
+
+    for i in 1:size(trichoplax.cell,1)
+        iv = trichoplax.cell[i,:]    # cell vertex indices
+        colorvalue = [meanvec(trichoplax.potential[trichoplax.vertexcells[trichoplax.cell[i,j], 1:trichoplax.n_vertexcells[trichoplax.cell[i,j]]]])
+                        for j in 1:6]
+
+        color = get(cmap[imap],
+                1.0 .- vcat(trichoplax.potential[i], colorvalue ))
+
+        x = trichoplax.vertex[iv,:]
+        xx = vcat(sum(x, dims=1)/6.0, x)
+        poly!(xx, connect, color = color)
+    end
+end
+
 function drawskeleton(skeleton::Skeleton,
          color = RGB(.25,.65,.25), linewidth = 0.25)
 
@@ -739,24 +779,29 @@ function morph(trichoplax, rate::Float64 = .005, nsteps::Int64 = 25)
   return trichoplax
 end
 
-# function diffusepotential(trichoplax, rate)
-#     # propagate graded potential across cells,
-#     # rate const = per second, each cell distributes this much of
-#     # its current 
-#
-#     v = fill(0.0, size(trichoplax.cell,1))
-#     tv = trichoplax.potential
-#     tn = trichoplax.neighbourcell
-#     n_tn = trichoplax.n_neighbourcell
-#     r = rate*trichoplax.dt
-#     for i in 1:size(trichoplax.cell,1)
-#         for j in 1:n_tn[i]
-#             dv = r*tv[tn[i,j]]  # total amount taken from neighbour
-#             v[i] = v[i] + r*/n_tn[tn[i,j]]
-#         end
-#     end
-#
-# end
+function diffusepotential(trichoplax, rate)
+    # propagate graded potential across cells,
+    # rate const = per second, each cell distributes this much of
+    # its current potential to neighbours + an equal share of leak current
+
+    nCells = size(trichoplax.cell,1)
+    v = fill(0.0, nCells)
+    x = fill(0.0, nCells)
+    for i in 1:nCells
+        x[i] = rate*trichoplax.dt[]*trichoplax.potential[i] # amt to take from each cell
+    end
+    for i in 1:nCells
+        for j in 1:trichoplax.n_neighbourcell[i]
+            k = trichoplax.neighbourcell[i,j]
+            v[i] = v[i] + x[k]/(trichoplax.n_neighbourcell[k]+1.0)  # total amount taken from neighbour
+        end
+    end
+    for i in 1:nCells
+        v[i] = trichoplax.potential[i] + v[i] - x[i]
+    end
+    trichoplax.potential[:] = v
+    return trichoplax
+end
 
 
 #     ncells = size(cell,1)

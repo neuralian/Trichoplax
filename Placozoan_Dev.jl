@@ -124,18 +124,18 @@ display(scene)
 sleep(0.25)
 restvolume = copy(trichoplax.volume)
 trichoplax = relax(trichoplax)
-record(scene, "trichoplaxdev.mp4", 1:125) do i
+record(scene, "trichoplaxdev.mp4", 1:150) do i
     global trichoplax
+    global scene
+    display(scene)
     trichoplax.potential[8] = i<=50 ? 2.0 : 0.0
     trichoplax = diffusepotential(trichoplax,100)
     trichoplax.volume[:] = restvolume.*(1.0 .- sqrt.(trichoplax.potential/4.0))
-    morph(trichoplax, .0001, 10)
+    morph(trichoplax, .0001, 25)
     scene = Scene(resolution = (800,800), scale_plot = false,
         limits=FRect(-SceneWidth, -SceneWidth, 2*SceneWidth, 2*SceneWidth))
     draw(trichoplax,RGB(.25, .25, .25), 1)
     potentialmap(trichoplax)
-    display(scene)
-    sleep(0.1)
 end
 
 # for i in 1:size(trichoplax.cell,1)

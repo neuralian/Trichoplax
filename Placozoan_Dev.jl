@@ -98,32 +98,29 @@ SceneWidth = bodylayers*celldiam
 
 
 @time trichoplax = Trichoplax(bodylayers, celldiam)
+# <<<<<<< Updated upstream
 trichoplax.k2[] = 5.0e-2    # cytoskeleton spring constant /2
 trichoplax.σ[]  = 5.0e1   # cell surface energy density
 trichoplax.ρ[]  = 1.0e0 #1.0e2    # cell turgor pressure energy per unit volume
+# =======
+# trichoplax.k2[] = 1.0e-1    # cytoskeleton spring constant /2
+# trichoplax.σ[]  = 1.0e2   # cell surface energy density
+# trichoplax.ρ[]  = 1.0e1 #1.0e2    # cell turgor pressure energy per unit volume
+# >>>>>>> Stashed changes
 
 
 # Draw
-scene = Scene(resolution = (800,800), scale_plot = false)
-draw(trichoplax, RGB(.85, .1, .1), 0.65)
-#drawmap(trichoplax, :orange, 1.0)
-
-# display(scene)
-#
-# sleep(1.0)
-
-@time trichoplax = morph(trichoplax, .001, 500)
 scene = Scene(resolution = (800,800), scale_plot = false,
     limits=FRect(-SceneWidth, -SceneWidth, 2*SceneWidth, 2*SceneWidth))
 draw(trichoplax, RGB(.25, .25, .25), 1)
+
 # map potential to cell colour
 # default colormap = mint; other options in function potentialmap()
-
 potentialmap(trichoplax)
 display(scene)
 sleep(0.25)
+
 restvolume = copy(trichoplax.volume)
-trichoplax = relax(trichoplax)
 record(scene, "trichoplaxdev.mp4", 1:150) do i
     global trichoplax
     global scene
@@ -136,6 +133,8 @@ record(scene, "trichoplaxdev.mp4", 1:150) do i
         limits=FRect(-SceneWidth, -SceneWidth, 2*SceneWidth, 2*SceneWidth))
     draw(trichoplax,RGB(.25, .25, .25), 1)
     potentialmap(trichoplax)
+    sleep(0.1)
+    println(i)
 end
 
 # for i in 1:size(trichoplax.cell,1)

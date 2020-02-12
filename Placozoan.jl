@@ -118,7 +118,9 @@ function Trichoplax(n_cell_layers, cell_diameter)
   cell_pressureconstant = 1.0
   dt = .001
 
-  return Trichoplax(    potential,
+  # "raw" trichoplax, constructed as hexagonal cells (Voronoi tesselation)
+  # on a Delaunay-triangle skeleton
+  trichoplax = Trichoplax(    potential,
                         calcium,
                         n_cell_layers,
                         cell_diameter,
@@ -144,6 +146,17 @@ function Trichoplax(n_cell_layers, cell_diameter)
                         [cell_surface_energy_density],
                         [dt]
                         )
+
+    # reshape by minimizing energy
+    # = spring energy in cytoskeleton + cell turgor pressure + surface energy
+    trichoplax = morph(trichoplax, .001, 500)
+
+    # re-set anatomical parameters so that the animal is in
+    # its minimum energy state at rest
+    trichoplax = relax(trichoplax)
+
+    # ready to roll! (or glide ...)
+    return trichoplax    
 end
 
 function skeletonlayercount(n_cell_layers)
@@ -720,7 +733,7 @@ function localShapeEnergy(i::Int64, trichoplax::Trichoplax)
     edge2vertex = trichoplax.edge2vertex
 
     # cytoskeleton spring energy
-    for j in 1:trichoplax.n_edges2vertex[i]
+    @inbounds for j in 1:trichoplax.n_edges2vertex[i]
         k = edge2vertex[i,j]  # edge index of jth edge at ith vertex
         e = edge[k, :]     # vertex index of jth edge at ith vertex
         r = sqrt( ( v[e[1],1] - v[e[2],1] ) ^2 + ( v[e[1],2] - v[e[2],2] ) ^2 )
@@ -759,8 +772,8 @@ function localShapeEnergyGradient(dv::Float64, trichoplax::Trichoplax)
     n = size(v)
     ∇E = fill(0.0, n )
 
-    for i in 1:n[1]
-        for j in 1:2
+    @inbounds for i in 1:n[1]
+        @inbounds for j in 1:2
             v_save = v[i,j]
             v[i,j] = v[i,j] + dv  # + perturb (i,j)th coordinate
             ∂Eplus = localShapeEnergy(i, trichoplax)
@@ -793,16 +806,16 @@ function diffusepotential(trichoplax, rate)
     nCells = size(trichoplax.cell,1)
     v = fill(0.0, nCells)
     x = fill(0.0, nCells)
-    for i in 1:nCells
+    @inbounds for i in 1:nCells
         x[i] = rate*trichoplax.dt[]*trichoplax.potential[i] # amt to take from each cell
     end
-    for i in 1:nCells
-        for j in 1:trichoplax.n_neighbourcell[i]
+    @inbounds for i in 1:nCells
+        @inbounds for j in 1:trichoplax.n_neighbourcell[i]
             k = trichoplax.neighbourcell[i,j]
             v[i] = v[i] + .85*x[k]/trichoplax.n_neighbourcell[k]  # total amount taken from neighbour
         end
     end
-    for i in 1:nCells
+    @inbounds for i in 1:nCells
         v[i] = trichoplax.potential[i] + v[i] - x[i]
     end
     trichoplax.potential[:] = v

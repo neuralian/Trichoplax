@@ -501,6 +501,12 @@ function edgelengths(edge::Array{Int64,2}, vertex::Array{Float64,2})
     return edgelength
 end
 
+function relax(trichoplax)
+    # set rest edge lengths to current edge lengths
+    trichoplax.edgelength[:] = edgelengths(trichoplax.edge, trichoplax.vertex)
+    return trichoplax
+end
+
 function cellverticesfromskeleton(trichoplax)
     #    (re-)compute cell vertices from skeleton vertices
 
@@ -793,7 +799,7 @@ function diffusepotential(trichoplax, rate)
     for i in 1:nCells
         for j in 1:trichoplax.n_neighbourcell[i]
             k = trichoplax.neighbourcell[i,j]
-            v[i] = v[i] + x[k]/(trichoplax.n_neighbourcell[k]+1.0)  # total amount taken from neighbour
+            v[i] = v[i] + .85*x[k]/trichoplax.n_neighbourcell[k]  # total amount taken from neighbour
         end
     end
     for i in 1:nCells

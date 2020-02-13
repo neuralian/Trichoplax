@@ -1,167 +1,47 @@
 # Placozoan_Dev.jl
 
-# using Makie
-# using Colors
-# #using LinearAlgebra
-# using Statistics
-# using Placozoan
-
-
-
-#
-# function drawmap(trichoplax, color = :blue, linewidth = 0.5)
-#   drawcells(trichoplax.mapvertex, trichoplax.mapcell, color, linewidth)
-#
-# end
-#
-#
-#
-#
-# function paint(trichoplax, color = :red)
-#
-#     nVertex = size(trichoplax.vertex, 1)
-#     nCell = size(trichoplax.cell, 1)
-#     vertex = fill(0.0, nVertex+nCell, 2) # will add centre vertex to each cell
-#     for i in 1:nVertex
-#         vertex[i,:] = trichoplax.vertex[i,:]
-#     end
-#     facet = fill(0,6*nCell,3) # 6 triangle facets per cell
-#     nFacet = 0
-#     for cell in 1:nCell
-#         vertex[nVertex+cell, :] = mean(vertex[trichoplax.cell[cell,:],:], dims=1)
-#         for i in 1:6
-#             nFacet = nFacet + 1
-#             i0 = trichoplax.cell[cell,i]
-#             i1 = trichoplax.cell[cell,i%6+1]
-#             facet[nFacet, :] = [nVertex+cell i0 i1]
-#         end
-#     end
-#
-#     # render cells
-#     poly!(vertex, facet, color = rand(size(vertex,1)),
-#             colormap = :blues)
-#
-#
-# end
-
-
-# function skeletonEnergy(trichoplax::Trichoplax)
-#     #  potential energy in skeleton deformation + surface energy.
-#     #   skeleton edges are linear springs Es = (1/2)k(r-ro)^2
-#     #   surface energy σ per unit length of exposed membrane
-#
-# # probably redundant??
-#
-#     k2 = 1.0  # half of cytoskeleton spring constant (k/2)
-#     σ = 1.0  # surface energy density
-#
-#     Es = 0.0
-#    # elastic energy in skeleton deformation
-#    for i in 1:size(trichoplax.skeleton.edge,1)
-#        r = sqrt(sum(
-#             ( trichoplax.skeleton.vertex[trichoplax.skeleton.edge[i,1],:] -
-#               trichoplax.skeleton.vertex[trichoplax.skeleton.edge[i,2],:] ).^2))
-#        Es = Es + k2*(r - trichoplax.skeleton.edgelength)^2
-#    end
-#
-#    # surface energy of external membranes
-#    Lx = 0.0    # initialize external surface length to 0
-#    # x & y coords of external vertices
-#    x = mean(trichoplax.skeleton.vertex[trichoplax.skeleton.distalΔ[:,:], 1],
-#             dims = 2)
-#    y = mean(trichoplax.skeleton.vertex[trichoplax.skeleton.distalΔ[:,:], 2],
-#             dims = 2)
-#    # length of external surface, sum lengths of external edge segments
-#    n = length(x)
-#    for i in 2:n
-#        Lx = Lx + sqrt( (x[i]-x[i-1]).^2 + (y[i]-y[i-1]).^2)
-#    end
-#    # include edge from last to first vertex (close the loop)
-#    Lx = Lx + sqrt( (x[n]-x[1]).^2 + (y[n]-y[1]).^2)
-#
-#    # total energy is elastic + surface energy
-#    println(Es, ", ", σ*Lx)
-#     return (Es +  σ*Lx)
-#
-# end
-
-
-
+function trichoplax_sim()
 
 # MAIN
-bodylayers = 4 # number of body cell layers
+bodylayers = 8 # number of body cell layers
 # mapdepth = 1     # map layers
 celldiam = 10.0
 SceneWidth = bodylayers*celldiam
 
 
 
-
 @time trichoplax = Trichoplax(bodylayers, celldiam)
-# <<<<<<< Updated upstream
 trichoplax.k2[] = 5.0e-2    # cytoskeleton spring constant /2
 trichoplax.σ[]  = 5.0e1   # cell surface energy density
 trichoplax.ρ[]  = 1.0e0 #1.0e2    # cell turgor pressure energy per unit volume
-# =======
-# trichoplax.k2[] = 1.0e-1    # cytoskeleton spring constant /2
-# trichoplax.σ[]  = 1.0e2   # cell surface energy density
-# trichoplax.ρ[]  = 1.0e1 #1.0e2    # cell turgor pressure energy per unit volume
-# >>>>>>> Stashed changes
 
 
 # Draw
 scene = Scene(resolution = (800,800), scale_plot = false,
     limits=FRect(-SceneWidth, -SceneWidth, 2*SceneWidth, 2*SceneWidth))
-draw(trichoplax, RGB(.25, .25, .25), 1)
+cells_handle = draw(scene, trichoplax, RGB(.25, .25, .25), 1)
 
-# map potential to cell colour
-# default colormap = mint; other options in function potentialmap()
-potentialmap(trichoplax)
-display(scene)
-sleep(0.25)
-
+# # map potential to cell colour
+# # default colormap = mint; other options in function potentialmap()
+# # potentialmap(trichoplax)
+# display(scene)
+# sleep(0.25)
+#
 restvolume = copy(trichoplax.volume)
-record(scene, "trichoplaxdev.mp4", 1:150) do i
-    global trichoplax
-    global scene
-    display(scene)
+# #record(scene, "trichoplaxdev.mp4", 1:150) do i
+for i in 1:150
+    # global trichoplax
+    # global scene
     trichoplax.potential[8] = i<=50 ? 2.0 : 0.0
     trichoplax = diffusepotential(trichoplax,100)
     trichoplax.volume[:] = restvolume.*(1.0 .- sqrt.(trichoplax.potential/4.0))
-    morph(trichoplax, .0001, 25)
-    scene = Scene(resolution = (800,800), scale_plot = false,
-        limits=FRect(-SceneWidth, -SceneWidth, 2*SceneWidth, 2*SceneWidth))
-    draw(trichoplax,RGB(.25, .25, .25), 1)
-    potentialmap(trichoplax)
-    sleep(0.1)
-    println(i)
+    trichoplax = morph(trichoplax, .0001, 25)
+    # scene = Scene(resolution = (800,800), scale_plot = false,
+    #     limits=FRect(-SceneWidth, -SceneWidth, 2*SceneWidth, 2*SceneWidth))
+    redraw(trichoplax,cells_handle)
+    display(scene)
+    sleep(.005)
+#     println(i)
 end
 
-# for i in 1:size(trichoplax.cell,1)
-#     if sum(trichoplax.vertex[trichoplax.cell[i,:],1])/6.0 > 80.
-#         trichoplax.volume[i] = trichoplax.volume[i]*0.5
-#     end
-#     if sum(trichoplax.vertex[trichoplax.cell[i,:],1])/6.0 < -80.
-#         trichoplax.volume[i] = trichoplax.volume[i]*2.0
-#     end
-# end
-
-# @time trichoplax = morph(trichoplax, .001, 100)
-# scene = Scene(resolution = (800,800), scale_plot = false,
-#     limits=FRect(-SceneWidth, -SceneWidth, 2*SceneWidth, 2*SceneWidth))
-# draw(trichoplax, RGB(.75, .25, .1), 1)
-#
-# display(scene)
-
-
-
-# record(scene, "trichoplaxdev.mp4", 1:25) do i
-#     global trichoplax
-#     @time trichoplax = morph(trichoplax, .0005, 1)
-#     scene = Scene(resolution = (800,800), scale_plot = false,
-#         limits=FRect(-SceneWidth, -SceneWidth, 2*SceneWidth, 2*SceneWidth))
-#     draw(trichoplax, RGB(.75, .25, .1), 1)
-#     display(scene)
-#     sleep(.1)
-#
-# end
+end

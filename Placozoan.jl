@@ -156,7 +156,7 @@ function Trichoplax(n_cell_layers, cell_diameter)
     trichoplax = relax(trichoplax)
 
     # ready to roll! (or glide ...)
-    return trichoplax    
+    return trichoplax
 end
 
 function skeletonlayercount(n_cell_layers)
@@ -561,12 +561,33 @@ function getskin(cellvertex, skeletonvertex, skintriangle)
     return (skin, skinvertex)
 end
 
-function draw(trichoplax::Trichoplax, color=:black, linewidth = .25)
+function draw(scene, trichoplax::Trichoplax, color=:black, linewidth = .25)
 
-    @inbounds for i in 1:size(trichoplax.cell,1)
+    n = size(trichoplax.cell,1)  # number of cells
+    handle = Array{Any,1}(undef, n)  # plot handles for each cell
+    @inbounds for i in 1:n
         lines!(trichoplax.vertex[trichoplax.cell[i,[1:6; 1]],1],
                trichoplax.vertex[trichoplax.cell[i,[1:6; 1]],2],
                 color = color, linewidth=linewidth)
+    end
+    display(scene)
+    [handle[i] = scene[end-i+1] for i in 1:n]
+    return handle
+end
+
+function xyArray2Points(xy)
+    # convert nx2 array of x-y coordinates to nx1 vector of points
+
+    [Point2f0(xy[i,1], xy[i,2]) for i in 1:size(xy,1)]
+end
+
+function redraw(trichoplax::Trichoplax, handle)
+    # update cell vertices in plot
+    # using handle returned by draw
+
+    for i in 1:length(handle)
+        handle[i][1][] =
+        xyArray2Points(trichoplax.vertex[trichoplax.cell[i,[1:6; 1]],:])
     end
 end
 

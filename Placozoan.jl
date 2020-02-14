@@ -581,6 +581,13 @@ function xyArray2Points(xy)
     [Point2f0(xy[i,1], xy[i,2]) for i in 1:size(xy,1)]
 end
 
+function xyzArray2Points(xyz)
+    # convert nx3 array of x-y-z coordinates to nx1 vector of points
+
+    [Point3f0(xyz[i,1], xyz[i,2], xyz[i,3]) for i in 1:size(xyz,1)]
+end
+
+
 function redraw(trichoplax::Trichoplax, handle)
     # update cell vertices in plot
     # using handle returned by draw
@@ -591,9 +598,14 @@ function redraw(trichoplax::Trichoplax, handle)
     end
 end
 
-function potentialmap(trichoplax::Trichoplax, imap::Int64=1)
+function potentialmap(scene, trichoplax::Trichoplax, imap::Int64=1)
     # draw trichoplax with colormapping from potential
     # each hexagonal cell is rendered as 6 triangles radiating from centre
+
+
+   n = size(trichoplax.cell,1)  # number of cells to colour
+   handle = Array{Any,1}(undef, n)  # plot handle for each cell
+   nuhandle =  Array{Any,1}(undef, n)
 
    # colormap choices
     cmap = (ColorSchemes.mint,   #1
@@ -612,7 +624,7 @@ function potentialmap(trichoplax::Trichoplax, imap::Int64=1)
                 1  6  7
                 1  7  2]
 
-    for i in 1:size(trichoplax.cell,1)
+    for i in 1:n
         iv = trichoplax.cell[i,:]    # cell vertex indices
         colorvalue = [meanvec(trichoplax.potential[trichoplax.vertexcells[trichoplax.cell[i,j], 1:trichoplax.n_vertexcells[trichoplax.cell[i,j]]]])
                         for j in 1:6]
@@ -624,6 +636,21 @@ function potentialmap(trichoplax::Trichoplax, imap::Int64=1)
         xx = vcat(sum(x, dims=1)/6.0, x)
         poly!(xx, connect, color = color)
     end
+    display(scene)
+    [handle[i] = scene[end-n + i] for i in 1:n]
+    return handle
+end
+
+function potential_remap(trichoplax::Trichoplax, handle)
+
+    for i in 1:length(handle)
+        handle[i][1][].vertices[:] =
+        xyzArray2Points(hcat(
+            trichoplax.vertex[trichoplax.cell[i,[1:6; 1]],:],
+            zeros(7,1)))
+        handle[i][1][] = handle[i][1][]
+    end
+
 end
 
 function drawskeleton(skeleton::Skeleton,

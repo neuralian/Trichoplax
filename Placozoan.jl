@@ -626,7 +626,9 @@ function potentialmap(scene, trichoplax::Trichoplax, imap::Int64=1)
 
     for i in 1:n
         iv = trichoplax.cell[i,:]    # cell vertex indices
-        colorvalue = [meanvec(trichoplax.potential[trichoplax.vertexcells[trichoplax.cell[i,j], 1:trichoplax.n_vertexcells[trichoplax.cell[i,j]]]])
+        colorvalue = [meanvec(
+        trichoplax.potential[trichoplax.vertexcells[iv[j],
+        1:trichoplax.n_vertexcells[iv[j]]]])
                         for j in 1:6]
 
         color = get(cmap[imap],
@@ -641,13 +643,32 @@ function potentialmap(scene, trichoplax::Trichoplax, imap::Int64=1)
     return handle
 end
 
-function potential_remap(trichoplax::Trichoplax, handle)
+function potential_remap(trichoplax::Trichoplax, handle, imap::Int64=1)
+
+    # colormap choices
+     cmap = (ColorSchemes.mint,   #1
+             ColorSchemes.viridis,   #2
+             ColorSchemes.inferno,   #3
+             ColorSchemes.hot,       #4
+             ColorSchemes.copper,    #5
+             ColorSchemes.inferno,   #6
+             ColorSchemes.avocado       #7
+             )
 
     for i in 1:length(handle)
         handle[i][1][].vertices[:] =
         xyzArray2Points(hcat(
             trichoplax.vertex[trichoplax.cell[i,[1:6; 1]],:],
             zeros(7,1)))
+        iv = trichoplax.cell[i,:]    # cell vertex indices
+        colorvalue = [meanvec(
+        trichoplax.potential[trichoplax.vertexcells[iv[j],
+        1:trichoplax.n_vertexcells[iv[j]]]])
+                        for j in 1:6]
+        color = get(cmap[imap],
+                1.0 .- vcat(colorvalue, trichoplax.potential[i]))
+
+                handle[i][:color] = color
         handle[i][1][] = handle[i][1][]
     end
 
@@ -860,7 +881,7 @@ function diffusepotential(trichoplax, rate)
     @inbounds for i in 1:nCells
         @inbounds for j in 1:trichoplax.n_neighbourcell[i]
             k = trichoplax.neighbourcell[i,j]
-            v[i] = v[i] + .85*x[k]/trichoplax.n_neighbourcell[k]  # total amount taken from neighbour
+            v[i] = v[i] + 0.95*x[k]/trichoplax.n_neighbourcell[k]  # total amount taken from neighbour
         end
     end
     @inbounds for i in 1:nCells

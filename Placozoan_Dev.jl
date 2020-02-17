@@ -3,16 +3,26 @@
 # function trichoplax_sim()
 
 # MAIN
+
+
 bodylayers = 8 # number of body cell layers
-# mapdepth = 1     # map layers
-celldiam = 10.0
+celldiameter = 10.0
+skeleton_springconstant= 5.0e-2
+cell_pressureconstant = 1.0e0
+cell_surface_energy_density  = 5.0e1
+dt = .001
 
+param = trichoplaxparameters(   bodylayers,
+                                skeleton_springconstant,
+                                cell_pressureconstant,
+                                cell_surface_energy_density,
+                                celldiameter,
+                                dt)
 
-
-@time trichoplax = Trichoplax(bodylayers, celldiam)
-trichoplax.param.k2[] = 5.0e-2    # cytoskeleton spring constant /2
-trichoplax.param.σ[]  = 5.0e1   # cell surface energy density
-trichoplax.param.ρ[]  = 1.0e0 #1.0e2    # cell turgor pressure energy per unit volume
+@time trichoplax = Trichoplax(param)
+# trichoplax.param.k2[] = 5.0e-2    # cytoskeleton spring constant /2
+# trichoplax.param.σ[]  = 5.0e1   # cell surface energy density
+# trichoplax.param.ρ[]  = 1.0e0 #1.0e2    # cell turgor pressure energy per unit volume
 
 
 # Draw
@@ -34,9 +44,9 @@ ch = potentialmap(scene, trichoplax)
 
 display(scene)
 
-restvolume = copy(trichoplax.volume)
+restvolume = copy(trichoplax.state.volume)
 i0 = 48
-i1 = vcat(i0, trichoplax.neighbourcell[i0,:])
+i1 = vcat(i0, trichoplax.anatomy.neighbourcell[i0,:])
 
 #record(scene, "trichoplaxdev.mp4", 1:200) do i
 for i in 1:25
@@ -44,12 +54,15 @@ for i in 1:25
     global scene
     q1 = i<=50 ? 1 : 0
     q2 = i<=100 ? 1 : 0
-    trichoplax.potential[i1] .= 2.0*q1 - 0.025*(1-q1)*q2
+    trichoplax.state.potential[i1] .= 2.0*q1 - 0.025*(1-q1)*q2
     # trichoplax.potential[9] = i<=50 ? 1.5 : 0.0
 
     trichoplax = diffusepotential(trichoplax,600)
 
-    trichoplax.volume[:] = restvolume.*(1.0 .- sign.(trichoplax.potential).*sqrt.(abs.(trichoplax.potential/4.0)))
+    trichoplax.state.volume[:] =
+        restvolume.*(1.0 .-
+        sign.(trichoplax.state.potential).*
+        sqrt.(abs.(trichoplax.state.potential/4.0)))
     trichoplax = morph(trichoplax, .0001, 25)
     # scene = Scene(resolution = (800,800), scale_plot = false,
     #     limits=FRect(-SceneWidth, -SceneWidth, 2*SceneWidth, 2*SceneWidth))

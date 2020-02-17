@@ -10,9 +10,9 @@ celldiam = 10.0
 
 
 @time trichoplax = Trichoplax(bodylayers, celldiam)
-trichoplax.k2[] = 5.0e-2    # cytoskeleton spring constant /2
-trichoplax.σ[]  = 5.0e1   # cell surface energy density
-trichoplax.ρ[]  = 1.0e0 #1.0e2    # cell turgor pressure energy per unit volume
+trichoplax.param.k2[] = 5.0e-2    # cytoskeleton spring constant /2
+trichoplax.param.σ[]  = 5.0e1   # cell surface energy density
+trichoplax.param.ρ[]  = 1.0e0 #1.0e2    # cell turgor pressure energy per unit volume
 
 
 # Draw
@@ -23,7 +23,8 @@ scene = Scene(resolution = (800,800), scale_plot = false,
               show_axis = false, limits=limits)
 
 # scatter bacteria (point objects) over the scene
-bacteria = growbacteria(limits, 100)
+nbacteria = 100
+bacteria = growbacteria(nbacteria, limits)
 
 # draw trichoplax cells
 cells_handle = draw(scene, trichoplax, RGB(.25, .25, .25), 1)

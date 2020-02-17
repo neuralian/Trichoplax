@@ -32,11 +32,24 @@ struct Skeleton
     neighbour::Array{Int64,2}         # 6 neighbours of each internal vertex
 end
 
+struct Param
+    # trichoplax parameters
+    # nb struct values are immutable. To have mutable parameters we make them
+    # arrays (pointers) whose contents are mutable.
+    # e.g. if param is an instance of Param (typeof(param) == Param)
+    #          then param.k2[] is the mutable value of k2
+    k2::Array{Float64,1}  # half of cytoskeleton spring constant (k/2)
+    ρ::Array{Float64,1}   # cell pressure constant \rho (energy/volume)
+    σ::Array{Float64,1}   # surface energy density
+    celldiameter::Float64      # nominal cell diameter when constructed
+    dt::Array{Float64,1}  # simulation time step length (seconds)
+end
+
 struct Trichoplax
+    param::Param
     potential::Array{Float64,1}   # membrane potential per cell
     calcium::Array{Float64,1}     # [calcium] per cell
     nlayers::Int64
-    celldiameter::Float64      # nominal cell diameter when constructed
     # skeleton::Skeleton
     triangle::Array{Int64,2}   # skeleton Delaunay triangles
     skintriangle::Array{Int64,2} # triangles for skin vertices
@@ -58,10 +71,8 @@ struct Trichoplax
     n_vertexcells::Array{Int64,1}  # number of cells containing each vertex
     vertexcells::Array{Int64,2} # index of cells containing each vertex
     skin_neighbour::Array{Int64,2}  # 2 skin neighbours for each skin vertex
-    k2::Array{Float64,1}  # half of cytoskeleton spring constant (k/2)
-    ρ::Array{Float64,1}   # cell pressure constant \rho (energy/volume)
-    σ::Array{Float64,1}   # surface energy density
-    dt::Array{Float64,1}  # simulation time step length (seconds)
+
+
     # nb fields are immutable
     #    Declaring k2 & σ as arrays allows access via e.g. trichoplax.k2[]
 end
@@ -117,13 +128,19 @@ function Trichoplax(n_cell_layers, cell_diameter)
   cell_surface_energy_density = 25.0
   cell_pressureconstant = 1.0
   dt = .001
+  param = Param(    [skeleton_springconstant/2.0],
+                    [cell_pressureconstant],
+                    [cell_surface_energy_density],
+                    cell_diameter,
+                    [dt]
+                    )
 
   # "raw" trichoplax, constructed as hexagonal cells (Voronoi tesselation)
   # on a Delaunay-triangle skeleton
-  trichoplax = Trichoplax(    potential,
+  trichoplax = Trichoplax(   param,
+                        potential,
                         calcium,
                         n_cell_layers,
-                        cell_diameter,
                         triangle,
                         skintriangle,
                         vertex,
@@ -140,11 +157,7 @@ function Trichoplax(n_cell_layers, cell_diameter)
                         neighbourcell,
                         n_vertexcells,
                         vertexcells,
-                        skin_neighbour,
-                        [skeleton_springconstant/2.0],
-                        [cell_pressureconstant],
-                        [cell_surface_energy_density],
-                        [dt]
+                        skin_neighbour
                         )
 
     # reshape by minimizing energy
@@ -711,7 +724,7 @@ function skeletonEnergy(v::Array{Float64,2}, trichoplax::Trichoplax)
     for i in 1:size(trichoplax.skeleton.link,1)
         r = (  ( v[link[i,1],1] - v[link[i,2],1] ) ^p +
                    ( v[link[i,1],2] - v[link[i,2],2] ) ^p )^q
-        Es = Es + trichoplax.k2[]*(r - trichoplax.skeleton.edgelength[])^2
+        Es = Es + trichoplax.param.k2[]*(r - trichoplax.skeleton.edgelength[])^2
     end
 
     # surface energy of external membranes
@@ -725,7 +738,7 @@ function skeletonEnergy(v::Array{Float64,2}, trichoplax::Trichoplax)
     end
 
     # println(Es, ", ", trichoplax.σ[]*Lx)
-     return (Es +  trichoplax.σ[]*Lx)
+     return (Es +  trichoplax.param.σ[]*Lx)
 end
 
 function shapeEnergy(trichoplax::Trichoplax)
@@ -745,7 +758,7 @@ function shapeEnergy(trichoplax::Trichoplax)
     @inbounds for i in 1:size(edge,1)
         r = sqrt(  ( v[edge[i,1],1] - v[edge[i,2],1] ) ^2 +
                    ( v[edge[i,1],2] - v[edge[i,2],2] ) ^2 )
-        Es = Es + trichoplax.k2[]*(r - trichoplax.skeleton.edgelength[])^2
+        Es = Es + trichoplax.param.k2[]*(r - trichoplax.skeleton.edgelength[])^2
     end
 
     # pressure
@@ -766,7 +779,7 @@ function shapeEnergy(trichoplax::Trichoplax)
     end
 
     # println(Es, ", ", trichoplax.σ[]*Lx)
-     return (Es +  trichoplax.ρ[]*Ep + trichoplax.σ[]*Lx)
+     return (Es +  trichoplax.param.ρ[]*Ep + trichoplax.param.σ[]*Lx)
 end
 
 function shapeEnergyGradient(dv::Float64, trichoplax::Trichoplax)
@@ -807,7 +820,7 @@ function localShapeEnergy(i::Int64, trichoplax::Trichoplax)
         e = edge[k, :]     # vertex index of jth edge at ith vertex
         r = sqrt( ( v[e[1],1] - v[e[2],1] ) ^2 + ( v[e[1],2] - v[e[2],2] ) ^2 )
         Le = Le + r
-        Es = Es + trichoplax.k2[]*(r - trichoplax.edgelength[k])^2
+        Es = Es + trichoplax.param.k2[]*(r - trichoplax.edgelength[k])^2
     end
 
     # cell turgor pressure
@@ -832,7 +845,7 @@ function localShapeEnergy(i::Int64, trichoplax::Trichoplax)
     end
 
     # println(Es, ", ", trichoplax.σ[]*Lx)
-     return (Es +  trichoplax.ρ[]*Ep + trichoplax.σ[]*Lx )
+     return (Es +  trichoplax.param.ρ[]*Ep + trichoplax.param.σ[]*Lx )
 end
 
 function localShapeEnergyGradient(dv::Float64, trichoplax::Trichoplax)
@@ -858,7 +871,7 @@ end
 function morph(trichoplax, rate::Float64 = .005, nsteps::Int64 = 25)
 
   @inbounds for t = 1:nsteps
-      ∇ = localShapeEnergyGradient(1e-4*trichoplax.celldiameter, trichoplax)
+      ∇ = localShapeEnergyGradient(1e-4*trichoplax.param.celldiameter, trichoplax)
       trichoplax.vertex[:,:] = trichoplax.vertex - rate*∇
   end
 
@@ -876,7 +889,7 @@ function diffusepotential(trichoplax, rate)
     v = fill(0.0, nCells)
     x = fill(0.0, nCells)
     @inbounds for i in 1:nCells
-        x[i] = rate*trichoplax.dt[]*trichoplax.potential[i] # amt to take from each cell
+        x[i] = rate*trichoplax.param.dt[]*trichoplax.potential[i] # amt to take from each cell
     end
     @inbounds for i in 1:nCells
         @inbounds for j in 1:trichoplax.n_neighbourcell[i]
@@ -891,7 +904,11 @@ function diffusepotential(trichoplax, rate)
     return trichoplax
 end
 
-function growbacteria(limits, nbacteria, color = :red, size = 2)
+function growbacteria(nbacteria::Int64, limits, color = :red, size = 2)
+
+    # draw specified number of bacteria
+    # in the specified limits defined by an FRect
+    # returns plot handle for each bacterium
 
     handle = Array{Any, 1}(undef, nbacteria)
     c = decompose(Point2f0, limits)

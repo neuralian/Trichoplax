@@ -568,7 +568,7 @@ function draw(scene, trichoplax::Trichoplax, color=:black, linewidth = .25)
     @inbounds for i in 1:n
         lines!(trichoplax.vertex[trichoplax.cell[i,[1:6; 1]],1],
                trichoplax.vertex[trichoplax.cell[i,[1:6; 1]],2],
-                color = color, linewidth=linewidth)
+                color = color, linewidth=linewidth, alpha = 0.5)
     end
     display(scene)
     [handle[i] = scene[end-i+1] for i in 1:n]
@@ -636,7 +636,7 @@ function potentialmap(scene, trichoplax::Trichoplax, imap::Int64=1)
 
         x = trichoplax.vertex[iv,:]
         xx = vcat(sum(x, dims=1)/6.0, x)
-        poly!(xx, connect, color = color)
+        poly!(xx, connect, color = color, alpha = 0.25)
     end
     display(scene)
     [handle[i] = scene[end-n + i] for i in 1:n]
@@ -891,6 +891,23 @@ function diffusepotential(trichoplax, rate)
     return trichoplax
 end
 
+function growbacteria(limits, nbacteria, color = :red, size = 2)
+
+    handle = Array{Any, 1}(undef, nbacteria)
+    c = decompose(Point2f0, limits)
+    x0 = c[1][1]
+    y0 = c[1][2]
+    wide = c[2][1] - c[1][1]
+    high = c[3][2] - c[1][2]
+    for i in 1:nbacteria
+        x = x0 + wide*rand(1)[]
+        y = y0 + high*rand(1)[]
+        p = Point2f0[[x,y]]
+        scatter!(p,  markersize = size, color = color)
+        handle[i] = scene[end]
+    end
+    return handle
+end
 
 #     ncells = size(cell,1)
 #

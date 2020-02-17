@@ -6,7 +6,6 @@
 bodylayers = 8 # number of body cell layers
 # mapdepth = 1     # map layers
 celldiam = 10.0
-SceneWidth = bodylayers*celldiam
 
 
 
@@ -17,22 +16,29 @@ trichoplax.ρ[]  = 1.0e0 #1.0e2    # cell turgor pressure energy per unit volume
 
 
 # Draw
+R = bodylayers*celldiam    # approx radius of Trichoplax (for scene setting)
+D = 3*R  # scene diameter
+limits=FRect(-D/2, -D/2, D, D)
 scene = Scene(resolution = (800,800), scale_plot = false,
-    limits=FRect(-SceneWidth, -SceneWidth, 2*SceneWidth, 2*SceneWidth))
+              show_axis = false, limits=limits)
+
+# scatter bacteria (point objects) over the scene
+bacteria = growbacteria(limits, 100)
+
+# draw trichoplax cells
 cells_handle = draw(scene, trichoplax, RGB(.25, .25, .25), 1)
 
-# # map potential to cell colour
-# # default colormap = mint; other options in function potentialmap()
+# colour the cells
 ch = potentialmap(scene, trichoplax)
-# display(scene)
-# sleep(0.25)
-#
+
+display(scene)
+
 restvolume = copy(trichoplax.volume)
 i0 = 48
 i1 = vcat(i0, trichoplax.neighbourcell[i0,:])
 
-record(scene, "trichoplaxdev.mp4", 1:200) do i
-#for i in 1:150
+#record(scene, "trichoplaxdev.mp4", 1:200) do i
+for i in 1:25
     global trichoplax
     global scene
     q1 = i<=50 ? 1 : 0

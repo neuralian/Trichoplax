@@ -39,6 +39,7 @@ struct Param
     # e.g. if param is an instance of Param (typeof(param) == Param)
     #          then param.k2[] is the mutable value of k2
     nlayers::Int64
+    margin::Int64
     k2::Array{Float64,1}  # half of cytoskeleton spring constant (k/2)
     ρ::Array{Float64,1}   # cell pressure constant \rho (energy/volume)
     σ::Array{Float64,1}   # surface energy density
@@ -50,11 +51,13 @@ struct Anatomy
     # look-up tables that specify anatomical
     #   parent-child and neighbour relationships of trichoplax components
     # e.g. which vertices belong to which cell, etc.
+    layercount::Array{Int64,1}  # number of cells in each layer
     triangle::Array{Int64,2}   # skeleton Delaunay triangles
     skintriangle::Array{Int64,2} # triangles for skin vertices
     cell::Array{Int64, 2}      # 6 vertis for each cell
     edge::Array{Int64}         # [i,:] index links between cells
     skin::Array{Int64}         # index to cell vertices on exterior surface
+    stomach::Int64            # number of stomach cells (1:stomach)
     n_edges2vertex::Array{Int64,1}   # number of edges at ith vertex
     edge2vertex::Array{Int64,2}     # index of edges at ith vertex
     n_neighbourvertex::Array{Int64,1}   # number of neighbours for each vertex
@@ -79,6 +82,13 @@ struct Trichoplax
     param::Param
     anatomy::Anatomy
     state::State
+end
+
+
+struct Bacteria
+    location::Array{Float64,2}  # x-y coordinates of each bacterium
+    handle::Array{Any,1}        # plot handle for each bacterium
+    deadticks::Array{Int64,1}   # number of ticks since killed (0 if alive)
 end
 
 # normaldistribution = Normal()
@@ -128,6 +138,8 @@ function Trichoplax(param)
   potential = zeros(size(cell,1))
   calcium = zeros(size(cell,1))
 
+  stomach = sum(skeleton.layercount[1:(param.nlayers-param.margin)])
+
   # skeleton_springconstant = 2.0
   # cell_surface_energy_density = 25.0
   # cell_pressureconstant = 1.0
@@ -147,11 +159,13 @@ function Trichoplax(param)
                     volume
                     )
 
-  anatomy = Anatomy(  triangle,
+  anatomy = Anatomy(  skeleton.layercount[1:(end-1)],
+                      triangle,
                       skintriangle,
                       cell,
                       edge,
                       skin,
+                      stomach,
                       n_edges2vertex,
                       edge2vertex,
                       n_neighbourvertex,
@@ -180,12 +194,14 @@ end
 
 # utility for constructing parameter struct
 function trichoplaxparameters( nlayers,
+                               margin,
                                skeleton_springconstant,
                                cell_pressureconstant,
                                cell_surface_energy_density,
                                cell_diameter,
                                dt )
     Param(  nlayers,
+            margin,
             [skeleton_springconstant/2.0],
             [cell_pressureconstant],
             [cell_surface_energy_density],
@@ -234,6 +250,86 @@ function vertexdistance(v)
 
     return D
 end
+
+function distance(x::Array{Float64,2},y::Array{Float64,2})
+   # distance matrix from x (rows) to y (cols)
+
+   m = size(x,1)
+   n = size(y,1)
+   D = fill(0.0, m,n)
+   for i in 1:m
+       for j in 1:n
+           D[i,j] = sqrt( (x[i,1]-y[j,1])^2 + (x[i,2]-y[j,2])^2 )
+       end
+   end
+   return D
+end
+
+function intriangle(v::Array{Float64,1}, triangle::Array{Float64,2})
+    # true if v = [x y] is inside triangle defined by 3x2 floats
+    # Triangle Interior formula from Wolfram MathWorld
+
+    v0 = triangle[1,:]
+    v1 = triangle[2,:] - v0
+    v2 = triangle[3,:] - v0
+
+    d = (v1[1]*v2[2]-v1[2]*v2[1])
+    a = (v[1]*v2[2] - v[2]*v2[1] - v0[1]*v2[2]+v0[2]*v2[1])/d
+    b = (v[1]*v1[2] - v[2]*v1[1] - v0[1]*v1[2]+v0[2]*v1[1])/d
+
+    return (a>0) && (b<0) && ((a-b)<1.0)
+end
+
+function celltaste(i, bacterium::Array{Float64,1}, trichoplax::Trichoplax)
+    # true if the bacterium [x y] is under the ith cell
+
+    # vertices of ith cell
+    v = trichoplax.state.vertex[trichoplax.anatomy.cell[i,:],:]
+    # add vertex at centroid
+    tv = vcat(sum(v, dims=1)/6.0, v)
+
+    # connectivity matrix for 6 triangles containing centroid
+    connect = [ 1  2  3
+                1  3  4
+                1  4  5
+                1  5  6
+                1  6  7
+                1  7  2]
+
+     tastebacterium = false
+     for j in 1:6
+         if intriangle(bacterium, tv[connect[j,:],:])
+             tastebacterium = true
+             break
+         end
+     end
+     return tastebacterium
+end
+
+function stomachtaste(bacteria::Bacteria,trichoplax::Trichoplax)
+    # indices of bacteria under each cell
+
+    nCells = trichoplax.anatomy.stomach
+    bacteriahere = Array{Array{Int64,1}, 1}(undef, nCells)
+    # nbacteriahere = fill(0, nCells)
+    for i in 1:nCells
+        bacteriahere[i] = []
+        centre = sum(trichoplax.state.vertex[trichoplax.anatomy.cell[i,:],:],
+                        dims=1)/6.
+        candidate = findall(distance(centre, bacteria.location) .<
+                            2.0*trichoplax.param.celldiameter)
+        for j in 1:length(candidate)
+            # does cell i taste the jth candidate bacterium?
+            thisbacterium = bacteria.location[candidate[j][2],:]
+            if celltaste(i, thisbacterium, trichoplax)
+                bacteriahere[i] = vcat(bacteriahere[i],candidate[j][2])
+                # nbacteriahere[i] = nbacteriahere[i] + 1
+            end
+        end
+    end
+    return bacteriahere
+end
+
 
 function meanvec(x::Array{Float64})
     return sum(x[:])/length(x)
@@ -674,7 +770,7 @@ function potentialmap(scene, trichoplax::Trichoplax, imap::Int64=1)
 
         x = trichoplax.state.vertex[iv,:]
         xx = vcat(sum(x, dims=1)/6.0, x)
-        poly!(xx, connect, color = color, alpha = 0.25)
+        poly!(xx, connect, color = color, alpha = 0.95)
     end
     display(scene)
     [handle[i] = scene[end-n + i] for i in 1:n]
@@ -933,22 +1029,23 @@ function growbacteria(nbacteria::Int64, limits, color = :red, size = 2)
 
     # draw specified number of bacteria
     # in the specified limits defined by an FRect
-    # returns plot handle for each bacterium
+    # returns plot handle for each bacterium & array containing xy coords
 
     handle = Array{Any, 1}(undef, nbacteria)
+    x = fill(0.0, nbacteria,2 )    # array of locations
     c = decompose(Point2f0, limits)
     x0 = c[1][1]
     y0 = c[1][2]
     wide = c[2][1] - c[1][1]
     high = c[3][2] - c[1][2]
     for i in 1:nbacteria
-        x = x0 + wide*rand(1)[]
-        y = y0 + high*rand(1)[]
-        p = Point2f0[[x,y]]
+        x[i,1] = x0 + wide*rand(1)[]
+        x[i,2] = y0 + high*rand(1)[]
+        p = Point2f0[x[i,:]]
         scatter!(p,  markersize = size, color = color)
         handle[i] = scene[end]
     end
-    return handle
+    return Bacteria(x, handle, fill(0, nbacteria))
 end
 
 #     ncells = size(cell,1)

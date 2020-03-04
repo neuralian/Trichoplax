@@ -54,7 +54,7 @@ struct Anatomy
     layercount::Array{Int64,1}  # number of cells in each layer
     triangle::Array{Int64,2}   # skeleton Delaunay triangles
     skintriangle::Array{Int64,2} # triangles for skin vertices
-    cell::Array{Int64, 2}      # 6 vertis for each cell
+    cell::Array{Int64, 2}      # 6 vertices for each cell
     edge::Array{Int64}         # [i,:] index links between cells
     skin::Array{Int64}         # index to cell vertices on exterior surface
     stomach::Int64            # number of stomach cells (1:stomach)
@@ -77,6 +77,8 @@ struct State
     edgelength::Array{Float64,1}  # edge rest lengths
     volume::Array{Float64,1}   # volume (area) of each cell
 end
+
+
 
 struct Trichoplax
     param::Param
@@ -331,9 +333,27 @@ function stomachtaste(bacteria::Bacteria,trichoplax::Trichoplax)
 end
 
 
-function meanvec(x::Array{Float64})
+function meanvec(x::Array{Float64,1})
     return sum(x[:])/length(x)
 end
+"""
+ # means of columns of array
+ # nb returns 1xn array, not an n-vector
+"""
+function colmeans(x::Array{Float64,2})
+
+   (m,n) = size(x)
+   cm = fill(0.0, 1, n)
+   for j in 1:n
+       for i in 1:m
+           cm[j] += x[i,j]
+       end
+       cm[j] = cm[j]/m
+   end
+   return cm
+end
+
+
 
 function skeletonvertexneighbours(v, layercount)
     # 6 neighbours of each skeleton vertex, not including outer layer

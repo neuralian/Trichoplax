@@ -5,7 +5,7 @@
 # MAIN
 
 
-bodylayers = 8 # number of body cell layers
+bodylayers = 3 # number of body cell layers
 celldiameter = 10.0
 skeleton_springconstant= 5.0e-2
 cell_pressureconstant = 1.0e0
@@ -26,7 +26,7 @@ param = trichoplaxparameters(   bodylayers,
 
 
 # Draw
-R = bodylayers*celldiam    # approx radius of Trichoplax (for scene setting)
+R = bodylayers*celldiameter    # approx radius of Trichoplax (for scene setting)
 D = 3*R  # scene diameter
 limits=FRect(-D/2, -D/2, D, D)
 scene = Scene(resolution = (800,800), scale_plot = false,
@@ -45,7 +45,7 @@ ch = potentialmap(scene, trichoplax)
 display(scene)
 
 restvolume = copy(trichoplax.state.volume)
-i0 = 48
+i0 = 4
 i1 = vcat(i0, trichoplax.anatomy.neighbourcell[i0,:])
 
 #record(scene, "trichoplaxdev.mp4", 1:200) do i

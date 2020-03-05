@@ -39,7 +39,7 @@ struct Param
     # e.g. if param is an instance of Param (typeof(param) == Param)
     #          then param.k2[] is the mutable value of k2
     nlayers::Int64
-    margin::Int64
+    margin::Int64         # number of layers in gut margin ("brain")
     k2::Array{Float64,1}  # half of cytoskeleton spring constant (k/2)
     ρ::Array{Float64,1}   # cell pressure constant \rho (energy/volume)
     σ::Array{Float64,1}   # surface energy density
@@ -212,14 +212,11 @@ function trichoplaxparameters( nlayers,
             )
 end
 
-
 function skeletonlayercount(n_cell_layers)
     # number of vertices in each skeleton layer given number of cell layers
 
    return vcat([1], [6*i for i in 1:n_cell_layers])
 end
-
-
 
 function skeletonvertices(layercount, edgelength)
     #
@@ -282,6 +279,19 @@ function intriangle(v::Array{Float64,1}, triangle::Array{Float64,2})
     return (a>0) && (b<0) && ((a-b)<1.0)
 end
 
+"""
+  # Draw circle
+"""
+function plotcircle!(ax, centre::Array{Float64,2}, radius::Float64;
+                     n=64, color = :black, linewidth = 1)
+
+    θ = vcat(collect(2*π*(0:(n-1))/(n-1)), [0])
+    plot!(ax, centre[1] .+ radius*cos.(θ), centre[2] .+ radius*sin.(θ),
+          color = color, linewidth = linewidth)
+
+
+end
+
 function celltaste(i, bacterium::Array{Float64,1}, trichoplax::Trichoplax)
     # true if the bacterium [x y] is under the ith cell
 
@@ -308,14 +318,17 @@ function celltaste(i, bacterium::Array{Float64,1}, trichoplax::Trichoplax)
      return tastebacterium
 end
 
-function stomachtaste(bacteria::Bacteria,trichoplax::Trichoplax)
+"""
+  # identify bacteria detected by each trichoplax cell
+"""
+function bacteriahere(bacteria::Bacteria,trichoplax::Trichoplax)
     # indices of bacteria under each cell
 
     nCells = trichoplax.anatomy.stomach
-    bacteriahere = Array{Array{Int64,1}, 1}(undef, nCells)
+    bacteriafound = Array{Array{Int64,1}, 1}(undef, nCells)
     # nbacteriahere = fill(0, nCells)
     for i in 1:nCells
-        bacteriahere[i] = []
+        bacteriafound[i] = []
         centre = sum(trichoplax.state.vertex[trichoplax.anatomy.cell[i,:],:],
                         dims=1)/6.
         candidate = findall(distance(centre, bacteria.location) .<
@@ -324,21 +337,24 @@ function stomachtaste(bacteria::Bacteria,trichoplax::Trichoplax)
             # does cell i taste the jth candidate bacterium?
             thisbacterium = bacteria.location[candidate[j][2],:]
             if celltaste(i, thisbacterium, trichoplax)
-                bacteriahere[i] = vcat(bacteriahere[i],candidate[j][2])
+                bacteriafound[i] = vcat(bacteriafound[i],candidate[j][2])
                 # nbacteriahere[i] = nbacteriahere[i] + 1
             end
         end
     end
-    return bacteriahere
+    return bacteriafound
 end
 
-
+"""
+  # mean of a vector
+"""
 function meanvec(x::Array{Float64,1})
     return sum(x[:])/length(x)
 end
+
 """
  # means of columns of array
- # nb returns 1xn array, not an n-vector
+ # returns 1xn array (not an n-vector)
 """
 function colmeans(x::Array{Float64,2})
 
@@ -352,8 +368,6 @@ function colmeans(x::Array{Float64,2})
    end
    return cm
 end
-
-
 
 function skeletonvertexneighbours(v, layercount)
     # 6 neighbours of each skeleton vertex, not including outer layer

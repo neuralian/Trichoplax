@@ -51,17 +51,18 @@ restvolume = copy(trichoplax.state.volume)
 i0 = 4
 i1 = vcat(i0, trichoplax.anatomy.neighbourcell[i0,:])
 
-record(scene, "trichoplaxdev.mp4", 1:100) do tick
-#for tick in 1:25
+# record(scene, "trichoplaxdev.mp4", 1:100) do tick
+for tick in 1:25
     global trichoplax
     global scene
     if tick < 50
-        bacteriahere = stomachtaste(bacteria, trichoplax)
+        which_bacteriahere = bacteriahere(bacteria, trichoplax)
         for j in 1:trichoplax.anatomy.stomach
-            for k in 1:length(bacteriahere[j])
+            for k in 1:length(which_bacteriahere[j])
                 trichoplax.state.potential[j] = trichoplax.state.potential[j] -
-                        1.0/(bacteria.deadticks[bacteriahere[j][k]] .+ 1)
-                bacteria.deadticks[bacteriahere[j][k]] = bacteria.deadticks[bacteriahere[j][k]] .+ 1
+                        1.0/(bacteria.deadticks[which_bacteriahere[j][k]] .+ 1)
+                bacteria.deadticks[which_bacteriahere[j][k]] =
+                      bacteria.deadticks[which_bacteriahere[j][k]] .+ 1
             end
         end
     end

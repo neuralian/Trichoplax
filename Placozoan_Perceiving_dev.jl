@@ -47,16 +47,11 @@ ch = potentialmap(scene, trichoplax)
 
 display(scene)
 
-# Fourier transform to get a parameterized curve model of body edge
+# project
 bodyCenter = colmeans(trichoplax.state.vertex[trichoplax.anatomy.cell[1,:],:])
-edgeRadius = distance(bodyCenter,
-                    trichoplax.state.vertex[trichoplax.anatomy.skin[:],:])
-ftx = fft(edgeRadius)
-nPts = 100
-Θ = (0:(Npts-1))*2π/(nPts-1)
-r = abs.(ftx)
-a = angle.(ftx)
-plot!(r.*cos
+bodyRadius = meanvec(distance(bodyCenter,
+                    trichoplax.state.vertex[trichoplax.anatomy.skin[:],:])[:])
+#plotcircle!(scene, bodyCenter, bodyRadius, color = :green)
 
 
 
@@ -69,12 +64,12 @@ plot!(r.*cos
 #     global trichoplax
 #     global scene
 #     if tick < 50
-#         bacteriahere = stomachtaste(bacteria, trichoplax)
+#         whichbacteriahere = bacteriahere(bacteria, trichoplax)
 #         for j in 1:trichoplax.anatomy.stomach
-#             for k in 1:length(bacteriahere[j])
+#             for k in 1:length(whichbacteriahere[j])
 #                 trichoplax.state.potential[j] = trichoplax.state.potential[j] -
-#                         1.0/(bacteria.deadticks[bacteriahere[j][k]] .+ 1)
-#                 bacteria.deadticks[bacteriahere[j][k]] = bacteria.deadticks[bacteriahere[j][k]] .+ 1
+#                         1.0/(bacteria.deadticks[whichbacteriahere[j][k]] .+ 1)
+#                 bacteria.deadticks[whichbacteriahere[j][k]] = bacteria.deadticks[whichbacteriahere[j][k]] .+ 1
 #             end
 #         end
 #     end

@@ -5,7 +5,7 @@
 # MAIN
 using FFTW
 
-bodylayers = 8 # number of body cell layers
+bodylayers = 4 # number of body cell layers
 margin = 2  # number of layers in gut margin ("brain")
 celldiameter = 10.0
 skeleton_springconstant= 5.0e-2
@@ -48,11 +48,12 @@ ch = potentialmap(scene, trichoplax)
 display(scene)
 
 # project
-bodyCenter = colmeans(trichoplax.state.vertex[trichoplax.anatomy.cell[1,:],:])
-bodyRadius = meanvec(distance(bodyCenter,
-                    trichoplax.state.vertex[trichoplax.anatomy.skin[:],:])[:])
-#plotcircle!(scene, bodyCenter, bodyRadius, color = :green)
-
+bodyCenter = colmeans(verticesofcell(1, trichoplax))
+skinvertex = getskinvertexcoords(trichoplax)
+bodyRadius = meanvec(distance(bodyCenter, skinvertex)[:])
+plotcircle!(scene, bodyCenter, bodyRadius, color = :green)
+viewRadius = 2.0*bodyRadius
+plotcircle!(scene, bodyCenter, viewRadius, color = :red)
 
 
 # restvolume = copy(trichoplax.state.volume)

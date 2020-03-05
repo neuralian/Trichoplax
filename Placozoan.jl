@@ -33,11 +33,6 @@ struct Skeleton
 end
 
 struct Param
-    # trichoplax parameters
-    # nb struct values are immutable. To have mutable parameters we make them
-    # arrays (pointers) whose contents are mutable.
-    # e.g. if param is an instance of Param (typeof(param) == Param)
-    #          then param.k2[] is the mutable value of k2
     nlayers::Int64
     margin::Int64         # number of layers in gut margin ("brain")
     k2::Array{Float64,1}  # half of cytoskeleton spring constant (k/2)
@@ -54,9 +49,9 @@ struct Anatomy
     layercount::Array{Int64,1}  # number of cells in each layer
     triangle::Array{Int64,2}   # skeleton Delaunay triangles
     skintriangle::Array{Int64,2} # triangles for skin vertices
-    cell::Array{Int64, 2}      # 6 vertices for each cell
+    cellvertexindex::Array{Int64, 2}      # 6 vertices for each cell
     edge::Array{Int64}         # [i,:] index links between cells
-    skin::Array{Int64}         # index to cell vertices on exterior surface
+    skinvertexindex::Array{Int64}         # index to cell vertices on exterior surface
     stomach::Int64            # number of stomach cells (1:stomach)
     n_edges2vertex::Array{Int64,1}   # number of edges at ith vertex
     edge2vertex::Array{Int64,2}     # index of edges at ith vertex
@@ -71,7 +66,9 @@ end
 
 struct State
     # trichoplax state variables
-    vertex::Array{Float64,2}   # cell vertex coords
+    x0::Array{Float64,2}  # Body origin (centre of cell 1) in World frame
+    θ::Array{Float64,1}   # Body orientation in World frame
+    vertex::Array{Float64,2}   # cell vertex coords in Body frame
     potential::Array{Float64,1}   # membrane potential per cell
     calcium::Array{Float64,1}     # [calcium] per cell
     edgelength::Array{Float64,1}  # edge rest lengths
@@ -93,7 +90,6 @@ struct Bacteria
     deadticks::Array{Int64,1}   # number of ticks since killed (0 if alive)
 end
 
-# normaldistribution = Normal()
 
 function Skeleton(n_cell_layers, cell_diameter)
 
@@ -142,19 +138,20 @@ function Trichoplax(param)
 
   stomach = sum(skeleton.layercount[1:(param.nlayers-param.margin)])
 
-  # skeleton_springconstant = 2.0
-  # cell_surface_energy_density = 25.0
-  # cell_pressureconstant = 1.0
-  # dt = .001
-  # param = Param(    n_cell_layers,
-  #                   [skeleton_springconstant/2.0],
-  #                   [cell_pressureconstant],
-  #                   [cell_surface_energy_density],
-  #                   cell_diameter,
-  #                   [dt]
-  #                   )
+  # move centre of cell 1 to (0,0)
+  n = size(vertex,1)
+  x0 = colmeans(vertex[1:6,:])
+  for i in n
+      vertex[i,1] -= x0[1]
+      vertex[i,2] -= x0[2]
+  end
 
-  state = State(    vertex,
+  x0 = [0.0 0.0]
+  θ  = [0.0]
+
+  state = State(    x0,
+                    θ,
+                    vertex,
                     potential,
                     calcium,
                     edgelength,
@@ -279,6 +276,15 @@ function intriangle(v::Array{Float64,1}, triangle::Array{Float64,2})
     return (a>0) && (b<0) && ((a-b)<1.0)
 end
 
+#===============================================================================
+   # Map (projection of margin)
+===============================================================================#
+"""
+    # Project margin cells into environment
+"""
+
+
+
 """
   # Draw circle
 """
@@ -288,15 +294,17 @@ function plotcircle!(ax, centre::Array{Float64,2}, radius::Float64;
     θ = vcat(collect(2*π*(0:(n-1))/(n-1)), [0])
     plot!(ax, centre[1] .+ radius*cos.(θ), centre[2] .+ radius*sin.(θ),
           color = color, linewidth = linewidth)
+end
 
-
+function verticesofcell(i, trichoplax::Trichoplax)
+    return trichoplax.state.vertex[trichoplax.anatomy.cellvertexindex[i,:], :]
 end
 
 function celltaste(i, bacterium::Array{Float64,1}, trichoplax::Trichoplax)
     # true if the bacterium [x y] is under the ith cell
 
     # vertices of ith cell
-    v = trichoplax.state.vertex[trichoplax.anatomy.cell[i,:],:]
+    v = trichoplax.state.vertex[trichoplax.anatomy.cellvertexindex[i,:],:]
     # add vertex at centroid
     tv = vcat(sum(v, dims=1)/6.0, v)
 
@@ -329,8 +337,9 @@ function bacteriahere(bacteria::Bacteria,trichoplax::Trichoplax)
     # nbacteriahere = fill(0, nCells)
     for i in 1:nCells
         bacteriafound[i] = []
-        centre = sum(trichoplax.state.vertex[trichoplax.anatomy.cell[i,:],:],
-                        dims=1)/6.
+        centre = colmeans(verticesofcell(i, trichoplax))
+        # centre = sum(trichoplax.state.vertex[trichoplax.anatomy.cellvertexindex[i,:],:],
+        #                 dims=1)/6.
         candidate = findall(distance(centre, bacteria.location) .<
                             2.0*trichoplax.param.celldiameter)
         for j in 1:length(candidate)
@@ -345,6 +354,9 @@ function bacteriahere(bacteria::Bacteria,trichoplax::Trichoplax)
     return bacteriafound
 end
 
+#===============================================================================
+   GENERIC UTILITY FUNCTIONS
+===============================================================================#
 """
   # mean of a vector
 """
@@ -368,6 +380,10 @@ function colmeans(x::Array{Float64,2})
    end
    return cm
 end
+
+#===============================================================================
+   TRICHOPLAX CONSTRUCTION FUNCTIONS
+===============================================================================#
 
 function skeletonvertexneighbours(v, layercount)
     # 6 neighbours of each skeleton vertex, not including outer layer
@@ -682,60 +698,85 @@ function edgelengths(edge::Array{Int64,2}, vertex::Array{Float64,2})
     return edgelength
 end
 
-function relax(trichoplax)
-    # set rest edge lengths to current edge lengths
-    trichoplax.state.edgelength[:] = edgelengths(trichoplax.anatomy.edge, trichoplax.state.vertex)
-    return trichoplax
-end
-
-function cellverticesfromskeleton(trichoplax)
-    #    (re-)compute cell vertices from skeleton vertices
-
-    n = size(trichoplax.anatomy.triangle, 1)
-    vertex = fill(0.0, n, 2)
-    v = trichoplax.skeleton.vertex
-    for i in 1:n
-        trichoplax.state.vertex[i,:] = sum(v[trichoplax.anatomy.triangle[i,:],:], dims=1)/3.
-    end
-
-    return trichoplax
-end
-
+"""
+    # Find skin vertices
+    # returns indices to these vertices in trichoplax.vertex
+    # and the vertex coordinates
+"""
 function getskin(cellvertex, skeletonvertex, skintriangle)
-    # compute external vertex coordinates (skin vertices)
-    # from skeleton skin triangles
-    # and index these vertices in cell vertex array
 
     n = size(skintriangle, 1)
-    skinvertex = fill(0.0, n, 2) # vertex coords
-    skin = fill(0,n)             # index skin vertices in trichoplax.vertex
+    skin_vertex = fill(0.0, n, 2) # skin vertex coordinates
+    skin_index = fill(0,n)        # skin vertex indices in trichoplax.vertex
     nfoundskin = 0
     vc = cellvertex
     vs = skeletonvertex
     # vertex match tolerance 1% of distance between vertex 1 and 2
     tol = ( (vc[1,1] - vc[2,1])^2 + (vc[1,2] - vc[2,2])^2 )*(.01)^2
     for i in 1:n
-        skinvertex[i,:] = sum(vs[skintriangle[i,:],:], dims=1)/3.
+        skin_vertex[i,:] = sum(vs[skintriangle[i,:],:], dims=1)/3.
         for j in 1:size(vc,1)
-            if ((skinvertex[i,1] - vc[j,1])^2 +
-                (skinvertex[i,2] - vc[j,2])^2 ) < tol
+            if ((skin_vertex[i,1] - vc[j,1])^2 +
+                (skin_vertex[i,2] - vc[j,2])^2 ) < tol
                 nfoundskin = nfoundskin + 1
-                skin[nfoundskin] = j
+                skin_index[nfoundskin] = j
                 break
             end
         end
     end
 
-    return (skin, skinvertex)
+    return (skin_index, skin_vertex)
 end
+
+"""
+    Vertices on boundary of gut margin
+"""
+# function gutmarginboundaryindex(cellvertex, layercount,)
+
+#===============================================================================
+    TRICHOPLAX UTILITY FUNCTIONS
+===============================================================================#
+
+"""
+    Skin vertex coordinates
+"""
+function getskinvertexcoords(trichoplax::Trichoplax)
+
+    return trichoplax.state.vertex[trichoplax.anatomy.skinvertexindex[:],:]
+end
+
+
+
+function relax(trichoplax)
+    # set rest edge lengths to current edge lengths
+    trichoplax.state.edgelength[:] = edgelengths(trichoplax.anatomy.edge, trichoplax.state.vertex)
+    return trichoplax
+end
+
+# function cellverticesfromskeleton(trichoplax)
+#     #    (re-)compute cell vertices from skeleton vertices
+#
+#     n = size(trichoplax.anatomy.triangle, 1)
+#     vertex = fill(0.0, n, 2)
+#     v = trichoplax.skeleton.vertex
+#     for i in 1:n
+#         trichoplax.state.vertex[i,:] = sum(v[trichoplax.anatomy.triangle[i,:],:], dims=1)/3.
+#     end
+#
+#     return trichoplax
+# end
+
+
+
+
 
 function draw(scene, trichoplax::Trichoplax, color=:black, linewidth = .25)
 
-    n = size(trichoplax.anatomy.cell,1)  # number of cells
+    n = size(trichoplax.anatomy.cellvertexindex,1)  # number of cells
     handle = Array{Any,1}(undef, n)  # plot handles for each cell
     @inbounds for i in 1:n
-        lines!(trichoplax.state.vertex[trichoplax.anatomy.cell[i,[1:6; 1]],1],
-               trichoplax.state.vertex[trichoplax.anatomy.cell[i,[1:6; 1]],2],
+        lines!(trichoplax.state.vertex[trichoplax.anatomy.cellvertexindex[i,[1:6; 1]],1],
+               trichoplax.state.vertex[trichoplax.anatomy.cellvertexindex[i,[1:6; 1]],2],
                 color = color, linewidth=linewidth, alpha = 0.5)
     end
     display(scene)
@@ -762,7 +803,7 @@ function redraw(trichoplax::Trichoplax, handle)
 
     for i in 1:length(handle)
         handle[i][1][] =
-        xyArray2Points(trichoplax.state.vertex[trichoplax.anatomy.cell[i,[1:6; 1]],:])
+        xyArray2Points(trichoplax.state.vertex[trichoplax.anatomy.cellvertexindex[i,[1:6; 1]],:])
     end
 end
 
@@ -771,7 +812,7 @@ function potentialmap(scene, trichoplax::Trichoplax, imap::Int64=1)
     # each hexagonal cell is rendered as 6 triangles radiating from centre
 
 
-   n = size(trichoplax.anatomy.cell,1)  # number of cells to colour
+   n = size(trichoplax.anatomy.cellvertexindex,1)  # number of cells to colour
    handle = Array{Any,1}(undef, n)  # plot handle for each cell
    nuhandle =  Array{Any,1}(undef, n)
 
@@ -793,7 +834,7 @@ function potentialmap(scene, trichoplax::Trichoplax, imap::Int64=1)
                 1  7  2]
 
     for i in 1:n
-        iv = trichoplax.anatomy.cell[i,:]    # cell vertex indices
+        iv = trichoplax.anatomy.cellvertexindex[i,:]    # cell vertex indices
         colorvalue = [meanvec(
         trichoplax.state.potential[trichoplax.anatomy.vertexcells[iv[j],
         1:trichoplax.anatomy.n_vertexcells[iv[j]]]])
@@ -826,9 +867,9 @@ function potential_remap(trichoplax::Trichoplax, handle, imap::Int64=1)
     for i in 1:length(handle)
         handle[i][1][].vertices[:] =
         xyzArray2Points(hcat(
-            trichoplax.state.vertex[trichoplax.anatomy.cell[i,[1:6; 1]],:],
+            trichoplax.state.vertex[trichoplax.anatomy.cellvertexindex[i,[1:6; 1]],:],
             zeros(7,1)))
-        iv = trichoplax.anatomy.cell[i,:]    # cell vertex indices
+        iv = trichoplax.anatomy.cellvertexindex[i,:]    # cell vertex indices
         colorvalue = [meanvec(
         trichoplax.state.potential[trichoplax.anatomy.vertexcells[iv[j],
         1:trichoplax.anatomy.n_vertexcells[iv[j]]]])
@@ -918,14 +959,14 @@ function shapeEnergy(trichoplax::Trichoplax)
 
     # pressure
     Ep = 0.0
-    for i in 1:size(trichoplax.anatomy.cell, 1)
+    for i in 1:size(trichoplax.anatomy.cellvertexindex, 1)
         Ep = Ep + (cellvolume(v,i)-trichoplax.state.volume[i])^12
     end
 
 
     # surface energy of external membranes
     Lx = 0.0
-    skin = trichoplax.anatomy.skin
+    skin = trichoplax.anatomy.skinvertexindex
     v0 = v[skin[end],:]
     @inbounds for i in 1:length(skin)
         v1 = v[skin[i],:]
@@ -981,7 +1022,7 @@ function localShapeEnergy(i::Int64, trichoplax::Trichoplax)
     # cell turgor pressure
     Ep = 0.0
     tv = trichoplax.anatomy.vertexcells
-    tc = trichoplax.anatomy.cell
+    tc = trichoplax.anatomy.cellvertexindex
     for j in 1:trichoplax.anatomy.n_vertexcells[i]
         cellvertices = v[tc[tv[i,j],:],:]
         Ep = Ep + (cellvolume(cellvertices)-
@@ -992,8 +1033,8 @@ function localShapeEnergy(i::Int64, trichoplax::Trichoplax)
     # surface energy of external membranes
     # proportional to length of skin segments each side of skin
     Lx = 0.0
-    if any(trichoplax.anatomy.skin.==i)   # if i is a skin vertex
-        j = findfirst(trichoplax.anatomy.skin.==i)[]   # which skin vertex?
+    if any(trichoplax.anatomy.skinvertexindex.==i)   # if i is a skin vertex
+        j = findfirst(trichoplax.anatomy.skinvertexindex.==i)[]   # which skin vertex?
         snbr = trichoplax.anatomy.skin_neighbour[j, :]
         Lx = sqrt( (v[i,1]-v[snbr[1],1])^2 + (v[i,2]-v[snbr[1],2])^2 +
                    (v[i,1]-v[snbr[2],1])^2 + (v[i,2]-v[snbr[2],2])^2)
@@ -1040,7 +1081,7 @@ function diffusepotential(trichoplax, rate)
     # rate const = per second, each cell distributes this much of
     # its current potential to neighbours + an equal share of leak current
 
-    nCells = size(trichoplax.anatomy.cell,1)
+    nCells = size(trichoplax.anatomy.cellvertexindex,1)
     v = fill(0.0, nCells)
     x = fill(0.0, nCells)
     @inbounds for i in 1:nCells

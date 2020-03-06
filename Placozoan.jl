@@ -878,7 +878,11 @@ function potentialmap(scene, trichoplax::Trichoplax, imap::Int64=1)
 
         x = trichoplax.state.vertex[iv,:]
         xx = vcat(sum(x, dims=1)/6.0, x)
+<<<<<<< Updated upstream
         poly!(xx, connect, color = color, alpha = 0.95)
+=======
+        poly!(xx, connect, color = color, alpha = .1)
+>>>>>>> Stashed changes
     end
     display(scene)
     [handle[i] = scene[end-n + i] for i in 1:n]

@@ -3,6 +3,13 @@
 # function trichoplax_sim()
 
 # MAIN
+<<<<<<< Updated upstream
+=======
+bodylayers = 4 # number of body cell layers
+# mapdepth = 1     # map layers
+celldiam = 10.0
+SceneWidth = bodylayers*celldiam
+>>>>>>> Stashed changes
 
 
 bodylayers = 3 # number of body cell layers
@@ -41,6 +48,7 @@ cells_handle = draw(scene, trichoplax, RGB(.25, .25, .25), 1)
 
 # colour the cells
 ch = potentialmap(scene, trichoplax)
+<<<<<<< Updated upstream
 
 display(scene)
 
@@ -50,6 +58,17 @@ i1 = vcat(i0, trichoplax.anatomy.neighbourcell[i0,:])
 
 #record(scene, "trichoplaxdev.mp4", 1:200) do i
 for i in 1:25
+=======
+# display(scene)
+# sleep(0.25)
+#
+restvolume = copy(trichoplax.volume)
+i0 = 8
+i1 = vcat(i0, trichoplax.neighbourcell[i0,:])
+
+#record(scene, "trichoplaxdev.mp4", 1:200) do i
+for i in 1:5
+>>>>>>> Stashed changes
     global trichoplax
     global scene
     q1 = i<=50 ? 1 : 0

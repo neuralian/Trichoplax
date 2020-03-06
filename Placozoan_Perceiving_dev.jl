@@ -54,7 +54,19 @@ bodyRadius = meanvec(distance(bodyCenter, skinvertex)[:])
 plotcircle!(scene, bodyCenter, bodyRadius, color = :green)
 viewRadius = 2.0*bodyRadius
 plotcircle!(scene, bodyCenter, viewRadius, color = :red)
-
+gutboundaryvertex = getgutboundaryvertexcoords(trichoplax)
+gutRadius = meanvec(distance(bodyCenter, gutboundaryvertex)[:])
+plotcircle!(scene, bodyCenter, gutRadius, color = :green)
+x0 = fill(0.0, 1,2)
+for i in (trichoplax.anatomy.stomach+1):(trichoplax.anatomy.ncells)
+  for j in 1:6
+    x0[:] = trichoplax.state.vertex[trichoplax.anatomy.cellvertexindex[i,j],:]
+    println(x0)
+    d = gutRadius - distance(bodyCenter, x0)[]
+    x = x0.*(bodyRadius + d)/d
+    scatter!(x, markersize = 2, color = :red)
+  end
+end
 
 # restvolume = copy(trichoplax.state.volume)
 # i0 = 4

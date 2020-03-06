@@ -46,13 +46,15 @@ struct Anatomy
     # look-up tables that specify anatomical
     #   parent-child and neighbour relationships of trichoplax components
     # e.g. which vertices belong to which cell, etc.
+    ncells::Int64              # number of cells
     layercount::Array{Int64,1}  # number of cells in each layer
+    stomach::Int64            # number of stomach cells (1:stomach)
     triangle::Array{Int64,2}   # skeleton Delaunay triangles
     skintriangle::Array{Int64,2} # triangles for skin vertices
     cellvertexindex::Array{Int64, 2}      # 6 vertices for each cell
     edge::Array{Int64}         # [i,:] index links between cells
     skinvertexindex::Array{Int64}         # index to cell vertices on exterior surface
-    stomach::Int64            # number of stomach cells (1:stomach)
+    gutboundaryvertexindex::Array{Int64,1}
     n_edges2vertex::Array{Int64,1}   # number of edges at ith vertex
     edge2vertex::Array{Int64,2}     # index of edges at ith vertex
     n_neighbourvertex::Array{Int64,1}   # number of neighbours for each vertex
@@ -109,6 +111,8 @@ function Trichoplax(param)
     # each internal vertex (ie except for outer layer) will be a cell centre
     skeleton = Skeleton(param.nlayers, param.celldiameter)
 
+    layercount = skeleton.layercount[1:(end-1)]
+
     #  vertices of hexagonal cells are at centres of triangles
     # (Voronoi tesselation)
     # cell[i,:] indexes the vertices of ith cell
@@ -138,6 +142,8 @@ function Trichoplax(param)
 
   stomach = sum(skeleton.layercount[1:(param.nlayers-param.margin)])
 
+  gutboundary = getgutboundary(cell, vertex, layercount, margin)
+
   # move centre of cell 1 to (0,0)
   n = size(vertex,1)
   x0 = colmeans(vertex[1:6,:])
@@ -155,16 +161,17 @@ function Trichoplax(param)
                     potential,
                     calcium,
                     edgelength,
-                    volume
-                    )
+                    volume       )
 
-  anatomy = Anatomy(  skeleton.layercount[1:(end-1)],
+  anatomy = Anatomy(  sum(layercount),
+                      layercount,
+                      stomach,
                       triangle,
                       skintriangle,
                       cell,
                       edge,
                       skin,
-                      stomach,
+                      gutboundary,
                       n_edges2vertex,
                       edge2vertex,
                       n_neighbourvertex,
@@ -173,11 +180,10 @@ function Trichoplax(param)
                       neighbourcell,
                       n_vertexcells,
                       vertexcells,
-                      skin_neighbour
-                      )
+                      skin_neighbour   )
 
 
-  trichoplax = Trichoplax(  param, anatomy, state )
+   trichoplax = Trichoplax(  param, anatomy, state )
 
     # reshape by minimizing energy
     # = spring energy in cytoskeleton + cell turgor pressure + surface energy
@@ -463,7 +469,7 @@ function cellvertexneighbours(nVertex, edge)
 
     #nVertex = size(vertex, 1)
     nEdge = size(edge,1)
-    println(nVertex, ", ", nEdge)
+    # println(nVertex, ", ", nEdge)
     neighbourvertex = fill(0, nVertex, 3)
     n_neighbourvertex = fill(0, nVertex)  # number of edges connected to ith vertex
     for i in 1:nVertex
@@ -729,9 +735,27 @@ function getskin(cellvertex, skeletonvertex, skintriangle)
 end
 
 """
-    Vertices on boundary of gut margin
+    Index to vertices on boundary of gut (inner edge of margin)
+    (which are the vertices shared by the outer layer of gut cells and
+     the inner layer of margin cells)
 """
-# function gutmarginboundaryindex(cellvertex, layercount,)
+function getgutboundary(cell, vertex, layercount, margin)
+
+    # indices of cells in outer layer of gut
+    n = length(layercount)
+    icg = (sum(layercount[1:(n-margin-1)])+1):sum(layercount[1:(n-margin)])
+    # ... and inner layer of margin
+    icm = (sum(layercount[1:(n-margin)])+1):sum(layercount[1:(n-margin+1)])
+
+    # indices of vertices of cells in outer layer of gut
+    ivg = unique(cell[icg,:][:])
+    # ... and inner layer of margin
+    ivm = unique(cell[icm,:][:])
+
+    boundary = intersect(ivg, ivm)
+
+    return(boundary)
+end
 
 #===============================================================================
     TRICHOPLAX UTILITY FUNCTIONS
@@ -743,6 +767,15 @@ end
 function getskinvertexcoords(trichoplax::Trichoplax)
 
     return trichoplax.state.vertex[trichoplax.anatomy.skinvertexindex[:],:]
+end
+
+"""
+    Gut boundary vertex coords
+"""
+function getgutboundaryvertexcoords(trichoplax::Trichoplax)
+
+    return trichoplax.state.vertex[
+                       trichoplax.anatomy.gutboundaryvertexindex[:],:]
 end
 
 

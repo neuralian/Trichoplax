@@ -3,10 +3,9 @@
 # function trichoplax_sim()
 
 # MAIN
-using FFTW
 
-bodylayers = 4 # number of body cell layers
-margin = 2  # number of layers in gut margin ("brain")
+bodylayers = 12 # number of body cell layers
+margin = 5  # number of layers in gut margin ("brain")
 celldiameter = 10.0
 skeleton_springconstant= 5.0e-2
 cell_pressureconstant = 1.0e0
@@ -59,11 +58,11 @@ gutRadius = meanvec(distance(bodyCenter, gutboundaryvertex)[:])
 plotcircle!(scene, bodyCenter, gutRadius, color = :green)
 x0 = fill(0.0, 1,2)
 for i in (trichoplax.anatomy.stomach+1):(trichoplax.anatomy.ncells)
+
   for j in 1:6
     x0[:] = trichoplax.state.vertex[trichoplax.anatomy.cellvertexindex[i,j],:]
-    println(x0)
-    d = gutRadius - distance(bodyCenter, x0)[]
-    x = x0.*(bodyRadius + d)/d
+    d = distance(bodyCenter, x0)[]
+    x = x0.*(2.0*bodyRadius - d)/d
     scatter!(x, markersize = 2, color = :red)
   end
 end

@@ -5,7 +5,7 @@
 # MAIN
 
 bodylayers = 12 # number of body cell layers
-margin = 5  # number of layers in gut margin ("brain")
+margin = 3  # number of layers in gut margin ("brain")
 celldiameter = 10.0
 skeleton_springconstant= 5.0e-2
 cell_pressureconstant = 1.0e0
@@ -51,20 +51,25 @@ bodyCenter = colmeans(verticesofcell(1, trichoplax))
 skinvertex = getskinvertexcoords(trichoplax)
 bodyRadius = meanvec(distance(bodyCenter, skinvertex)[:])
 plotcircle!(scene, bodyCenter, bodyRadius, color = :green)
-viewRadius = 2.0*bodyRadius
+viewRadius = 1.5*bodyRadius
 plotcircle!(scene, bodyCenter, viewRadius, color = :red)
 gutboundaryvertex = getgutboundaryvertexcoords(trichoplax)
 gutRadius = meanvec(distance(bodyCenter, gutboundaryvertex)[:])
 plotcircle!(scene, bodyCenter, gutRadius, color = :green)
 x0 = fill(0.0, 1,2)
+
+
 for i in (trichoplax.anatomy.stomach+1):(trichoplax.anatomy.ncells)
 
   for j in 1:6
     x0[:] = trichoplax.state.vertex[trichoplax.anatomy.cellvertexindex[i,j],:]
     d = distance(bodyCenter, x0)[]
-    x = x0.*(2.0*bodyRadius - d)/d
-    scatter!(x, markersize = 2, color = :red)
+    x = x0.*(bodyRadius + (bodyRadius - d)*(viewRadius - bodyRadius)/(bodyRadius-gutRadius))/d
+    scatter!(x, markersize = 1, color = :red)
   end
+
+
+
 end
 
 # restvolume = copy(trichoplax.state.volume)

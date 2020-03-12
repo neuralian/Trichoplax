@@ -77,11 +77,20 @@ struct State
     volume::Array{Float64,1}   # volume (area) of each cell
 end
 
+struct Reflection
+    # reflection of the internal map in the world
+    # i.e. what the trichoplax 'perceives' beyond the surface of its body
+
+    range::Float64 # sensory range (map width in world) relative to body radius
+    vertex::Array{Float64,2}   # cell vertex coords in body frame
+    cellvertexindex::Array{Int64, 2}      # 6 vertices for each cell
+end
 
 
 struct Trichoplax
     param::Param
     anatomy::Anatomy
+    reflection::Reflection
     state::State
 end
 
@@ -878,11 +887,9 @@ function potentialmap(scene, trichoplax::Trichoplax, imap::Int64=1)
 
         x = trichoplax.state.vertex[iv,:]
         xx = vcat(sum(x, dims=1)/6.0, x)
-<<<<<<< Updated upstream
-        poly!(xx, connect, color = color, alpha = 0.95)
-=======
+
         poly!(xx, connect, color = color, alpha = .1)
->>>>>>> Stashed changes
+
     end
     display(scene)
     [handle[i] = scene[end-n + i] for i in 1:n]

@@ -4,8 +4,9 @@
 
 # MAIN
 
-bodylayers = 12 # number of body cell layers
+bodylayers = 8 # number of body cell layers
 margin = 3  # number of layers in gut margin ("brain")
+range = 1.25   # sensory range in body radius units
 celldiameter = 10.0
 skeleton_springconstant= 5.0e-2
 cell_pressureconstant = 1.0e0
@@ -14,6 +15,7 @@ dt = .001
 
 param = trichoplaxparameters(   bodylayers,
                                 margin,
+                                range,
                                 skeleton_springconstant,
                                 cell_pressureconstant,
                                 cell_surface_energy_density,
@@ -29,7 +31,7 @@ param = trichoplaxparameters(   bodylayers,
 # Draw
 R = bodylayers*celldiameter    # approx radius of Trichoplax (for scene setting)
 D = 3*R  # scene diameter
-limits=FRect(-D/2, -D/2, D, D)
+limits=FRect(-D, -D, 2*D, 2*D)
 scene = Scene(resolution = (800,800), scale_plot = false,
               show_axis = false, limits=limits)
 
@@ -42,35 +44,34 @@ scene = Scene(resolution = (800,800), scale_plot = false,
 cells_handle = draw(scene, trichoplax, RGB(.25, .25, .25), 1)
 
 # colour the cells
-ch = potentialmap(scene, trichoplax)
+
+imagecells( trichoplax,
+            1:trichoplax.anatomy.nstomach,
+            trichoplax.state.potential, 1)
+imagecells( trichoplax,
+            (trichoplax.anatomy.nstomach+1):trichoplax.anatomy.ncells,
+            trichoplax.state.potential, 2)
+# ch = potentialmap(scene, trichoplax)
+
+#
+reflect(trichoplax)
 
 display(scene)
 
 # project
-bodyCenter = colmeans(verticesofcell(1, trichoplax))
-skinvertex = getskinvertexcoords(trichoplax)
-bodyRadius = meanvec(distance(bodyCenter, skinvertex)[:])
-plotcircle!(scene, bodyCenter, bodyRadius, color = :green)
-viewRadius = 1.5*bodyRadius
-plotcircle!(scene, bodyCenter, viewRadius, color = :red)
-gutboundaryvertex = getgutboundaryvertexcoords(trichoplax)
-gutRadius = meanvec(distance(bodyCenter, gutboundaryvertex)[:])
-plotcircle!(scene, bodyCenter, gutRadius, color = :green)
-x0 = fill(0.0, 1,2)
-
-
-for i in (trichoplax.anatomy.stomach+1):(trichoplax.anatomy.ncells)
-
-  for j in 1:6
-    x0[:] = trichoplax.state.vertex[trichoplax.anatomy.cellvertexindex[i,j],:]
-    d = distance(bodyCenter, x0)[]
-    x = x0.*(bodyRadius + (bodyRadius - d)*(viewRadius - bodyRadius)/(bodyRadius-gutRadius))/d
-    scatter!(x, markersize = 1, color = :red)
-  end
+# bodyCenter = colmeans(verticesofcell(1, trichoplax))
+# skinvertex = getskinvertexcoords(trichoplax)
+# bodyRadius = meanvec(distance(bodyCenter, skinvertex)[:])
+# plotcircle!(scene, bodyCenter, bodyRadius, color = :green)
+# viewRadius = 1.5*bodyRadius
+# plotcircle!(scene, bodyCenter, viewRadius, color = :red)
+# gutboundaryvertex = getgutboundaryvertexcoords(trichoplax)
+# gutRadius = meanvec(distance(bodyCenter, gutboundaryvertex)[:])
+# plotcircle!(scene, bodyCenter, gutRadius, color = :green)
 
 
 
-end
+
 
 # restvolume = copy(trichoplax.state.volume)
 # i0 = 4

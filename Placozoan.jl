@@ -35,6 +35,7 @@ end
 struct Param
     nlayers::Int64
     margin::Int64         # number of layers in gut margin ("brain")
+    range::Float64        # sensory range in body radius units
     k2::Array{Float64,1}  # half of cytoskeleton spring constant (k/2)
     ρ::Array{Float64,1}   # cell pressure constant \rho (energy/volume)
     σ::Array{Float64,1}   # surface energy density
@@ -48,7 +49,7 @@ struct Anatomy
     # e.g. which vertices belong to which cell, etc.
     ncells::Int64              # number of cells
     layercount::Array{Int64,1}  # number of cells in each layer
-    stomach::Int64            # number of stomach cells (1:stomach)
+    nstomach::Int64            # number of stomach cells (1:stomach)
     triangle::Array{Int64,2}   # skeleton Delaunay triangles
     skintriangle::Array{Int64,2} # triangles for skin vertices
     cellvertexindex::Array{Int64, 2}      # 6 vertices for each cell
@@ -73,24 +74,31 @@ struct State
     vertex::Array{Float64,2}   # cell vertex coords in Body frame
     potential::Array{Float64,1}   # membrane potential per cell
     calcium::Array{Float64,1}     # [calcium] per cell
+    colour::Array{RGBA{Float64},2}
     edgelength::Array{Float64,1}  # edge rest lengths
     volume::Array{Float64,1}   # volume (area) of each cell
 end
 
-struct Reflection
-    # reflection of the internal map in the world
-    # i.e. what the trichoplax 'perceives' beyond the surface of its body
+# struct Reflection
+#     # reflection of the internal map in the world
+#     # i.e. what the trichoplax 'perceives' beyond the surface of its body
+#
+#     range::Float64 # sensory range (map width in world) relative to body radius
+#     vertex::Array{Float64,2}   # cell vertex coords in body frame
+#     cellvertexindex::Array{Int64, 2}      # 6 vertices for each cell
+# end
 
-    range::Float64 # sensory range (map width in world) relative to body radius
-    vertex::Array{Float64,2}   # cell vertex coords in body frame
-    cellvertexindex::Array{Int64, 2}      # 6 vertices for each cell
+struct Observer
+    # Observer is the set of margin cells
+    #  that infer external source parameters
+    cell::Array{Int64, 1}      # index to cells in observer
 end
-
 
 struct Trichoplax
     param::Param
     anatomy::Anatomy
-    reflection::Reflection
+    observer::Observer
+    # reflection::Reflection
     state::State
 end
 
@@ -122,6 +130,8 @@ function Trichoplax(param)
 
     layercount = skeleton.layercount[1:(end-1)]
 
+    ncells = sum(layercount)
+
     #  vertices of hexagonal cells are at centres of triangles
     # (Voronoi tesselation)
     # cell[i,:] indexes the vertices of ith cell
@@ -149,9 +159,14 @@ function Trichoplax(param)
   potential = zeros(size(cell,1))
   calcium = zeros(size(cell,1))
 
-  stomach = sum(skeleton.layercount[1:(param.nlayers-param.margin)])
+  nstomach = sum(skeleton.layercount[1:(param.nlayers-param.margin)])
 
-  gutboundary = getgutboundary(cell, vertex, layercount, margin)
+  gutboundaryvertexindex =
+        getgutboundaryvertexindex(cell, vertex, layercount, margin)
+
+  gutboundaryvertex = vertex[gutboundaryvertexindex[:], :]
+
+
 
   # move centre of cell 1 to (0,0)
   n = size(vertex,1)
@@ -164,23 +179,29 @@ function Trichoplax(param)
   x0 = [0.0 0.0]
   θ  = [0.0]
 
+  # observer
+  observer = Observer((nstomach+1):ncells)
+
+  initcolour = fill(RGBA(0.25, 0.25, 0.85, 0.5), ncells, 1 )
+
   state = State(    x0,
                     θ,
                     vertex,
                     potential,
                     calcium,
+                    initcolour,
                     edgelength,
                     volume       )
 
-  anatomy = Anatomy(  sum(layercount),
+  anatomy = Anatomy(  ncells,
                       layercount,
-                      stomach,
+                      nstomach,
                       triangle,
                       skintriangle,
                       cell,
                       edge,
                       skin,
-                      gutboundary,
+                      gutboundaryvertexindex,
                       n_edges2vertex,
                       edge2vertex,
                       n_neighbourvertex,
@@ -192,7 +213,7 @@ function Trichoplax(param)
                       skin_neighbour   )
 
 
-   trichoplax = Trichoplax(  param, anatomy, state )
+   trichoplax = Trichoplax(  param, anatomy, observer, state )
 
     # reshape by minimizing energy
     # = spring energy in cytoskeleton + cell turgor pressure + surface energy
@@ -209,6 +230,7 @@ end
 # utility for constructing parameter struct
 function trichoplaxparameters( nlayers,
                                margin,
+                               range,
                                skeleton_springconstant,
                                cell_pressureconstant,
                                cell_surface_energy_density,
@@ -216,6 +238,7 @@ function trichoplaxparameters( nlayers,
                                dt )
     Param(  nlayers,
             margin,
+            range,
             [skeleton_springconstant/2.0],
             [cell_pressureconstant],
             [cell_surface_energy_density],
@@ -294,11 +317,70 @@ end
 #===============================================================================
    # Map (projection of margin)
 ===============================================================================#
-"""
-    # Project margin cells into environment
-"""
+
+function reflect(trichoplax::Trichoplax)
+
+    # build reflection of observer
+    bodyRadius = meanvec(vec(distance([0.0 0.0],
+                            getskinvertexcoords(trichoplax))))
+    viewRadius = trichoplax.param.range*bodyRadius
+    gutRadius = meanvec(vec(distance([0.0 0.0],
+                            getgutboundaryvertexcoords(trichoplax))))
+
+    cell = trichoplax.observer.cell
+    ncells = length(cell)
+    nvertex = 6*ncells  # don't care about duplicates
+    reflected_vertex = fill(0.0, nvertex, 2)
+
+    for i in 1:ncells
+
+      for j in 1:6
+
+          v = trichoplax.state.vertex[
+                  trichoplax.anatomy.cellvertexindex[
+                  trichoplax.observer.cell[i],j], :]
+
+         d = sqrt(sum(v.^2))
+
+        # index reflected vertices in reverse
+        reflected_vertex[(i-1)*6+7-j,:] = v.*
+               (bodyRadius + (bodyRadius - d)*(viewRadius - bodyRadius)/
+               (bodyRadius-gutRadius))/d
+      end
+
+    end
+    # scatter!(reflected_vertex[:,1], reflected_vertex[:,2], markersize = 1, color = :red)
+    # colormap choices
+     cmap = (ColorSchemes.mint,   #1
+             ColorSchemes.viridis,   #2
+             ColorSchemes.inferno,   #3
+             ColorSchemes.hot,       #4
+             ColorSchemes.copper,    #5
+             ColorSchemes.inferno,   #6
+             ColorSchemes.avocado       #7
+             )
+
+     connect = [ 1  2  3
+                 1  3  4
+                 1  4  5
+                 1  5  6
+                 1  6  7
+                 1  7  2]
+
+     for i in 1:ncells
+
+         iv = (i-1)*6 .+ (1:6)
+         color = trichoplax.state.colour[cell[i]] # colour of ith observer cell
 
 
+         x = reflected_vertex[iv,:]
+         xx = vcat(sum(x, dims=1)/6.0, x)
+
+         poly!(xx, connect, color =color, alpha = 0.1)
+
+    end
+
+end
 
 """
   # Draw circle
@@ -347,7 +429,7 @@ end
 function bacteriahere(bacteria::Bacteria,trichoplax::Trichoplax)
     # indices of bacteria under each cell
 
-    nCells = trichoplax.anatomy.stomach
+    nCells = trichoplax.anatomy.nstomach
     bacteriafound = Array{Array{Int64,1}, 1}(undef, nCells)
     # nbacteriahere = fill(0, nCells)
     for i in 1:nCells
@@ -748,7 +830,7 @@ end
     (which are the vertices shared by the outer layer of gut cells and
      the inner layer of margin cells)
 """
-function getgutboundary(cell, vertex, layercount, margin)
+function getgutboundaryvertexindex(cell, vertex, layercount, margin)
 
     # indices of cells in outer layer of gut
     n = length(layercount)
@@ -791,7 +873,8 @@ end
 
 function relax(trichoplax)
     # set rest edge lengths to current edge lengths
-    trichoplax.state.edgelength[:] = edgelengths(trichoplax.anatomy.edge, trichoplax.state.vertex)
+    trichoplax.state.edgelength[:] =
+        edgelengths(trichoplax.anatomy.edge, trichoplax.state.vertex)
     return trichoplax
 end
 
@@ -847,6 +930,61 @@ function redraw(trichoplax::Trichoplax, handle)
         handle[i][1][] =
         xyArray2Points(trichoplax.state.vertex[trichoplax.anatomy.cellvertexindex[i,[1:6; 1]],:])
     end
+end
+
+
+function imagecells( trichoplax::Trichoplax,
+                     cell,
+                     intensity,
+                     imap::Int64=1)
+    # colour map of intensity (of something) across cells
+    # cell = index of cells to be coloured
+    # intensity = number in (0,1) for each cell
+    # cmap = which colour map (listed below)
+    # each cell is rendered as 6 triangles radiating from its centre
+    # with colour at the centre
+
+
+   n = length(cell)  # number of cells to colour
+   handle = Array{Any,1}(undef, n)  # plot handle for each cell
+   nuhandle =  Array{Any,1}(undef, n)
+
+   # colormap choices
+    cmap = (ColorSchemes.mint,   #1
+            ColorSchemes.viridis,   #2
+            ColorSchemes.inferno,   #3
+            ColorSchemes.hot,       #4
+            ColorSchemes.copper,    #5
+            ColorSchemes.inferno,   #6
+            ColorSchemes.avocado       #7
+            )
+
+    connect = [ 1  2  3
+                1  3  4
+                1  4  5
+                1  5  6
+                1  6  7
+                1  7  2]
+
+    for i in 1:n
+        iv = trichoplax.anatomy.cellvertexindex[cell[i],:] # cell vertex indices
+        colorvalue = [meanvec(
+        intensity[trichoplax.anatomy.vertexcells[iv[j],
+        1:trichoplax.anatomy.n_vertexcells[iv[j]]]])
+                        for j in 1:6]
+
+        color = get(cmap[imap],
+                1.0 .- vcat(intensity[i], colorvalue ))
+
+        x = trichoplax.state.vertex[iv,:]
+        xx = vcat(sum(x, dims=1)/6.0, x)
+
+        poly!(xx, connect, color = color, alpha = .1)
+
+    end
+    #display(scene)
+    [handle[i] = scene[end-n + i] for i in 1:n]
+    return handle
 end
 
 function potentialmap(scene, trichoplax::Trichoplax, imap::Int64=1)

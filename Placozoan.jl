@@ -15,11 +15,16 @@ using Makie
 using Colors
 using ColorSchemes
 
+
+
+
 # export Trichoplax,
 #                 discworld, neighbour, makebody, findperimetervertices,
 #         smoothperimeter, makecellmap, makereceptivefields,
 #         drawdelaunaydisc, drawcells, drawskeleton, findperimeteredges,
 #         distalskeleton
+
+colormaps = collect(AbstractPlotting.all_gradient_names)
 
 
 struct Skeleton

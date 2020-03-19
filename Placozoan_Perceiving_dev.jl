@@ -30,10 +30,34 @@ param = trichoplaxparameters(   bodylayers,
 
 # Draw
 R = bodylayers*celldiameter    # approx radius of Trichoplax (for scene setting)
-D = 3*R  # scene diameter
+D = Int64(3*R)  # scene diameter
 limits=FRect(-D, -D, 2*D, 2*D)
 scene = Scene(resolution = (800,800), scale_plot = false,
               show_axis = false, limits=limits)
+
+
+# electric field
+efieldcolormap = ColorScheme(
+                [RGB{Float64}(
+                    (i<.85) ? .25 : i,
+                    0.8-i,
+                    i
+                    ) for i in 0:0.1:1.0])
+
+x = y = collect(-D:4:D)
+m = length(x)
+n = length(y)
+algamat = fill(0.0, m,n)
+
+for i in 1:m
+    for j in 1:n
+        algamat[i,j] = sqrt(x[i]^2 + y[j]^2)/sqrt(D^2 + D^2)
+    end
+end
+
+heatmap!(x,y, algamat,
+                limits = limits,
+                colormap = efieldcolormap)
 
 # # scatter bacteria (point objects) over the scene
 # nbacteria = 50

@@ -56,7 +56,7 @@ handle = scene[end][3]
 α = 0.005
 Δt = .005
 
-for i in 1:500
+for i in 1:100
  diffuse!(x,y,v,α, Δt, Δx )
  handle[] = v
 

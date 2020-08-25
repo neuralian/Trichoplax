@@ -1,7 +1,7 @@
 using Makie
 
 
-preyRadius = 400.   # body radius
+preyRadius= 400.   # body radius
 preyMargin = 100.   # width of margin
 c = 20.   # cell radius
 D = 5.0e3 # max range (from centre) in μm
@@ -12,7 +12,7 @@ nD = Int(D-preyRadius)
 # source
 ρ = 25.0   # Resisitivity of seawater 25Ω.cm
 δ = 20.e-6*100.  # dipole separation 10μm in cm
-I = 5.e-10     # dipole current 0.5nA
+I = 0.1e-12     # dipole current 0.1pA
 
 # function computes field strength at radius r
 # μV/cm
@@ -33,8 +33,8 @@ for a in c:c:(preyRadius-c)
   x = [ a*cos(2π*i/n) for i in 1:n]
   y = [ a*sin(2π*i/n) for i in 1:n]
   for d in 1:nD
-    r = sqrt.(sum(((d.+preyRadius.-x).^2 + y.^2))).*1.0e-4
-    E[d] = E[d] + E_(r)
+    r = sqrt.(((d.+preyRadius.-x).^2 + y.^2)).*1.0e-4
+    E[d] = E[d] + sum(E_(r))
   end
   #scatter!(x, y, markersize = c/16)
 end
@@ -52,11 +52,20 @@ print(σ)
 
 # field strength at distance from animal
 d = (1:nD).*1.0e-4
-plt = plot(d, E*1.e4)
+plt = plot(d, E)
 
 # voltage μV
-V = cumsum(E)
+V = cumsum(E)*1.0e-4
 V = V[end].-V
-# plot(d,V)
+Vnoisy = V + 1.0e6*σ*randn(size(V))
 
-display(plt)
+# plot voltage (μV)
+d0 = 1
+d1 = 1000
+voltagePlot = plot(d[d0:d1]*1.0e4,Vnoisy[d0:d1], color = :lightblue)
+plot!(d[d0:d1]*1.0e4,V[d0:d1], color = :magenta, linewidth = 1)
+
+voltagePlot[Axis][:names][:axisnames] = ("μm from edge", "μV")
+
+display(voltagePlot)
+title(voltagePlot, "Voltage across receptor")

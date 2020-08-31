@@ -10,8 +10,8 @@ matRadius2  = (sceneWidth / 2.0)^2
 sceneLimits = FRect(-sceneOffset, -sceneOffset, sceneWidth, sceneWidth)
 x = LinRange(-sceneOffset, sceneWidth-sceneOffset, 1000)
 y = LinRange(-sceneOffset, sceneWidth-sceneOffset, 1000)
-# z = exp(-(ones(1000,1)*((x .- 2000.).^2)'  +  ((y.-2000.).^2)*ones(1,1000)) ./ 1.0e8)
-
+#z = exp(-(ones(1000,1)*((x .- 2000.).^2)'  +  ((y.-2000.).^2)*ones(1,1000)) ./ 1.0e9)
+z = (x .^2) .* (y.^2)'
 
 predatorRadius = 500.   # body radius
 predatorFieldRadius = 1000.
@@ -26,6 +26,10 @@ predatorLocation = (2000.0, 2000.0)
 
 
 scene = Scene(resolution = (1000, 1000), limits = sceneLimits, show_axis=false)
+# surface!(scene,x,y,log.(abs.(z)),
+#    color = r[Int.(round.(log.(abs.(z))))], overdraw = true, transparency=true)
+
+
 # image!(x,y,z, colormap = :reds, alpha = 0.5)
 # time observable
 t = Node(0.0)
@@ -79,12 +83,11 @@ predator = poly!(scene,
 predatorStep = [0.0, 0.0]
 
 
-
 # function moveBacteria(bacteria, dx, dy)
 #
 #     bacteria
 
-N = 500
+N = 50
 #for i in 1:N
 record(scene, "test.mp4", 1:N) do i
 

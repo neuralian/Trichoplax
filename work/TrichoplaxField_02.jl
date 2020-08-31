@@ -58,8 +58,8 @@ E = fieldStrength(sourceRadius, sourceMargin, nD, E)
 #display(scene)
 
 function pOpen(d, V)
-   i = Int(round(d/gridSize))
-   return i < length(E)-1 ? p(E[i+1]) : 0.0
+   i = Int(round(d))
+   return i < length(V)-1 ? p(V[i+1]*1.0e-6) : 0.0
  end
 
 

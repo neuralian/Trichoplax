@@ -73,6 +73,6 @@ voltagePlot =plot!(d[d0:d1]*1.0e4,V[d0:d1], color = :magenta, linewidth = 1)
 
 noisyPlot[Axis][:names][:axisnames] = ("μm from edge", "μV")
 openPlot = plot!(d[d0:d1]*1.0e4,.04*p(V[d0:d1]*1e-6), color = :blue)
-plot!([d[d0], d[d1]]*1.0e4,.04*p(0)*[1,1], color = :red)
+plot!([d[d0], d[d1]]*1.0e4,.04*p(0)*[1,1], color = :gray)
 display(voltagePlot)
 title(voltagePlot, "Voltage across receptor")

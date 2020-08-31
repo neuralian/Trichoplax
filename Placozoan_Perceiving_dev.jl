@@ -3,6 +3,7 @@
 # function trichoplax_sim()
 
 # MAIN
+#using Placozaon
 
 bodylayers = 8 # number of body cell layers
 margin = 3  # number of layers in gut margin ("brain")

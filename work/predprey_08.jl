@@ -18,12 +18,21 @@ predatorFieldRadius = 1000.
 preyRadius = 400.
 preyMargin = 100.
 nReceptor = 24
-c = 20.   # cell radius
+maxRange = 5.0e3 # max range (from centre) in μm
+cellDiam = 20.   # cell radius
+
+nD = Int(maxRange-preyRadius)
 
 preyLocation = (0.0, 0.0)
 predatorLocation = (2000.0, 2000.0)
 
-pOpenState = fill(0.0, nReceptor, length(x), length(y))
+LikelihoodLookup = fill(1.0e-10, nReceptor, length(x), length(y))
+LikelihoodArray = fill(0.0, length(x), length(y))
+
+# source
+ρ = 25.0   # Resisitivity of seawater 25Ω.cm
+δ = 20.e-6*100.  # dipole separation 10μm in cm
+I = 0.1e-12     # dipole current 0.1pA
 
 # Johnson-Nyquist noise
 kB = 1.38e-23
@@ -42,6 +51,9 @@ p(e) =  1.0./(1 .+ exp.(-(e.-v0)/σ))
 E_(r) = 1.0e6*2π*ρ*I*δ./r.^3
 # array holds computed field strength from edge of Trichoplax
 E = fill(0.0, nD)
+
+# receptorState[i] == 1 if receptor i is active
+receptorState = fill(0, nReceptor)
 
 # compute field strength at distance d from edge of body
 function fieldStrength(sourceRadius, sourceMargin, nD, E)
@@ -79,10 +91,26 @@ function pOpen(d, V)
 function pOpen(iReceptor, x0, y0)
   for i in 1:length(x)
     for j in 1:length(y)
-       pOpenState[iReceptor, i,j] = pOpen(sqrt((x[i]-x0)^2 + (y[j]-y0)^2), V)
+       LikelihoodLookup[iReceptor, i,j] = pOpen(sqrt((x[i]-x0)^2 + (y[j]-y0)^2), V)
      end
    end
  end
+
+ function likelihood()
+
+    LikelihoodArray .= 1.0
+    for i = 1:nReceptor
+      if receptorState[i]==1
+        LikelihoodArray .*= LikelihoodLookup[i,:,:]
+      else
+        LikelihoodArray .*= (1.0 .- LikelihoodLookup[i,:,:])
+      end
+    end
+
+    LikelihoodArray ./= maximum(LikelihoodArray)
+
+  end
+
 
 scene = Scene(resolution = (1000, 1000), limits = sceneLimits, show_axis=false)
 # surface!(scene,x,y,log.(abs.(z)),
@@ -112,6 +140,20 @@ bacteria = scatter!(scene,
              color = :teal, markersize = bacteriaSize,
              strokewidth = 0, strokecolor = :green)[end]
 
+# likelihood contours
+receptorLocation = [preyRadius.*(cos(2π*i/nReceptor), sin(2π*i/nReceptor))
+    for i in 1:nReceptor]
+for j in 1:nReceptor
+  receptorState[j] = Int(rand()[] < 0.5 )
+end
+for iReceptor in 1:nReceptor
+  pOpen(iReceptor, receptorLocation[iReceptor][1], receptorLocation[iReceptor][2])
+end
+likelihood()
+LhdPlot = contour!(scene, x,y,lift(s->LikelihoodArray, t),
+         colormap = :Reds,
+         levels = [0.1, .5 , .9])[end]
+
 # Prey
 prey = poly!(scene,
        decompose(Point2f0, Circle(Point2f0(0.,0.), preyRadius)),
@@ -123,8 +165,7 @@ preyGut = poly!(scene,
       strokewidth = 0.0, strokecolor = RGBA(0.9, 0.75, 0.65, 1.0))
 receptorOffColor = [RGB(0.85, 0.75, 0.45) for i in 1:nReceptor]
 receptorColor = [RGB(0.85, 0.75, 0.45) for i in 1:nReceptor]
-receptorLocation = [preyRadius.*(cos(2π*i/nReceptor), sin(2π*i/nReceptor))
-    for i in 1:nReceptor]
+
 receptor = scatter!(scene, receptorLocation ,
             markersize = 8, color = receptorColor, strokewidth =0)[end]
 
@@ -141,17 +182,15 @@ predator = poly!(scene,
 
 predatorStep = [0.0, 0.0]
 
-for iReceptor in [1, 2, 24 ]
-  pOpen(iReceptor, receptor[1][][iReceptor][1], receptor[1][][iReceptor][2])
-end
+
 
 # function moveBacteria(bacteria, dx, dy)
 #
 #     bacteria
 
-N = 50
+N = 250
 #for i in 1:N
-b = fill(0.0, nReceptor)
+
 record(scene, "test.mp4", 1:N) do i
 
     global predatorStep = 0.95*predatorStep +
@@ -168,11 +207,14 @@ record(scene, "test.mp4", 1:N) do i
        range = sqrt( (predatorLocation[1] -receptorLocation[j][1])^2  +
                     (predatorLocation[2] -receptorLocation[j][2])^2 ) -
                      predatorRadius
-       b[j] = Int(rand()[] < pOpen(range, V))
+       if range<0.0 range = 0.0; end
+       receptorState[j] = Int(rand()[] < pOpen(range, V))
     end
 
-    receptorColor[findall(x->x==1, b)] .= RGB(1.0, 1.0, 0.0)
+    receptorColor[findall(x->x==1, receptorState)] .= RGB(1.0, 1.0, 0.0)
     receptor.color[] = receptorColor
+    likelihood()
+    #LhdPlot.levels[] =  2; #maximum(LikelihoodArray)*[0.1, .5 , .9]
     t[] = 2*π*i/N
     #sleep(0.001)
     #display(scene)
@@ -189,5 +231,8 @@ end
 # end
 
 display(scene)
-q = pOpenState[1, :,:].*(1.0 .-pOpenState[2, :,:]).*(1.0 .-pOpenState[24, :,:])
-contour!(x,y,q, colormap = :reds, levels = maximum(q)*[.5 , .9])
+
+# likelihood()
+# contour!(x,y,LikelihoodArray,
+#           colormap = :Reds,
+#           levels = maximum(LikelihoodArray)*[0.1, .5 , .9])

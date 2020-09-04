@@ -1,41 +1,42 @@
-# Bayes 1
-# Inserting Bayesian 'memory' particles
+# Bayes 2
+# Compute Posterior samples
 # 3 Sept 2020
 
 using Makie
 using Colors
 
 
-const sceneWidth  = 2000.0
-const matRadius = sceneWidth / 2.0
-const matRadius2  = matRadius^2
+sceneWidth  = 1000.0
+matRadius = sceneWidth / 2.0
+matRadius2  = matRadius^2
 sceneLimits = FRect(-matRadius, -matRadius, sceneWidth, sceneWidth)
-sceneResolution = 1001  # nb must be odd, to ensure grid point @ centre
-const Ngrid = 1001   # grid points in each direction, odd so centre is a grid point
+#sceneResolution = 1001  # nb must be odd, to ensure grid point @ centre
+Ngrid = 1001   # grid points in each direction, odd so centre is a grid point
 x = LinRange(-matRadius, matRadius, Ngrid)
 y = LinRange(-matRadius, matRadius, Ngrid)
-const dt = 2.5
-Nframes = 100
+dt = 2.5
+Nframes = 250
+
+# Prey parameters
+preyRadius = 250.
+preyMargin = 100.
+preySpeed = 8.
 
 # Predator parameters
-predatorRadius = 500.   # body radius
-predatorMargin = 100.
+predatorRadius = 250.   # body radius
+predatorMargin = 50.
 predatorSpeed = 8.
 cellDiam = 20.   # cell radius (used to compute number of dipoles in predator)
 θ = π*rand()[] # Random approach heading
 predatorLocation = (matRadius+predatorRadius).*(cos(θ),sin(θ)) # initial location
 predatorLocation = (100.0+preyRadius+predatorRadius).*(cos(θ),sin(θ))
 
-# Prey parameters
-preyRadius = 500.
-preyMargin = 200.
-preySpeed = 8.
 
 # Receptor parameters
 # NB open state probability is computed out to distance maxRange
 #    at a finite set of sample points. This is used to pre-compute
 #    likelihoods at each mat grid point, for each receptor
-nReceptor = 24  # multiple of 4
+nReceptor = 12  # multiple of 4
 receptorSize = 16
 receptorState = fill(0, nReceptor) # receptorState[i] == 1 if receptor i is active
 maxRange = 3.0*preyRadius  # max sensor range (from centre)
@@ -206,7 +207,7 @@ mat = poly!(scene,
        color = RGBA(.1, .40, .1, 1.0), strokewidth = 0, strokecolor = :black)
 
 # display nominal time on background
-clock =text!(scene,"t = 0.0s",textsize = 50, color = :white,
+clock =text!(scene,"t = 0.0s",textsize = 24, color = :white,
      position = (- 0.9*matRadius , -0.9*matRadius))[end]
 
  # scatter bacteria over the mat
@@ -385,8 +386,13 @@ record(scene, "test.mp4", 1:Nframes) do i
     likelihood()            # compute likelihood given receptor states
     sample_likelihood()     # draw random sample from likelihood (indices)
     # update sample plot
-    LparticlePlot[1] = -matRadius.+ Lparticle[:,1].*sceneWidth/Ngrid
-    LparticlePlot[2] = -matRadius.+ Lparticle[:,2].*sceneWidth/Ngrid
+    xx = -matRadius.+ Lparticle[:,1].*sceneWidth/Ngrid
+    yy = -matRadius.+ Lparticle[:,2].*sceneWidth/Ngrid
+    LparticlePlot[1] = xx
+    LparticlePlot[2] = yy
+
+    xParticle = x[Int.(Lparticle[:,1])]  # convert grid indices to x-y coords
+    yParticle = y[Int.(Lparticle[:,2])]
 
     s = reflectIn(xParticle, yParticle)  # reflect samples into margin
     SparticlePlot[1] = s[1]            # update reflected sample plot
@@ -414,8 +420,8 @@ record(scene, "test.mp4", 1:Nframes) do i
    # check for collisions between belief particles and observation particles
    PParticle = collision(PParticle, Lparticle)
 
-    PParticlePlot[1] = -PParticle[:,2]
-    PParticlePlot[2] = -PParticle[:,1]
+    PParticlePlot[1] = PParticle[:,1]
+    PParticlePlot[2] = PParticle[:,2]
 
 
     # level curves of likelihood

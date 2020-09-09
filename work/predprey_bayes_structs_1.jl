@@ -1,11 +1,49 @@
-# Bayes 2
-# Compute Posterior samples
-# 3 Sept 2020
+# Predprey_bayes_struct_1
+# Placozoan Bayesian particle filter
+# with structs
 
 using Makie
 using Colors
 
+# all parameters in structs
+# with defined types
+struct World
+  size::Float64
+  matradius::Float64
+  matcolor::RGBA{Float64}
+  bgcolor::RGBA{Float64}
+  dt::Float64
+  Nframes::Int64
+  approach_distance::Float64  # closest approach pred-prey in animation
+end
 
+struct Ereceptor  #array of electroreceptors
+  N::Int64
+  size::Float64  # symbol size for drawing receptors
+  x::Array{Float64,1}  # receptor x-coords
+  y::Array{Float64,1}  # receptor y-coords
+  state::Array{Float64,1} # 0/1 for receptor off/on
+  # pOn[i] is an array containing pre-computed probability pOn[i][j,k]
+  #   that the ith receptor will be in the ON state if the nearest edge of
+  #   the predator is at the [j,k]th grid point
+  pOn::Array{Array{Float64,2},1}
+
+end
+
+
+
+
+struct Placozoan
+  bodyradius::Float64
+  marginwidth::Float64
+  celldiam::Float64
+  x::Float64    # x-ccord of centre
+  y::Float64    # y-coord of centre
+  speed::Float64
+  color::RGBA{Float64}
+  gutcolor::RGBA{Float64}
+  edgecolor::RGB{Float64}
+end
 
 
 

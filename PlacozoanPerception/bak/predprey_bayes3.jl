@@ -6,42 +6,38 @@ using Makie
 using Colors
 
 
-
-
-
-
-sceneWidth  = 500.0f0
-matRadius = sceneWidth / 2.0f0
+sceneWidth  = 1000.0
+matRadius = sceneWidth / 2.0
 matRadius2  = matRadius^2
 sceneLimits = FRect(-matRadius, -matRadius, sceneWidth, sceneWidth)
 #sceneResolution = 1001  # nb must be odd, to ensure grid point @ centre
-Ngrid = Int(sceneWidth)+1   # grid points in each direction, odd so centre is a grid point
+Ngrid = 1001   # grid points in each direction, odd so centre is a grid point
 x = LinRange(-matRadius, matRadius, Ngrid)
 y = LinRange(-matRadius, matRadius, Ngrid)
-dt = 1.0f0
-Nframes = 300
+dt = 2.5
+Nframes = 200
 
 # Prey parameters
-preyRadius = 80.0f0
-preyMargin = 25.0f0
-preySpeed = 0.0f0
+preyRadius = 250.
+preyMargin = 100.
+preySpeed = 8.
 
 # Predator parameters
-predatorRadius = 100.0f0  # body radius
-predatorMargin = 25.0f0
-predatorSpeed = 2.5f0
-cellDiam = 12.0f0  # cell radius (used to compute number of dipoles in predator)
-θ = π/2.0(1.0+rand()[]) # Random approach heading
+predatorRadius = 250.   # body radius
+predatorMargin = 50.
+predatorSpeed = 8.
+cellDiam = 20.   # cell radius (used to compute number of dipoles in predator)
+θ = π*rand()[] # Random approach heading
 predatorLocation = (matRadius+predatorRadius).*(cos(θ),sin(θ)) # initial location
 #predatorLocation = (100.0+preyRadius+predatorRadius).*(cos(θ),sin(θ))
-Δ = 65.0f0
+
 
 # Receptor parameters
 # NB open state probability is computed out to distance maxRange
 #    at a finite set of sample points. This is used to pre-compute
 #    likelihoods at each mat grid point, for each receptor
 nReceptor = 12  # multiple of 4
-receptorSize = 12
+receptorSize = 16
 receptorState = fill(0, nReceptor) # receptorState[i] == 1 if receptor i is active
 maxRange = 3.0*preyRadius  # max sensor range (from centre)
 nRange = Int(maxRange-preyRadius)  # number of sample points in sensor range
@@ -57,22 +53,14 @@ LikelihoodLookup = fill(1.0e-10, nReceptor, Ngrid, Ngrid)
 LikelihoodArray = fill(0.0, Ngrid, Ngrid)
 
 # Likelihood particles
-nLparticles = 800   # number of particles in likelihood sample
-Lparticle = fill(Point2f0(0,0),nLparticles) # coords of Likelihood particles
-likelyColor = RGB(0.85, 0.65, 0.35)
-likleySize = 4
+nLparticles = 5000   # number of particles in likelihood sample
+Lparticle = fill(0, (nLparticles,2)) # grid coords of Likelihood particles
+likelyColor = :orange
 
 # Posterior density parameters
-nPosterior_particles = 400
-PParticle = fill(Point2f0(0,0), nPosterior_particles) # post particle locations
-postColor = RGB(0.99, 0.35, 0.85)
-postSize = 0 #4
-priorSD = 75.0
-
-collisionDistance = 2.0
-
-observerSize = 0
-beliefSize = 0 # 2
+nPosterior_particles = 2500
+PParticle = fill(0.0, (nPosterior_particles,2)) # posterior particle locations
+postColor = :magenta
 
 # bacteria parameters
 # bacteria are just for show - visualise how prey is moving on mat
@@ -122,19 +110,9 @@ function d2o(particle_xy)
   return d
 end
 
-function distanceFromOrigin(p::Point2f0)
-  return sqrt(p[1]^2 + p[2]^2)
-end
-
-function distance(p::Point2f0, q::Point2f0)
-  return sqrt((p[1]-q[1])^2 + (p[2]-q[2])^2)
-end
 
 
-# grid coordinates of x-y point
-function xy2ij(x)
-  return Int.(matRadius .+ [round(x[1]), round(x[2])])
-end
+
 
 # function to compute field strength at distance d from edge of body
 function fieldStrength(sourceRadius, sourceMargin, nRange, E)
@@ -165,8 +143,6 @@ function pOpen(d, V)
    end
    return p(V[i]*1.0e-6)
  end
-
-
 
 # open state probability for source edge at (x,y) receptor at (x0,y0)
 function pOpen(iReceptor, x0, y0)
@@ -205,21 +181,11 @@ function pOpen(iReceptor, x0, y0)
   end
 
 # construct sensory particles in prey margin
-# by reflectObservationg likelihood sample points through skin
-function reflectObservation(Lparticle)
-  R = [distanceFromOrigin(Lparticle[i]) for i in 1:length(Lparticle)]
-#  R = sqrt.(likelihoodParticle_xy[:,1].^2 + likelihoodParticle_xy[:,2].^2)
+# by reflecting likelihood sample points through skin
+function reflectIn(xLhdSample, yLhdSample)
+  R = sqrt.(xLhdSample.^2 + yLhdSample.^2)
   r = preyRadius .- preyMargin*(R.-preyRadius)./(matRadius-preyRadius)
-  #return (r.*xLhdSample./R, r.*yLhdSample./R)
-  observationPlot[1] = r.*Lparticle./R            # update reflected sample plot
-  #observationPlot[2] = r.*likelihoodParticle_xy[:,2]./R
-end
-
-function reflectBelief(b)
-  R = [distanceFromOrigin(b[i]) for i in 1:length(b)]
-  r = preyRadius .- preyMargin*(R.-preyRadius)./(matRadius-preyRadius)
-  #return (r.*xLhdSample./R, r.*yLhdSample./R)
-  beliefPlot[1] = r.*b./R            # update reflected sample plot
+  return (r.*xLhdSample./R, r.*yLhdSample./R)
 end
 
 # precompute field strength and voltage from edge of predator
@@ -237,21 +203,21 @@ scene = Scene(resolution = (1000, 1000),
 
 # mat is a dark green disc
 mat = poly!(scene,
-       decompose(Point2f0, Circle(Point2f0(0.,0.), matRadius)),
+       decompose(Point2f0, Circle(Point2f0(0.,0.), sqrt(matRadius2))),
        color = RGBA(.1, .40, .1, 1.0), strokewidth = 0, strokecolor = :black)
 
 # display nominal time on background
-clock =text!(scene,"t = 0.0s",textsize = 18, color = :white,
+clock =text!(scene,"t = 0.0s",textsize = 24, color = :white,
      position = (- 0.9*matRadius , -0.9*matRadius))[end]
 
  # scatter bacteria over the mat
  # initial bacteria coords extend off the edge of the mat
  # so that bacteria in fixed locations enter and leave the scene
  # as the prey moves (scene moves in prey frame)
-# bacteria = scatter!(scene,
-#              lift(s->(bacteriaPos[:,1], bacteriaPos[:,2]), t),
-#              color = bacteriaColor, markersize = bacteriaSize,
-#              strokewidth = 0, strokecolor = :green)[end]
+bacteria = scatter!(scene,
+             lift(s->(bacteriaPos[:,1], bacteriaPos[:,2]), t),
+             color = bacteriaColor, markersize = bacteriaSize,
+             strokewidth = 0, strokecolor = :green)[end]
 
 # predator drawn using lift(..., node)
 # (predatorLocation does not depend explicitly on t, but this causes
@@ -259,9 +225,8 @@ clock =text!(scene,"t = 0.0s",textsize = 18, color = :white,
 predator = poly!(scene,
       lift(s->decompose(Point2f0, Circle(Point2f0(predatorLocation),
       predatorRadius)), t),
-      color = RGBA(.45, 0.1, 0.1, 0.25),
-      strokewidth = 1, strokecolor = RGB(.45, 0.1, 0.1) )
-#RGBA(0.6, 0.6, .5, .75)
+      color = RGBA(.6, 0.6, .5, .75), strokewidth = .25, strokecolor = :black)
+
 
 
 # for each receptor construct lookup table
@@ -295,58 +260,67 @@ likelihood()  # compute likelihood given initial receptor states
 function sample_likelihood()
 
     n = 0
-    while n<length(Lparticle)
-      θ = 2π*rand()[]
-      candidate = rand(Float32)[]*(matRadius - 1.0f0).*Point2f0(cos(θ), sin(θ))
-      if rand()[]<LikelihoodArray[xy2ij(candidate)...]
+    while n<size(Lparticle,1)
+      candidate = rand(1:Ngrid,2)
+      if x[candidate[1]]^2 + y[candidate[2]]^2 < matRadius2
+        if rand()[]<LikelihoodArray[candidate...]
           n = n + 1
-          Lparticle[n] = candidate
+          Lparticle[n, :] = candidate[:]
+        end
       end
     end
 end
 
+# duplicate belief particles that collide with observation particles
+function collision(PParticle, Lparticle)
+  #nCollide = 0
+  for i in 1:nPosterior_particles
+    ix = Int(round(PParticle[i,1] + matRadius))  # x-grid coord ith particle
+    for j in 1:nLparticles
+      if ix==Lparticle[j,1]  # found matching x-coord
+        if Int(round(PParticle[i,2] + matRadius))==Lparticle[j,2] #&y-coord
+          ireplace = rand(1:nPosterior_particles)[]  # pick particle to replace
+          PParticle[ireplace,:] = PParticle[i,:]
+          #nCollide +=1
+        end
+      end
+    end
+  end
+  #println(nCollide)
+  return PParticle
+end
+
 sample_likelihood() # sample from normalized likelihood
 
+xParticle = x[Int.(Lparticle[:,1])]  # convert grid indices to x-y coords
+yParticle = y[Int.(Lparticle[:,2])]
 # plot likelihood particles (sample points)
-LparticlePlot = scatter!(Lparticle,
-          color = likelyColor, markersize = likleySize, strokewidth = 0.1)[end]
+LparticlePlot = scatter!(xParticle, yParticle,
+          color = likelyColor, markersize = 4, strokewidth = 0.1)[end]
 
-# observation particles are likelihood particles reflected in prey
-# initially all particles are at (0.0, 0.0)
-# (correct coordinates will be inserted before the first plot)
-observationPlot = scatter!(scene,
-      [Point2f0(0.0, 0.0) for i in 1:nLparticles],
-      color = :yellow, strokewidth = 0, markersize=observerSize)[end]
+# project likelihood particles into prey margin and plot
+s = reflectIn(xParticle, yParticle)
+SparticlePlot = scatter!(scene,s[1], s[2],
+      color = :yellow, strokewidth = 0, markersize=2)[end]
 
-beliefPlot = scatter!(scene,
-                     [Point2f0(0.0, 0.0) for i in 1:nPosterior_particles],
-            color = :cyan, strokewidth = 0, markersize=beliefSize)[end]
-
-# initialize posterior samples
-# truncated Gaussian distribution of distance from mat edge
-# (i.e. diffusion from edge with absorbing barrier at prey)
+# initialize posterior samples, uniform over mat outside prey
 function initialize_posterior()
 
   nP = 0
   while nP < nPosterior_particles
-    ϕ = 2.0*π*rand(1)[]
-    β = 1.0e12
-    while β > (matRadius-preyRadius)
-      β = priorSD*abs(randn(1)[])
-    end
-    #candidate = -matRadius .+ sceneWidth.*rand(2)  # random point in scene
-    # d = sqrt(candidate[1]^2 + candidate[2]^2) # candidate distance from origin
-    # if (d>preyRadius) & (d<matRadius)
+    candidate = -matRadius .+ sceneWidth.*rand(2)  # random point in scene
+    d = sqrt(candidate[1]^2 + candidate[2]^2) # candidate distance from origin
+    if (d>preyRadius) & (d<matRadius)
       nP = nP+1
-      PParticle[nP] = Point2f0((matRadius-β).*[cos(ϕ), sin(ϕ)])
-    # end
+      PParticle[nP,:] = candidate[:]
+    end
   end
 end
 
 initialize_posterior()
 # plot likelihood particles (sample points)
-PParticlePlot = scatter!(PParticle,
-          color = postColor, markersize = postSize, strokewidth = 0.1)[end]
+PParticlePlot = scatter!(PParticle[:,1], PParticle[:,2],
+          color = postColor, markersize = 4, strokewidth = 0.1)[end]
 
 
 # Prey
@@ -367,125 +341,94 @@ receptor = scatter!(scene, receptorLocation ,
 
 preyStep = [0.0, 0.0]
 predatorStep = [0.0, 0.0]
-posteriorStep = fill(Point2f0(0.0), nPosterior_particles)
+posteriorStep = fill(0.0, nPosterior_particles,2)
+
+record(scene, "test.mp4", 1:Nframes) do i
+
+    # predator movement
+    d = sqrt(sum((predatorLocation).^2))  # distance from origin
+    v = sign(preyRadius + predatorRadius + 50. - d)#(distance between edges)-50.
+    # pink noise motion in mat frame
+    global predatorStep = 0.8*predatorStep +
+          0.2*randn(2).*predatorSpeed  .+
+          0.05*v*predatorSpeed.*(predatorLocation) ./ d
 
 
-function updateReceptorState(receptorState)
+    # prey motion = pink noise in mat frame
+    global preyStep = 0.9*preyStep + 0.1*randn(2).*preySpeed
 
-  # turn all receptors off
-  receptorColor = receptorOffColor[:]
+    # predator location in prey frame
+    global predatorLocation = predatorLocation .+ predatorStep .+ preyStep
 
-  # calculate receptor states
-  for j = 1:length(receptorState)
-     range = sqrt( (predatorLocation[1] -receptorLocation[j][1])^2  +
-                  (predatorLocation[2] -receptorLocation[j][2])^2 ) -
-                   predatorRadius
-     if range<0.0 range = 0.0; end
-     receptorState[j] = Int(rand()[] < pOpen(range, V))
-  end
+    # bacteria location in prey frame
+    global bacteriaPos += ones(nBacteria,1)*preyStep'
 
-  # update receptor state display
-  receptorColor[findall(x->x==1, receptorState)] .= RGB(1.0, 1.0, 0.0)
-  receptor.color[] = receptorColor
-end
+    # update bacteria plot
+    bacteria.markersize =
+         bacteriaSize.*(sum(bacteriaPos.^2,dims=2) .< matRadius2)[:]
 
-function diffusionBarriers()
-  # posterior particle diffusion barriers at edge of prey and of mat
-  for j in 1:nPosterior_particles
-    d = distanceFromOrigin(PParticle[j])
-      if d>matRadius # edge of mat is reflecting barrier
-         PParticle[j] = matRadius.*PParticle[j]./d
-         posteriorStep[j] = Point2f0(0.0, 0.0)
-      end
-      if d<preyRadius  # edge of prey is absorbing barrier
-         ϕ = 2.0*π*rand(1)[]
-         PParticle[j] = Point2f0(matRadius.*[cos(ϕ), sin(ϕ)])
-         posteriorStep[j] = Point2f0(0.0, 0.0)
-      end
-  end
-end
+    # turn all receptors off
+    receptorColor = receptorOffColor[:]
 
-function predatorMove(i, predatorLocation)
-  # predator movement
-  if i > 0.75*Nframes
-    global Δ = Δ + 2.0
-  end
-  d = sqrt(sum(predatorLocation.^2))  # distance from origin
-  v = sign(preyRadius + predatorRadius + Δ - d)#(distance between edges)-Δ.
-  # pink noise motion in mat frame
-  global predatorStep = 0.8*predatorStep +
-        0.2*randn(2).*predatorSpeed  .+
-        0.1*v*predatorSpeed.*(predatorLocation) ./ d
-  return C*(predatorLocation .+ predatorStep .+ preyStep)
-end
-
-function dynamicPrior(PParticle)
-  global posteriorStep = 0.95f0*posteriorStep +
-      0.25f0*[Point2f0(randn(2)) for k in 1:nPosterior_particles].*predatorSpeed
-  return PParticle += posteriorStep
-end
-
-function collision(PParticle, Lparticle)
-
-  for i in 1:length(PParticle)
-    for j in 1:length(Lparticle)
-      if distance(PParticle[i], Lparticle[j]) < collisionDistance
-        # found a collision, look for a PParticle that is not colliding
-        ireplace = rand(1:nPosterior_particles)[]
-        while distance(PParticle[i], PParticle[ireplace]) < collisionDistance
-          ireplace = rand(1:nPosterior_particles)[]
-        end
-        PParticle[ireplace] = PParticle[i] + Point2f0(2.0*randn(2))
-      end
+    # calculate receptor states
+    for j = 1:nReceptor
+       range = sqrt( (predatorLocation[1] -receptorLocation[j][1])^2  +
+                    (predatorLocation[2] -receptorLocation[j][2])^2 ) -
+                     predatorRadius
+       if range<0.0 range = 0.0; end
+       receptorState[j] = Int(rand()[] < pOpen(range, V))
     end
-  end
 
-end
+    # update receptor state display
+    receptorColor[findall(x->x==1, receptorState)] .= RGB(1.0, 1.0, 0.0)
+    receptor.color[] = receptorColor
 
-dψ = π/1.5/Nframes
-C = [cos(dψ) sin(dψ); -sin(dψ) cos(dψ)]
+    likelihood()            # compute likelihood given receptor states
+    sample_likelihood()     # draw random sample from likelihood (indices)
+    # update sample plot
+    xx = -matRadius.+ Lparticle[:,1].*sceneWidth/Ngrid
+    yy = -matRadius.+ Lparticle[:,2].*sceneWidth/Ngrid
+    LparticlePlot[1] = xx
+    LparticlePlot[2] = yy
 
-record(scene, "test.mp4", framerate = 16, 1:Nframes) do i
+    xParticle = x[Int.(Lparticle[:,1])]  # convert grid indices to x-y coords
+    yParticle = y[Int.(Lparticle[:,2])]
 
-  # global Δ
-  global Nframes
+    s = reflectIn(xParticle, yParticle)  # reflect samples into margin
+    SparticlePlot[1] = s[1]            # update reflected sample plot
+    SparticlePlot[2] = s[2]
 
-    global predatorLocation = predatorMove(i, predatorLocation)
+    # posterior
+    # pink noise walk (particles mimic predator dynamics)
+    global posteriorStep = 0.95*posteriorStep +
+          0.1*randn(nPosterior_particles,2).*predatorSpeed
+    global PParticle += posteriorStep
 
-    # # bacteria location in prey frame
-    # global bacteriaPos += ones(nBacteria,1)*preyStep'
-    #
-    # # update bacteria plot
-    # bacteria.markersize =
-    #      bacteriaSize.*(sum(bacteriaPos.^2,dims=2) .< matRadius2)[:]
+    # posterior particle diffusion barrier at edge of prey and of mat
+    for j in 1:nPosterior_particles
+      d = sqrt(PParticle[j,1]^2+PParticle[j,2]^2)
+        if d>matRadius
+           PParticle[j,:] = matRadius.*PParticle[j,:]./d
+           posteriorStep[j,:] = [0.0, 0.0]
+        end
+        if d<preyRadius
+           PParticle[j,:] = preyRadius.*PParticle[j,:]./d
+           posteriorStep[j,:] = [0.0, 0.0]
+        end
+    end
 
-    updateReceptorState(receptorState)
+   # check for collisions between belief particles and observation particles
+   PParticle = collision(PParticle, Lparticle)
 
-    likelihood()                  # compute likelihood given receptor states
-    sample_likelihood()           # draw random sample from likelihood
+    PParticlePlot[1] = PParticle[:,1]
+    PParticlePlot[2] = PParticle[:,2]
 
-
-    reflectObservation(Lparticle)  # reflect samples into margin
-
-    global PParticle = dynamicPrior(PParticle)
-
-    # check for collisions between belief particles and observation particles
-    collision(PParticle, Lparticle)
-
-    # absorb particles at prey, reflect at mat edge
-    diffusionBarriers()
-
-    # reflect beliefs in prey
-    reflectBelief(PParticle)
 
     # level curves of likelihood
     #LhdPlot.levels[] = maximum(LikelihoodArray)*[0.1, .5 , .9]
 
     # clock display
-    clock[1] = "t = " * string(floor(t[])) * "s"
-
-    LparticlePlot[1] = Lparticle  # update plot
-    PParticlePlot[1] = PParticle
+    clock[1] = "t = " * string(t[]) * "s"
 
     # Node update causes redraw
     t[] = dt*(i+1)

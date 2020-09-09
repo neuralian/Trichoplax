@@ -3,6 +3,7 @@
 
 using Makie
 using Colors
+using PerceptualColourMaps
 
 sceneWidth  = 5000.0
 sceneOffset = sceneWidth / 2.0
@@ -140,34 +141,42 @@ bacteria = scatter!(scene,
              color = :teal, markersize = bacteriaSize,
              strokewidth = 0, strokecolor = :green)[end]
 
+predator = poly!(scene,
+      lift(s->decompose(Point2f0, Circle(Point2f0(predatorLocation),
+      predatorRadius)), t),
+      color = RGBA(.6, 0.6, .5, .75), strokewidth = .25, strokecolor = :black)
+
+predatorStep = [0.0, 0.0]
+
 # likelihood contours
 receptorLocation = [preyRadius.*(cos(2π*i/nReceptor), sin(2π*i/nReceptor))
     for i in 1:nReceptor]
 for j in 1:nReceptor
   receptorState[j] = Int(rand()[] < 0.5 )
 end
-for iReceptor in 1:nReceptor
-  pOpen(iReceptor, receptorLocation[iReceptor][1], receptorLocation[iReceptor][2])
-end
-likelihood()
-LhdPlot = contour!(scene, x,y,lift(s->LikelihoodArray, t),
-         colormap = :Reds,
-         levels = [0.1, .5 , .9])[end]
+# for iReceptor in 1:nReceptor
+#   pOpen(iReceptor, receptorLocation[iReceptor][1], receptorLocation[iReceptor][2])
+# end
+# likelihood()
+# LhdPlot = contour!(scene, x,y,lift(s->LikelihoodArray, t),
+#          colormap = :Reds,
+#          levels = [0.1, .5 , .9])[end]
 
 # Prey
 prey = poly!(scene,
        decompose(Point2f0, Circle(Point2f0(0.,0.), preyRadius)),
-       color = RGBA(0.9, 0.75, 0.65, 1.0), facealpha = 0.1,
-       strokewidth = .5, strokecolor = RGBA(0.8, 0.65, 0.55, 1.0))
+       color = RGBA(0.9, 0.75, 0.65, 0.5), facealpha = 0.1,
+       strokewidth = .25, strokecolor = :black)
 preyGut = poly!(scene,
       decompose(Point2f0, Circle(Point2f0(0.,0.), preyRadius-preyMargin)),
-      color = RGBA(1., 0.75, 0.75, 1.0), facealpha = 0.1,
+      color = RGBA(1., 0.75, 0.75, 0.25), facealpha = 0.1,
       strokewidth = 0.0, strokecolor = RGBA(0.9, 0.75, 0.65, 1.0))
-receptorOffColor = [RGB(0.85, 0.75, 0.45) for i in 1:nReceptor]
-receptorColor = [RGB(0.85, 0.75, 0.45) for i in 1:nReceptor]
+receptorOffColor = [RGBA(0.65, 0.75, 0.40, 1.0) for i in 1:nReceptor]
+receptorColor = [RGBA(1.0, 1.0, 0.25, 1.0) for i in 1:nReceptor]
 
 receptor = scatter!(scene, receptorLocation ,
-            markersize = 8, color = receptorColor, strokewidth =0)[end]
+            markersize = 10, color = receptorColor,
+            strokecolor = :black, strokewidth = 0.25)[end]
 
 preyStep = [0.0, 0.0]
 
@@ -175,12 +184,7 @@ preyStep = [0.0, 0.0]
 #   lift(s->decompose(Point2f0, Circle(Point2f0(predatorLocation),
 #   predatorFieldRadius)), t),
 #   color = RGBA(.3, 1.0, .5, .5), strokewidth = 0, strokecolor = :black)
-predator = poly!(scene,
-       lift(s->decompose(Point2f0, Circle(Point2f0(predatorLocation),
-       predatorRadius)), t),
-       color = RGB(.6, 0.6, .5), strokewidth = .5, strokecolor = :black)
 
-predatorStep = [0.0, 0.0]
 
 
 
@@ -188,13 +192,13 @@ predatorStep = [0.0, 0.0]
 #
 #     bacteria
 
-N = 250
+N = 50
 #for i in 1:N
 
 record(scene, "test.mp4", 1:N) do i
 
     global predatorStep = 0.95*predatorStep +
-                          0.05*randn(2).*50.0  .- predatorLocation ./ 5000.
+                          0.05*randn(2).*50.0  .- predatorLocation ./ 2500.
     global preyStep = 0.95*preyStep + 0.05*randn(2).*50.
     global preyLocation = preyLocation .+ preyStep
     global predatorLocation = predatorLocation .+ predatorStep .+ preyStep

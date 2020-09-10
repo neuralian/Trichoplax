@@ -8,8 +8,7 @@ using Colors
 # all parameters in structs
 # with defined types
 struct World
-  size::Float64
-  matradius::Float64
+  radius::Float64
   matcolor::RGBA{Float64}
   bgcolor::RGBA{Float64}
   dt::Float64
@@ -17,7 +16,10 @@ struct World
   approach_distance::Float64  # closest approach pred-prey in animation
 end
 
-struct Ereceptor  #array of electroreceptors
+function World(size)
+end
+
+struct Eceptor  #array of electroreceptors
   N::Int64
   size::Float64  # symbol size for drawing receptors
   x::Array{Float64,1}  # receptor x-coords
@@ -29,9 +31,6 @@ struct Ereceptor  #array of electroreceptors
   pOn::Array{Array{Float64,2},1}
 
 end
-
-
-
 
 struct Placozoan
   bodyradius::Float64
@@ -227,7 +226,7 @@ function pOpen(iReceptor, x0, y0)
 
 # construct sensory particles in prey margin
 # by reflectObservationg likelihood sample points through skin
-function reflectObservation(likelihoodParticle_xy::Array{Float64,1})
+function reflectObservation(likelihoodParticle_xy::Array{Float64,2})
   R = sqrt.(likelihoodParticle_xy[:,1].^2 + likelihoodParticle_xy[:,2].^2)
   r = (preyRadius .- preyMargin*(R.-preyRadius)./(matRadius-preyRadius))::Array{Float64,1}
   #return (r.*xLhdSample./R, r.*yLhdSample./R)

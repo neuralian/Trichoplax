@@ -68,36 +68,6 @@ function World(radius::Int64)
                likelihood, prior, posterior)
 end
 
-# Placozoan structure
-struct Placozoan
-  radius::Float64
-  marginwidth::Float64
-  gutradius::Float64
-  celldiam::Float64
-  x::Array{Float64,1}  # x-ccord of centre
-  y::Array{Float64,1}   # y-coord of centre
-  # field[i] is pre-computed bio-electric field strength
-  #   at distance i μm from edge of placozoan
-  field::Array{Float64,1}
-  potential::Array{Float64,1}  # in μV
-  fieldrange::Int64   # number of elements in field (= max range in μm)
-  speed::Array{Float64,1}
-  color::RGBA{Float64}
-  gutcolor::RGBA{Float64}
-  edgecolor::RGB{Float64}
-end
-
-# placozoan constructor
-# specify size and margin width
-# other parameters take default values; located at origin
-function Placozoan(radius, margin)
-    fieldrange = Int(round(radius*3))
-    return Placozoan(radius, margin, radius-margin, 12.0, [0.0], [0.0],
-            fill(0.0, fieldrange), fill(0.0, fieldrange), fieldrange, [0.0],
-            RGBA(0.9, 0.75, 0.65, 0.5), RGBA(1., 0.75, 0.75, 0.25),
-            RGB(0.0, 0.0, 0.0))
-end
-
 # electroreceptor array
 # including Bayesian receptive fields (likelihoods for prey proximity)
 struct Ereceptor
@@ -114,8 +84,41 @@ struct Ereceptor
   #   receptive field of the receptor a.k.a. the likelihood function for
   #   predator proximity given that the receptor is activated (in open state).
   pOpen::Array{OffsetArray,1}
-  body::Placozoan  # placozoan that the receptors are attached to
 end
+
+# Placozoan structure
+struct Placozoan
+  radius::Float64
+  marginwidth::Float64
+  gutradius::Float64
+  celldiam::Float64
+  x::Array{Float64,1}  # x-ccord of centre
+  y::Array{Float64,1}   # y-coord of centre
+  # field[i] is pre-computed bio-electric field strength
+  #   at distance i μm from edge of placozoan
+  field::Array{Float64,1}
+  potential::Array{Float64,1}  # in μV
+  fieldrange::Int64   # number of elements in field (= max range in μm)
+  receptor::Ereceptor
+  speed::Array{Float64,1}
+  color::RGBA{Float64}
+  gutcolor::RGBA{Float64}
+  edgecolor::RGB{Float64}
+end
+
+# placozoan constructor
+# specify size and margin width
+# other parameters take default values; located at origin
+function Placozoan(radius, margin)
+    fieldrange = Int(round(radius*3))
+    return Placozoan(radius, margin, radius-margin, 12.0, [0.0], [0.0],
+            fill(0.0, fieldrange), fill(0.0, fieldrange), fieldrange,
+            [0.0], [],
+            RGBA(0.9, 0.75, 0.65, 0.5), RGBA(1., 0.75, 0.75, 0.25),
+            RGB(0.0, 0.0, 0.0))
+end
+
+
 
 # function computes receptor channel Open probability
 # as a function of electric field strength
@@ -156,17 +159,17 @@ function pOpen(d, V)
  end
 
 # Ereceptor constructor
-# creates N receptors around edge of placozoan centred at (0,0)
-# nb needs Bayesian RFs to be pre-computed,
-#  but it is easier to do this after construction
-function Ereceptor(w::World, p::Placozoan, N::Int64, displaysize::Float64)
+# creates N receptors centred at (0,0)
+# precomputes Bayesian RFs
+function Ereceptor(w::World, self_radius, other::Placozoan,
+                   N::Int64, displaysize::Float64)
    if floor(N/4)!=N/4
      error("Number of receptors must be a multiple of 4")
    end
 
    # N receptors equally spaced around edge of placozoan
-   x = [p.radius.*(cos(2π*i/N)) for i in 1:N]
-   y = [p.radius.*(sin(2π*i/N)) for i in 1:N]
+   x = [self_radius.*(cos(2π*i/N)) for i in 1:N]
+   y = [self_radius.*(sin(2π*i/N)) for i in 1:N]
    Open = zeros(N) # initialize receptors closed  (init. state doesn't matter)
 
    openColor   = RGB(1.0, 1.0, 0.25)
@@ -180,15 +183,15 @@ function Ereceptor(w::World, p::Placozoan, N::Int64, displaysize::Float64)
      # create an offset array to hold the precomputed RF for that receptor
      Lhd[i] = OffsetArray(fill(0.0, n_indx, n_indx), indx, indx)
      # precompute likelihood (open state probability) for this receptor
-          for j in indx
+    for j in indx
        for k in indx
-         Lhd[i][j,k] = pOpen(sqrt((x[i]-j)^2 + (y[i]-k)^2), p.potential)
+         Lhd[i][j,k] = pOpen(sqrt((x[i]-j)^2 + (y[i]-k)^2), other.potential)
        end
      end
    end
 
    return Ereceptor(N, displaysize, x, y,
-                    zeros(N), openColor, closedColor, Lhd, p)
+                    zeros(N), openColor, closedColor, Lhd, self)
 
 end
 
@@ -228,7 +231,7 @@ predator.y[] = (W.radius + predator.radius/2)*sin(θ)
 Δ = 40.
 
 # create receptors
-receptor = Ereceptor(W,prey,12,12.0)
+receptor = Ereceptor(W,prey,predator,4,12.0)
 
 # Receptor parameters
 # NB open state probability is computed out to distance maxRange

@@ -2,34 +2,47 @@
 
 #import BayesianPlacozoan
 
-sceneWidth  = 500.0
-matRadius = sceneWidth / 2.0
-matRadius2  = matRadius^2
-sceneLimits = FRect(-matRadius, -matRadius, sceneWidth, sceneWidth)
-#sceneResolution = 1001  # nb must be odd, to ensure grid point @ centre
-Ngrid = 501   # grid points in each direction, odd so centre is a grid point
-x = LinRange(-matRadius, matRadius, Ngrid)
-y = LinRange(-matRadius, matRadius, Ngrid)
+# sceneWidth  = 500.0
+# matRadius = sceneWidth / 2.0
+# matRadius2  = matRadius^2
+# sceneLimits = FRect(-matRadius, -matRadius, sceneWidth, sceneWidth)
+# #sceneResolution = 1001  # nb must be odd, to ensure grid point @ centre
+# Ngrid = 501   # grid points in each direction, odd so centre is a grid point
+# x = LinRange(-matRadius, matRadius, Ngrid)
+# y = LinRange(-matRadius, matRadius, Ngrid)
+
+# Simulation parameters
+nFrames = 480
 dt = 2.5
-Nframes = 480
 
+# World/physical parameters
+mat_radius = 500
+n_likelihood_particles = 1000
+n_posterior_particles = 1000
 
-# work starts here
+# placozoan parameters
+prey_radius = 100.0
+prey_margin = 25.0
+
+predator_radius = 120.0
+predator_margin = 25.0
+predator_speed = 5.0
+
+approach_Δ = 40.0   # proximity at which predator stops approaching prey
 
 # create world
-W = World(500, 1000, 1000)
+W = World(nFrames, mat_radius,
+           n_likelihood_particles, n_posterior_particles, approach_Δ)
 
 # create prey
-prey = Placozoan(100.0, 25.0)
+prey = Placozoan(prey_radius, prey_margin)
 
 # create predator
-predator = Placozoan(120.0, 25.0)
-predator.speed[] = 1.0
+predator = Placozoan(predator_radius, predator_margin)
+predator.speed[] = predator_speed
 θ = π*rand()[] # Random initial heading (from above)
-predator.x[] = (W.radius + predator.radius/2)*cos(θ)
-predator.y[] = (W.radius + predator.radius/2)*sin(θ)
-Δ = 40.
-
+predator.x[] = (mat_radius + predator_radius/2)*cos(θ)
+predator.y[] = (mat_radius + predator_radius/2)*sin(θ)
 
 # compute field and potential as a fcn of distance from edge of predator
 placozoanFieldstrength(predator)
@@ -70,32 +83,32 @@ postColor = RGB(0.99, 0.35, 0.85)
 postSize = 5
 priorSD = 75.0
 
-# bacteria parameters
-# bacteria are just for show - visualise how prey is moving on mat
-bacteriaDensity = 5e-5 # bacteria /um^2
-bacteriaColor = RGB(0.5, 0.25, 0.0)
-bacteriaRadius = sceneWidth
-nBacteria = Int(round(bacteriaDensity*π*bacteriaRadius^2))
-bacteriaPos = bacteriaRadius*(rand(nBacteria,2) .- 0.5)
-bacteriaSize = 8.0*rand(nBacteria)
+# # bacteria parameters
+# # bacteria are just for show - visualise how prey is moving on mat
+# bacteriaDensity = 5e-5 # bacteria /um^2
+# bacteriaColor = RGB(0.5, 0.25, 0.0)
+# bacteriaRadius = sceneWidth
+# nBacteria = Int(round(bacteriaDensity*π*bacteriaRadius^2))
+# bacteriaPos = bacteriaRadius*(rand(nBacteria,2) .- 0.5)
+# bacteriaSize = 8.0*rand(nBacteria)
 
 # time observable
 # used to force scene update (nothing depends explicitly on time)
 t = Node(0.0)
 
 # construct scene
-WorldSize = 2*W.radius+1
+WorldSize = 2*mat_radius+1
 scene = Scene(resolution = (WorldSize, WorldSize),
               limits = FRect(-W.radius, -W.radius,WorldSize,WorldSize ),
               show_axis=false, backgroundcolor=W.bgcolor)
 
 # mat is a dark green disc
-mat = poly!(scene,
+mat_plt = poly!(scene,
        decompose(Point2f0, Circle(Point2f0(0.,0.), W.radius)),
        color = W.matcolor, strokewidth = 0, strokecolor = :black)
 
 # display nominal time on background
-clock =text!(scene,"t = 0.0s",textsize = 24, color = :white,
+clock_plt =text!(scene,"t = 0.0s",textsize = 24, color = :white,
      position = (- 0.9*W.radius , -0.9*W.radius))[end]
 
  # scatter bacteria over the mat
@@ -110,35 +123,36 @@ clock =text!(scene,"t = 0.0s",textsize = 24, color = :white,
 # predator drawn using lift(..., node)
 # (predatorLocation does not depend explicitly on t, but this causes
 #  the plot to be updated when the node t changes)
-predatorShow = poly!(scene,
+predator_plt = poly!(scene,
       lift(s->decompose(Point2f0, Circle(Point2f0(predator.x[], predator.y[]),
       predator.radius)), t),
       color = predator.color, strokewidth = .25, strokecolor = :black)
 
-
-
-
 likelihood(W, prey)  # initialize likelihood given initial receptor states
 sample_likelihood(W) # sample from normalized likelihood
 
-initialize_posterior()
 
 
 # plot likelihood particles (samples from likelihood)
-LparticlePlot = scatter!(W.Lparticle[:,1], W.Lparticle[:,2],
+Lparticle_plt = scatter!(W.Lparticle[:,1], W.Lparticle[:,2],
           color = W.likelycolor, markersize = W.likelysize[],
           strokewidth = 0.1)[end]
 
 # plot projection of likelihood particles into prey margin
 # nb this is a dummy plot
 # the correct particle locations are inserted before first plot
-observationPlot = scatter!(scene,zeros(nLparticles),zero(nLparticles),
+observation_plt = scatter!(scene,zeros(W.nLparticles),zeros(W.nLparticles),
       color = :yellow, strokewidth = 0, markersize=2)[end]
+
+initialize_posterior(W,prey)
+Pparticle_plt = scatter!(W.Pparticle[:,1], W.Pparticle[:,2],
+          color = W.postcolor, markersize = W.postsize[], strokewidth = 0.1)[end]
+
 
 # plot projection of posterior particles into prey margin
 # nb this is a dummy plot
 # the correct particle locations are inserted before first plot
-beliefPlot = scatter!(scene,
+belief_plt = scatter!(scene,
               zeros(nPosterior_particles), zeros(nPosterior_particles),
               color = :cyan, strokewidth = 0, markersize=2)[end]
 
@@ -152,76 +166,58 @@ beliefPlot = scatter!(scene,
 #
 #
 # Prey
-preyShow = poly!(scene,
+prey_plt = poly!(scene,
        decompose(Point2f0, Circle(Point2f0(0.,0.), prey.radius)),
        color = prey.color, strokewidth = .25, strokecolor = :black)
-preyGutShow = poly!(scene,
+preyGut_plt = poly!(scene,
       decompose(Point2f0, Circle(Point2f0(0.,0.), prey.gutradius)),
       color = prey.gutcolor, strokewidth = 0.0)
 
 
-receptorShow = scatter!(scene, prey.receptor.x, prey.receptor.y ,
-            markersize = prey.receptor.size, color = prey.receptor.openColor,
+receptor_plt = scatter!(scene, prey.receptor.x, prey.receptor.y ,
+            markersize = prey.receptor.size,
+            color = [prey.receptor.openColor for i in 1:prey.receptor.N],
             strokecolor = :black, strokewidth = 0.25)[end]
 
 # preyStep = [0.0, 0.0]
 # predatorStep = [0.0, 0.0]
 # posteriorStep = fill(0.0, nPosterior_particles,2)
-#
-#
-#
-# dψ = π/Nframes
-# C = [cos(dψ) sin(dψ); -sin(dψ) cos(dψ)]
-#
-# record(scene, "test.mp4", framerate = 24, 1:Nframes) do i
-#
-#   global Δ
-#   global Nframes
-#
-#   if i > 0.75*Nframes
-#     Δ = Δ + 1000.0/Nframes
-#   end
-#
-#     # predator movement
-#     d = sqrt(sum(predatorLocation.^2))  # distance from origin
-#     v = sign(preyRadius + predatorRadius + Δ - d)#(distance between edges)-Δ.
-#     # pink noise motion in mat frame
-#     global predatorStep = 0.8*predatorStep +
-#           0.2*randn(2).*predatorSpeed  .+
-#           0.1*v*predatorSpeed.*(predatorLocation) ./ d
-#
-#
-#     # prey motion = pink noise in mat frame
-#     global preyStep = 0.9*preyStep + 0.1*randn(2).*preySpeed
-#
-#     # predator location in prey frame
-#     global predatorLocation = C*(predatorLocation .+ predatorStep .+ preyStep)
-#
-#     # # bacteria location in prey frame
-#     # global bacteriaPos += ones(nBacteria,1)*preyStep'
-#     #
-#     # # update bacteria plot
-#     # bacteria.markersize =
-#     #      bacteriaSize.*(sum(bacteriaPos.^2,dims=2) .< matRadius2)[:]
-#
-#     updateReceptorState(receptorState)
-#
-#     likelihood()            # compute likelihood given receptor states
-#     sample_likelihood()     # draw random sample from likelihood (indices)
-#     # update sample plot
-#     likelihoodParticle_xy = -matRadius.+ Lparticle.*sceneWidth/Ngrid
-#   #  yy = -matRadius.+ Lparticle[:,2].*sceneWidth/Ngrid
-#     LparticlePlot[1] = likelihoodParticle_xy[:,1]
-#     LparticlePlot[2] = likelihoodParticle_xy[:,2]
-#
-#     # xParticle = x[Int.(Lparticle[:,1])]  # convert grid indices to x-y coords
-#     # yParticle = y[Int.(Lparticle[:,2])]
-#
-# #    s = reflectObservation(xParticle, yParticle)  # reflect samples into margin
-#     reflectObservation(likelihoodParticle_xy)  # reflect samples into margin
-#     # observationPlot[1] = s[1]            # update reflected sample plot
-#     # observationPlot[2] = s[2]
-#
+
+record(scene, "test.mp4", framerate = 24, 1:W.nFrames) do i
+
+    # cause predator to drift away from prey in last 25% of animation
+    if i > 0.75*W.nFrames
+      W.Δ[] += 1000.0/W.nFrames
+    end
+
+    # predator random walk to within Δ of prey
+    # small bias velocity added for drift towards prey & clockwise orbit
+    stalk(W, predator, prey)
+
+    # prey receptors respond to predator electric field
+    updateReceptors(prey, predator)
+    # set color of each receptor, indicating open or closed state
+    receptorColor = [prey.receptor.closedColor  for j in 1:prey.receptor.N]
+    receptorColor[findall(x->x==1, prey.receptor.state)] .=
+         prey.receptor.openColor
+    receptor_plt.color[] = receptorColor
+
+    # prey sensory observations (particles released by active sensors)
+    likelihood(W, prey)      # likelihood given receptor states
+    sample_likelihood(W)     # random sample from likelihood
+    Lparticle_plt[1] = W.Lparticle[:,1]   # update likelihood particle plot
+    Lparticle_plt[2] = W.Lparticle[:,2]
+
+    observation = reflectObservation(W, prey) # reflect samples into margin
+    observation_plt[1] = observation[:,1]     # update observation particle plot
+    observation_plt[2] = observation[:,2]
+
+    # predict posterior using predator model
+    posteriorPredict(W, predator)
+    Pparticle_plt[1] = W.Pparticle[:,1]  # update posterior particle plot
+    Pparticle_plt[2] = W.Pparticle[:,2]
+
+
 #     # posterior
 #     # pink noise walk (particles mimic predator dynamics)
 #     global posteriorStep = 0.95*posteriorStep +
@@ -237,18 +233,15 @@ receptorShow = scatter!(scene, prey.receptor.x, prey.receptor.y ,
 #     PParticlePlot[2] = PParticle[:,2]
 #
 #     reflectBelief(PParticle)
-#
-#
-#     # level curves of likelihood
-#     #LhdPlot.levels[] = maximum(LikelihoodArray)*[0.1, .5 , .9]
-#
-#     # clock display
-#     clock[1] = "t = " * string(floor(t[])) * "s"
-#
-#     # Node update causes redraw
-#     t[] = dt*(i+1)
-#
-# end
 
 
-display(scene)
+    # level curves of likelihood
+    #LhdPlot.levels[] = maximum(LikelihoodArray)*[0.1, .5 , .9]
+
+    # clock display
+    clock_plt[1] = "t = " * string(floor(t[])) * "s"
+
+    # Node update causes redraw
+    t[] = dt*(i+1)
+
+end

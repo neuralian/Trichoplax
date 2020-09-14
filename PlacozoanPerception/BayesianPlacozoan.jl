@@ -44,6 +44,7 @@ param = Param()
 # World structure
 # contains scene settings and global parameters
 struct World
+  nFrames::Int64
   radius::Int64
   matcolor::RGBA{Float64}
   bgcolor::RGBA{Float64}
@@ -58,10 +59,13 @@ struct World
   nPparticles::Int64
   Lparticle::Array{Float64,2}
   Pparticle::Array{Float64,2}
+  Pparticle_step::Array{Float64,2}  # particle prediction steps
+  Δ::Array{Float64,1}    # closest approach of predator μm (animation parameter)
 end
 
 # World constructor
-function World(radius::Int64, nLparticles::Int64, nPparticles::Int64)
+function World(nFrames::Int64, radius::Int64,
+                nLparticles::Int64, nPparticles::Int64, Δ::Float64)
   indx = -radius:radius
   n_indx = length(indx)
   likelihood = OffsetArray(fill(0.0, n_indx,n_indx), indx, indx)
@@ -75,13 +79,17 @@ function World(radius::Int64, nLparticles::Int64, nPparticles::Int64)
 
   Lparticle = fill(0.0, nLparticles,2)
   Pparticle = fill(0.0, nPparticles,2)
+  Pparticle_step = zeros(nPparticles,2)
+# Δ: predator is attracted to prey if it is further than this
+# and repelled if it is closer; for animating stalking behaviour
 
   default_matcolor = RGBA(.1, .40, .1, 1.0)
   default_bgcolor  = RGBA(0.0, 0.0, 0.0, 1.0)
-  return World(radius, default_matcolor, default_bgcolor,
+  return World(nFrames, radius, default_matcolor, default_bgcolor,
               likelycolor, postcolor, [likelysize], [postsize],
                likelihood, prior, posterior,
-               nLparticles, nPparticles, Lparticle, Pparticle)
+               nLparticles, nPparticles, Lparticle, Pparticle, Pparticle_step,
+               [Δ] )
 end
 
 # electroreceptor array
@@ -175,6 +183,7 @@ struct Placozoan
   fieldrange::Int64   # number of elements in field (= max range in μm)
   receptor::Ereceptor  # electroreceptor array
   speed::Array{Float64,1}
+  step::Array{Float64,1}
   color::RGBA{Float64}
   gutcolor::RGBA{Float64}
   edgecolor::RGB{Float64}
@@ -188,7 +197,7 @@ function Placozoan(radius, margin)
     receptor = Ereceptor(W,radius,4,12.0)
     return Placozoan(radius, margin, radius-margin, 12.0, [0.0], [0.0],
             fill(0.0, fieldrange), fill(0.0, fieldrange), fieldrange,
-            receptor, [0.0],
+            receptor, [0.0], [0.0, 0.0],
             RGBA(0.9, 0.75, 0.65, 0.5), RGBA(1., 0.75, 0.75, 0.25),
             RGB(0.0, 0.0, 0.0))
 end
@@ -282,17 +291,17 @@ function likelihood(w::World, self::Placozoan)
 
  end
 
-   # function returns particle distances from origin
-   # particle_ij is nParticles x 2, grid coords of particle
-   function d2o(particle_xy)
-     d = fill(0.0, size(particle_xy,1))
-     for i in 1:size(particle_xy,1)
-       xx = -matRadius + particle_xy[i,1].*sceneWidth/Ngrid
-       yy = -matRadius + particle_xy[i,2].*sceneWidth/Ngrid
-       d[i] = sqrt(xx^2 + yy^2)
-     end
-     return d
-   end
+   # # function returns particle distances from origin
+   # # particle_ij is nParticles x 2, grid coords of particle
+   # function d2o(particle_xy)
+   #   d = fill(0.0, size(particle_xy,1))
+   #   for i in 1:size(particle_xy,1)
+   #     xx = -matRadius + particle_xy[i,1].*sceneWidth/Ngrid
+   #     yy = -matRadius + particle_xy[i,2].*sceneWidth/Ngrid
+   #     d[i] = sqrt(xx^2 + yy^2)
+   #   end
+   #   return d
+   # end
 
 
  # construct sensory particles in prey margin
@@ -301,8 +310,10 @@ function likelihood(w::World, self::Placozoan)
    R = sqrt.(W.Lparticle[:,1].^2 + W.Lparticle[:,2].^2)
    r = (prey.radius .- prey.marginwidth*(R.-prey.radius)./(W.radius-prey.radius))::Array{Float64,1}
    #return (r.*xLhdSample./R, r.*yLhdSample./R)
-   observationPlot[1] = r.*W.Lparticle[:,1]./R            # update reflected sample plot
-   observationPlot[2] = r.*W.Lparticle[:,2]./R
+   # observationPlot[1] = r.*W.Lparticle[:,1]./R            # update reflected sample plot
+   # observationPlot[2] = r.*W.Lparticle[:,2]./R
+
+   observation = r.*W.Lparticle./R
  end
 
  function reflectBelief(beliefParticle_xy)
@@ -319,13 +330,10 @@ function likelihood(w::World, self::Placozoan)
 
      n = 0
      while n < w.nLparticles
-
        candidate = rand(-w.radius:w.radius,2)
-      #println(w.likelihood[candidate...])
        if sqrt(candidate[1]^2 + candidate[2]^2) < w.radius
          if rand()[] < w.likelihood[candidate...]
            n = n + 1
-           println(n)
            w.Lparticle[n, :] = candidate[:]
          end
        end
@@ -355,42 +363,37 @@ function likelihood(w::World, self::Placozoan)
  # initialize posterior samples
  # truncated Gaussian distribution of distance from mat edge
  # (i.e. diffusion from edge with absorbing barrier at prey)
- function initialize_posterior()
+ function initialize_posterior(w::World, p::Placozoan)
 
    nP = 0
-   while nP < nPosterior_particles
+   while nP < w.nPparticles
      ϕ = 2.0*π*rand(1)[]
      β = 1.0e12
-     while β > (matRadius-preyRadius)
+     while β > (w.radius-p.radius)
        β = priorSD*abs(randn(1)[])
      end
      #candidate = -matRadius .+ sceneWidth.*rand(2)  # random point in scene
      # d = sqrt(candidate[1]^2 + candidate[2]^2) # candidate distance from origin
      # if (d>preyRadius) & (d<matRadius)
        nP = nP+1
-       PParticle[nP,:] =  (matRadius-β).*[cos(ϕ), sin(ϕ)]
+       w.Pparticle[nP,:] =  (w.radius-β).*[cos(ϕ), sin(ϕ)]
      # end
    end
  end
 
-
- function updateReceptorState(receptorState)
-
-   # turn all receptors off
-   receptorColor = receptorOffColor[:]
+ function updateReceptors(prey::Placozoan, predator::Placozoan)
 
    # calculate receptor states
-   for j = 1:length(receptorState)
-      range = sqrt( (predatorLocation[1] -receptorLocation[j][1])^2  +
-                   (predatorLocation[2] -receptorLocation[j][2])^2 ) -
-                    predatorRadius
-      if range<0.0 range = 0.0; end
-      receptorState[j] = Int(rand()[] < pOpen(range, V))
-   end
+   for j = 1:length(prey.receptor.state)
+      range = sqrt( (predator.x[] - prey.receptor.x[j])^2  +
+                   (predator.y[] - prey.receptor.y[j])^2 ) - predator.radius
 
-   # update receptor state display
-   receptorColor[findall(x->x==1, receptorState)] .= RGB(1.0, 1.0, 0.0)
-   receptor.color[] = receptorColor
+      if range < 0.0
+         range = 0.0
+       end
+
+      prey.receptor.state[j] = Int(rand()[] < pOpen(range, predator.potential))
+   end
  end
 
  function diffusionBarriers()
@@ -408,3 +411,48 @@ function likelihood(w::World, self::Placozoan)
        end
    end
  end
+
+# rotate placozoan location through angle dψ around origin
+function orbit(w::World, p::Placozoan)
+  dψ = π/w.nFrames
+  p.x[] =  cos(dψ)*p.x[] + sin(dψ)*p.y[]
+  p.y[] = -sin(dψ)*p.x[] + cos(dψ)*p.y[]
+  # C = [cos(dψ) sin(dψ); -sin(dψ) cos(dψ)]
+end
+
+# predator movement
+function stalk(w::World, predator::Placozoan, prey::Placozoan)
+
+  # predator movement
+  d = sqrt(predator.x[]^2 + predator.y[]^2)  # distance from origin
+  v = sign(prey.radius + predator.radius + w.Δ[] - d)#(distance between edges)-Δ.
+  # pink noise motion in mat frame
+  predator.step[:] = 0.8*predator.step +
+        0.2*randn(2).*predator.speed[]  .+
+        0.1*v*predator.speed[].*([predator.x[], predator.y[]]) ./ d
+
+
+  # prey motion = pink noise in mat frame
+  #global preyStep = 0.9*preyStep + 0.1*randn(2).*preySpeed
+
+  # predator location in prey frame
+  predator.x[] += predator.step[1]
+  predator.y[] += predator.step[2]
+
+  orbit(w, predator)
+
+end
+
+function posteriorPredict(w::World, predator::Placozoan)
+
+  w.Pparticle_step .= 0.95*w.Pparticle_step +
+                     0.5*randn(w.nPparticles,2).*predator.speed[]
+  w.Pparticle .+= w.Pparticle_step
+
+  #     # posterior
+  #     # pink noise walk (particles mimic predator dynamics)
+  #     global posteriorStep = 0.95*posteriorStep +
+  #           0.5*randn(nPosterior_particles,2).*predatorSpeed
+  #     global PParticle += posteriorStep
+
+end

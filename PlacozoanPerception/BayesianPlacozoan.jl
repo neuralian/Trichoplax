@@ -1,4 +1,4 @@
-# BayeisanPlacozoan module
+# BayesianPlacozoan module
 
 using Makie
 using Colors
@@ -60,6 +60,7 @@ struct World
   Lparticle::Array{Float64,2}
   Pparticle::Array{Float64,2}
   Pparticle_step::Array{Float64,2}  # particle prediction steps
+  priorSD::Array{Float64}  # std. dev. of prior
   Δ::Array{Float64,1}    # closest approach of predator μm (animation parameter)
 end
 
@@ -73,9 +74,10 @@ function World(nFrames::Int64, radius::Int64,
   posterior = OffsetArray(fill(0.0, n_indx,n_indx), indx, indx)
 
   likelycolor = RGB(0.85, 0.65, 0.35)
-  postcolor = RGB(0.99, 0.35, 0.85)
+  postcolor = RGB(0.5, 0.75, 1.0)
   likelysize = 4
   postsize = 4
+  priorSD = 150.0
 
   Lparticle = fill(0.0, nLparticles,2)
   Pparticle = fill(0.0, nPparticles,2)
@@ -83,13 +85,13 @@ function World(nFrames::Int64, radius::Int64,
 # Δ: predator is attracted to prey if it is further than this
 # and repelled if it is closer; for animating stalking behaviour
 
-  default_matcolor = RGBA(.1, .40, .1, 1.0)
+  default_matcolor = RGBA(.05, .35, .35, 1.0)
   default_bgcolor  = RGBA(0.0, 0.0, 0.0, 1.0)
   return World(nFrames, radius, default_matcolor, default_bgcolor,
               likelycolor, postcolor, [likelysize], [postsize],
                likelihood, prior, posterior,
                nLparticles, nPparticles, Lparticle, Pparticle, Pparticle_step,
-               [Δ] )
+               [priorSD], [Δ] )
 end
 
 # electroreceptor array
@@ -112,8 +114,8 @@ end
 
 # Ereceptor constructor
 # creates N receptors in a ring centred at (0,0)
-# initializes likelihood arrays (Bayesian receptive fields)
-#    but does not compute them
+# creates likelihood array (Bayesian receptive field) for each receptor
+#    initialized to all zeros
 function Ereceptor(w::World, radius::Float64, N::Int64, displaysize::Float64)
 
    if floor(N/4)!=N/4
@@ -143,30 +145,7 @@ end
 
 
 
-#
-# # for each receptor construct lookup table
-# # for likelihood of predator at (x,y) given receptor state.
-# # Computed for receptors in first quadrant only,
-# # likelihoods for other quadrants are obtained by rotating this 90deg x 3
-# Nq = nReceptor ÷ 4  # number of receptors per quadrant
-# for iReceptor in 1:Nq
-#   pOpen(iReceptor, receptorLocation[iReceptor][1], receptorLocation[iReceptor][2])
-# end
-# # 2nd-4th quadrants
-# for iReceptor in 1:Nq
-#   # 2nd
-#   for i in 1:Ngrid
-#     for j in 1:Ngrid
-#       LikelihoodLookup[Nq+iReceptor, i,j] =
-#                             LikelihoodLookup[iReceptor, j,Ngrid+1-i]
-#       LikelihoodLookup[2*Nq+iReceptor, i,j] =
-#                             LikelihoodLookup[iReceptor, Ngrid+1-i,Ngrid+1-j]
-#       LikelihoodLookup[3*Nq+iReceptor, i,j] =
-#                             LikelihoodLookup[iReceptor, Ngrid + 1 - j,i]
-#     end
-#   end
-#
-# end
+
 
 # Placozoan structure
 struct Placozoan
@@ -192,32 +171,61 @@ end
 # placozoan constructor
 # specify size and margin width
 # other parameters take default values; located at origin
-function Placozoan(radius, margin,
+function Placozoan(radius::Float64, margin::Float64, Nreceptors::Int64,
                     bodycolor=RGBA(0.9, 0.75, 0.65, 0.5),
                     gutcolor = RGBA(1., 0.75, 0.75, 0.25),
                     edgecolor = RGB(0.0, 0.0, 0.0) )
     fieldrange = Int(round(radius*3))
-    receptor = Ereceptor(W,radius,4,12.0)
+    receptor = Ereceptor(W,radius, Nreceptors,12.0)
     return Placozoan(radius, margin, radius-margin, 12.0, [0.0], [0.0],
             fill(0.0, fieldrange), fill(0.0, fieldrange), fieldrange,
             receptor, [0.0], [0.0, 0.0],
             bodycolor, gutcolor, edgecolor )
 end
 
+# # computes Bayesian receptive fields for each receptor
+# # i.e. normalized likelihood for nearest edge of predator at (x,y)
+# # given that the receptor channel is open
+# function precomputeBayesianRF(w::World, self::Placozoan, other::Placozoan)
+#
+#   for i in 1:self.receptor.N  # for each receptor
+#     # precompute likelihood (open state probability) for this receptor
+#     # nb likelihood of predator inside self is zero
+#     # (because self must be still alive to do this computation)
+#    for j in -w.radius:w.radius
+#       for k in -w.radius:w.radius
+#         self.receptor.pOpen[i][j,k] = sqrt(j^2+k^2) > self.radius ?
+#             pOpen(sqrt((self.receptor.x[i]-j)^2 + (self.receptor.y[i]-k)^2),
+#                    other.potential) : 0.0
+#       end
+#     end
+#   end
+#
+# end
+
 # computes Bayesian receptive fields for each receptor
 # i.e. normalized likelihood for nearest edge of predator at (x,y)
 # given that the receptor channel is open
 function precomputeBayesianRF(w::World, self::Placozoan, other::Placozoan)
 
-  for i in 1:self.receptor.N  # for each receptor
+  # computes RFs for receptors in 1st quadrant, copies to other quadrants
+  Nq = self.receptor.N ÷ 4         # receptors per quadrant
+  for i in 1:Nq  # for each receptor
     # precompute likelihood (open state probability) for this receptor
     # nb likelihood of predator inside self is zero
     # (because self must be still alive to do this computation)
    for j in -w.radius:w.radius
       for k in -w.radius:w.radius
-        self.receptor.pOpen[i][j,k] = sqrt(j^2+k^2) > self.radius ?
+
+        # likelihood at (j,k)
+        L = sqrt(j^2+k^2) > self.radius ?
             pOpen(sqrt((self.receptor.x[i]-j)^2 + (self.receptor.y[i]-k)^2),
                    other.potential) : 0.0
+        # copy to each quadrant
+        self.receptor.pOpen[i][j,k]         = L
+        self.receptor.pOpen[Nq+i][-k,j]     = L
+        self.receptor.pOpen[2*Nq+i][-j,-k]  = L
+        self.receptor.pOpen[3*Nq+i][k,-j]   = L
       end
     end
   end
@@ -293,17 +301,6 @@ function likelihood(w::World, self::Placozoan)
 
  end
 
-   # # function returns particle distances from origin
-   # # particle_ij is nParticles x 2, grid coords of particle
-   # function d2o(particle_xy)
-   #   d = fill(0.0, size(particle_xy,1))
-   #   for i in 1:size(particle_xy,1)
-   #     xx = -matRadius + particle_xy[i,1].*sceneWidth/Ngrid
-   #     yy = -matRadius + particle_xy[i,2].*sceneWidth/Ngrid
-   #     d[i] = sqrt(xx^2 + yy^2)
-   #   end
-   #   return d
-   # end
 
 
  # construct sensory particles in prey margin
@@ -342,46 +339,10 @@ function likelihood(w::World, self::Placozoan)
      end
  end
 
- # duplicate belief particles that collide with observatio n particles
- function collision(PParticle, Lparticle)
-   #nCollide = 0
-   for i in 1:nPosterior_particles
-     ix = Int(round(PParticle[i,1] + matRadius))  # x-grid coord ith particle
-     for j in 1:nLparticles
-       if ix==Lparticle[j,1]  # found matching x-coord
-         if Int(round(PParticle[i,2] + matRadius))==Lparticle[j,2] #&y-coord
-           ireplace = rand(1:nPosterior_particles)[]  # pick particle to replace
-           PParticle[ireplace,:] = PParticle[i,:] + 5.0*randn(2)
-           #nCollide +=1
-         end
-       end
-     end
-   end
-   #println(nCollide)
-   return PParticle
- end
 
 
- # initialize posterior samples
- # truncated Gaussian distribution of distance from mat edge
- # (i.e. diffusion from edge with absorbing barrier at prey)
- function initialize_posterior(w::World, p::Placozoan)
 
-   nP = 0
-   while nP < w.nPparticles
-     ϕ = 2.0*π*rand(1)[]
-     β = 1.0e12
-     while β > (w.radius-p.radius)
-       β = priorSD*abs(randn(1)[])
-     end
-     #candidate = -matRadius .+ sceneWidth.*rand(2)  # random point in scene
-     # d = sqrt(candidate[1]^2 + candidate[2]^2) # candidate distance from origin
-     # if (d>preyRadius) & (d<matRadius)
-       nP = nP+1
-       w.Pparticle[nP,:] =  (w.radius-β).*[cos(ϕ), sin(ϕ)]
-     # end
-   end
- end
+
 
  function updateReceptors(prey::Placozoan, predator::Placozoan)
 
@@ -398,21 +359,7 @@ function likelihood(w::World, self::Placozoan)
    end
  end
 
- function diffusionBarriers()
-   # posterior particle diffusion barriers at edge of prey and of mat
-   for j in 1:nPosterior_particles
-     d = sqrt(PParticle[j,1]^2+PParticle[j,2]^2)
-       if d>matRadius # edge of mat is reflectObservationg barrier
-          PParticle[j,:] = matRadius.*PParticle[j,:]./d
-          posteriorStep[j,:] = [0.0, 0.0]
-       end
-       if d<preyRadius  # edge of prey is absorbing barrier
-          ϕ = 2.0*π*rand(1)[]
-          PParticle[j,:] = matRadius.*[cos(ϕ), sin(ϕ)]
-          posteriorStep[j,:] = [0.0, 0.0]
-       end
-   end
- end
+
 
 # rotate placozoan location through angle dψ around origin
 function orbit(w::World, p::Placozoan)
@@ -433,28 +380,81 @@ function stalk(w::World, predator::Placozoan, prey::Placozoan)
         0.2*randn(2).*predator.speed[]  .+
         0.1*v*predator.speed[].*([predator.x[], predator.y[]]) ./ d
 
-
-  # prey motion = pink noise in mat frame
-  #global preyStep = 0.9*preyStep + 0.1*randn(2).*preySpeed
-
-  # predator location in prey frame
+  # update predator coordinates
   predator.x[] += predator.step[1]
   predator.y[] += predator.step[2]
-
   orbit(w, predator)
 
 end
 
+# prey motion = pink noise in mat frame
+#global preyStep = 0.9*preyStep + 0.1*randn(2).*preySpeed
+# initialize posterior samples
+# truncated Gaussian distribution of distance from mat edge
+# (i.e. diffusion from edge with absorbing barrier at prey)
+function initialize_posterior(w::World, p::Placozoan)
+
+  nP = 0
+  while nP < w.nPparticles
+    ϕ = 2.0*π*rand(1)[]
+    β = 1.0e12
+    while β > (w.radius-p.radius)
+      β = priorSD*abs(randn(1)[])
+    end
+    #candidate = -matRadius .+ sceneWidth.*rand(2)  # random point in scene
+    # d = sqrt(candidate[1]^2 + candidate[2]^2) # candidate distance from origin
+    # if (d>preyRadius) & (d<matRadius)
+      nP = nP+1
+      w.Pparticle[nP,:] =  (w.radius-β).*[cos(ϕ), sin(ϕ)]
+    # end
+  end
+end
+
 function posteriorPredict(w::World, predator::Placozoan)
 
-  w.Pparticle_step .= 0.95*w.Pparticle_step +
-                     0.5*randn(w.nPparticles,2).*predator.speed[]
+  w.Pparticle_step .= 0.8*w.Pparticle_step +
+                     0.2*randn(w.nPparticles,2).*predator.speed[]
   w.Pparticle .+= w.Pparticle_step
 
-  #     # posterior
-  #     # pink noise walk (particles mimic predator dynamics)
-  #     global posteriorStep = 0.95*posteriorStep +
-  #           0.5*randn(nPosterior_particles,2).*predatorSpeed
-  #     global PParticle += posteriorStep
-
 end
+
+# impose boundaries on posterior particle movement
+ function diffusionBoundary(w::World, prey::Placozoan)
+
+   for j in 1:w.nPparticles
+
+     d = sqrt(w.Pparticle[j,1]^2 + w.Pparticle[j,2]^2)
+
+     # mat edge is a dissipative reflecting boundary
+     # particles are brought to rest if they hit it
+     if d>w.radius
+        w.Pparticle[j,:] = w.radius.*w.Pparticle[j,:]./d
+        w.Pparticle_step[j,:] = [0.0, 0.0]
+     end
+
+     # edge of prey is an absorbing barrier
+     # particles are anihilated if they hit it
+     # and are reborn at rest on the edge of the mat
+     if d < prey.radius
+        ϕ = 2.0*π*rand(1)[]
+        w.Pparticle[j,:] = w.radius.*[cos(ϕ), sin(ϕ)]
+        w.Pparticle_step[j,:] = [0.0, 0.0]
+     end
+   end
+ end
+
+ # duplicate belief particles that collide with observation particles
+ function bayesBelief(w::World)
+
+   for i in 1:w.nPparticles
+     ix = Int(round(w.Pparticle[i,1]))  # x-grid coord ith particle
+     for j in 1:w.nLparticles
+       if ix==w.Lparticle[j,1]  # found matching x-coord
+         if Int(round(w.Pparticle[i,2])) == w.Lparticle[j,2] #&y-coord
+           ireplace = rand(1:w.nPparticles)[]  # pick particle to replace
+           w.Pparticle[ireplace,:] = w.Pparticle[i,:] + 5.0*randn(2)
+         end
+       end
+     end
+   end
+ end

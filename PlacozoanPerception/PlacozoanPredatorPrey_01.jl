@@ -12,19 +12,20 @@
 # y = LinRange(-matRadius, matRadius, Ngrid)
 
 # Simulation parameters
-nFrames = 100
-dt = 2.5
+nFrames = 1000
+dt = 1.0
 
 # World/physical parameters
-mat_radius = 500
+mat_radius = 400
 n_likelihood_particles = 1000
-n_posterior_particles = 1000
+n_posterior_particles = 500
 
 # placozoan parameters
-prey_radius = 100.0
+prey_radius = 80.0
 prey_margin = 25.0
+Nreceptors = 12
 
-predator_radius = 120.0
+predator_radius = 90.0
 predator_margin = 25.0
 predator_speed = 5.0
 
@@ -35,10 +36,10 @@ W = World(nFrames, mat_radius,
            n_likelihood_particles, n_posterior_particles, approach_Δ)
 
 # create prey
-prey = Placozoan(prey_radius, prey_margin)
+prey = Placozoan(prey_radius, prey_margin, Nreceptors)
 
 # create predator
-predator = Placozoan(predator_radius, predator_margin,
+predator = Placozoan(predator_radius, predator_margin, 0,
                      RGBA(.25, 0.1, 0.1, 1.0),
                      RGBA(.45, 0.1, 0.1, 0.25),
                      RGB(.95, 0.1, 0.1) )
@@ -75,18 +76,18 @@ precomputeBayesianRF(W, prey, predator)
 # # Array for likelihood given receptor state
 # LikelihoodArray = fill(0.0, Ngrid, Ngrid)
 
-# Likelihood particles
-nLparticles = 1600   # number of particles in likelihood sample
-Lparticle = fill(0, (nLparticles,2)) # grid coords of Likelihood particles
-likelyColor = RGB(0.85, 0.65, 0.35)
-likleySize = 5
-
-# Posterior density parameters
-nPosterior_particles = 800
-PParticle = fill(0.0, (nPosterior_particles,2)) # posterior particle locations
-postColor = RGB(0.99, 0.35, 0.85)
-postSize = 5
-priorSD = 75.0
+# # Likelihood particles
+# nLparticles = 1600   # number of particles in likelihood sample
+# Lparticle = fill(0, (nLparticles,2)) # grid coords of Likelihood particles
+# likelyColor = RGB(0.85, 0.65, 0.35)
+# likleySize = 5
+#
+# # Posterior density parameters
+# nPosterior_particles = 800
+# PParticle = fill(0.0, (nPosterior_particles,2)) # posterior particle locations
+# postColor = RGB(0.99, 0.35, 0.85)
+# postSize = 5
+# priorSD = 75.0
 
 # # bacteria parameters
 # # bacteria are just for show - visualise how prey is moving on mat
@@ -162,15 +163,6 @@ belief_plt = scatter!(scene,
               zeros(nPosterior_particles), zeros(nPosterior_particles),
               color = :cyan, strokewidth = 0, markersize=2)[end]
 
-#
-# #reflectObservation(xParticle, yParticle)
-#
-# initialize_posterior()
-# # plot likelihood particles (sample points)
-# PParticlePlot = scatter!(PParticle[:,1], PParticle[:,2],
-#           color = postColor, markersize = postSize, strokewidth = 0.1)[end]
-#
-#
 # Prey
 prey_plt = poly!(scene,
        decompose(Point2f0, Circle(Point2f0(0.,0.), prey.radius)),
@@ -184,10 +176,6 @@ receptor_plt = scatter!(scene, prey.receptor.x, prey.receptor.y ,
             markersize = prey.receptor.size,
             color = [prey.receptor.openColor for i in 1:prey.receptor.N],
             strokecolor = :black, strokewidth = 0.25)[end]
-
-# preyStep = [0.0, 0.0]
-# predatorStep = [0.0, 0.0]
-# posteriorStep = fill(0.0, nPosterior_particles,2)
 
 record(scene, "test.mp4", framerate = 24, 1:W.nFrames) do i
 
@@ -220,18 +208,13 @@ record(scene, "test.mp4", framerate = 24, 1:W.nFrames) do i
 
     # predict posterior using predator model
     posteriorPredict(W, predator)
+    bayesBelief(W)
+    diffusionBoundary(W, prey) # stop particles diffusing out of the arena
     Pparticle_plt[1] = W.Pparticle[:,1]  # update posterior particle plot
     Pparticle_plt[2] = W.Pparticle[:,2]
 
 
-#     # posterior
-#     # pink noise walk (particles mimic predator dynamics)
-#     global posteriorStep = 0.95*posteriorStep +
-#           0.5*randn(nPosterior_particles,2).*predatorSpeed
-#     global PParticle += posteriorStep
-#
-#    diffusionBarriers()
-#
+
 #    # check for collisions between belief particles and observation particles
 #    PParticle = collision(PParticle, Lparticle)
 #

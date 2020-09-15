@@ -12,7 +12,7 @@
 # y = LinRange(-matRadius, matRadius, Ngrid)
 
 # Simulation parameters
-nFrames = 480
+nFrames = 100
 dt = 2.5
 
 # World/physical parameters
@@ -38,11 +38,16 @@ W = World(nFrames, mat_radius,
 prey = Placozoan(prey_radius, prey_margin)
 
 # create predator
-predator = Placozoan(predator_radius, predator_margin)
+predator = Placozoan(predator_radius, predator_margin,
+                     RGBA(.25, 0.1, 0.1, 1.0),
+                     RGBA(.45, 0.1, 0.1, 0.25),
+                     RGB(.95, 0.1, 0.1) )
 predator.speed[] = predator_speed
 θ = π*rand()[] # Random initial heading (from above)
 predator.x[] = (mat_radius + predator_radius/2)*cos(θ)
 predator.y[] = (mat_radius + predator_radius/2)*sin(θ)
+# predator.edgecolor[:] = RGB(.45, 0.1, 0.1)
+# predator.color[:] = RGBA(.45, 0.1, 0.1, 0.25)
 
 # compute field and potential as a fcn of distance from edge of predator
 placozoanFieldstrength(predator)
@@ -126,7 +131,8 @@ clock_plt =text!(scene,"t = 0.0s",textsize = 24, color = :white,
 predator_plt = poly!(scene,
       lift(s->decompose(Point2f0, Circle(Point2f0(predator.x[], predator.y[]),
       predator.radius)), t),
-      color = predator.color, strokewidth = .25, strokecolor = :black)
+      color = predator.color, strokecolor = predator.edgecolor,
+      strokewidth = .5)
 
 likelihood(W, prey)  # initialize likelihood given initial receptor states
 sample_likelihood(W) # sample from normalized likelihood

@@ -192,14 +192,16 @@ end
 # placozoan constructor
 # specify size and margin width
 # other parameters take default values; located at origin
-function Placozoan(radius, margin)
+function Placozoan(radius, margin,
+                    bodycolor=RGBA(0.9, 0.75, 0.65, 0.5),
+                    gutcolor = RGBA(1., 0.75, 0.75, 0.25),
+                    edgecolor = RGB(0.0, 0.0, 0.0) )
     fieldrange = Int(round(radius*3))
     receptor = Ereceptor(W,radius,4,12.0)
     return Placozoan(radius, margin, radius-margin, 12.0, [0.0], [0.0],
             fill(0.0, fieldrange), fill(0.0, fieldrange), fieldrange,
             receptor, [0.0], [0.0, 0.0],
-            RGBA(0.9, 0.75, 0.65, 0.5), RGBA(1., 0.75, 0.75, 0.25),
-            RGB(0.0, 0.0, 0.0))
+            bodycolor, gutcolor, edgecolor )
 end
 
 # computes Bayesian receptive fields for each receptor

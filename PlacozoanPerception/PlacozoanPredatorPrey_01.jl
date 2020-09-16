@@ -26,8 +26,8 @@ prey_margin = 25.0
 Nreceptors = 12
 
 predator_radius = 90.0
-predator_margin = 10.0
-predator_speed = 1.0
+predator_margin = 20.0
+predator_speed = 2.0
 
 approach_Δ = 40.0   # proximity at which predator stops approaching prey
 

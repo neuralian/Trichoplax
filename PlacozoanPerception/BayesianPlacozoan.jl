@@ -26,7 +26,7 @@ function Param()
 
   ρ = 25.0          # Resisitivity of seawater 25Ω.cm
   δ = 20.e-6*100.   # dipole separation 10μm in cm
-  I = 0.1e-9*1.0e6 # dipole current 100pA. converted to μA
+  I = 5.0e-11*1.0e6 # dipole current 50pA. converted to μA
 
   # Johnson-Nyquist noise
   kB = 1.38e-23           # Bolzmann's constant
@@ -254,9 +254,9 @@ function placozoanFieldstrength(p::Placozoan)
       r = sqrt.(((d.+p.radius.-x).^2 + y.^2)).*1.0e-4
       p.field[d] = p.field[d] + sum(dipoleFieldstrength.(r))
     end
-    #scatter!(x, y, markersize = cellDiam/16)
-    V = cumsum(p.field)*1.0e-4  # from μV/cm to μV
-    p.potential[:] = V[end].-V
+    # electric field in μV/cm converted to potential across 10μm receptor
+    # nb 1cm = 10^4 μm
+    p.potential[:] = p.field./10.0e4*10.0
   end
 end
 

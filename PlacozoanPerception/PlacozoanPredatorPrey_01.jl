@@ -12,12 +12,12 @@
 # y = LinRange(-matRadius, matRadius, Ngrid)
 
 # Simulation parameters
-nFrames = 1000
+nFrames = 500
 dt = 1.0
 
 # World/physical parameters
 mat_radius = 400
-n_likelihood_particles = 1000
+n_likelihood_particles = 500
 n_posterior_particles = 500
 
 # placozoan parameters
@@ -26,8 +26,8 @@ prey_margin = 25.0
 Nreceptors = 12
 
 predator_radius = 90.0
-predator_margin = 25.0
-predator_speed = 5.0
+predator_margin = 10.0
+predator_speed = 1.0
 
 approach_Δ = 40.0   # proximity at which predator stops approaching prey
 
@@ -160,7 +160,7 @@ Pparticle_plt = scatter!(W.Pparticle[:,1], W.Pparticle[:,2],
 # nb this is a dummy plot
 # the correct particle locations are inserted before first plot
 belief_plt = scatter!(scene,
-              zeros(nPosterior_particles), zeros(nPosterior_particles),
+              zeros(W.nPparticles), zeros(W.nPparticles),
               color = :cyan, strokewidth = 0, markersize=2)[end]
 
 # Prey
@@ -176,6 +176,7 @@ receptor_plt = scatter!(scene, prey.receptor.x, prey.receptor.y ,
             markersize = prey.receptor.size,
             color = [prey.receptor.openColor for i in 1:prey.receptor.N],
             strokecolor = :black, strokewidth = 0.25)[end]
+
 
 record(scene, "test.mp4", framerate = 24, 1:W.nFrames) do i
 

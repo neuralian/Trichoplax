@@ -26,7 +26,7 @@ function Param()
 
   ρ = 25.0          # Resisitivity of seawater 25Ω.cm
   δ = 20.e-6*100.   # dipole separation 10μm in cm
-  I = 0.1e-12       # dipole current 0.1pA
+  I = 0.1e-9*1.0e6 # dipole current 100pA. converted to μA
 
   # Johnson-Nyquist noise
   kB = 1.38e-23           # Bolzmann's constant
@@ -239,7 +239,7 @@ v0 = -param.σ*log(0.1/(1.0-0.1))
 pOpenGivenFieldstrength(e) =  1.0./(1 .+ exp.(-(e.-v0)/param.σ))
 
 # function computes single-cell dipole field strength at distance r, in μV/cm
-dipoleFieldstrength(r::Float64) = 1.0e6*2π*param.ρ*param.I*param.δ./r.^3
+dipoleFieldstrength(r::Float64) = 2π*param.ρ*param.I*param.δ./r.^3
 
 # precomputes field strength and potential
 # as a function of distance in μm from edge of body
@@ -339,11 +339,6 @@ function likelihood(w::World, self::Placozoan)
      end
  end
 
-
-
-
-
-
  function updateReceptors(prey::Placozoan, predator::Placozoan)
 
    # calculate receptor states
@@ -399,7 +394,7 @@ function initialize_posterior(w::World, p::Placozoan)
     ϕ = 2.0*π*rand(1)[]
     β = 1.0e12
     while β > (w.radius-p.radius)
-      β = priorSD*abs(randn(1)[])
+      β = w.priorSD[]*abs(randn(1)[])
     end
     #candidate = -matRadius .+ sceneWidth.*rand(2)  # random point in scene
     # d = sqrt(candidate[1]^2 + candidate[2]^2) # candidate distance from origin
@@ -413,7 +408,7 @@ end
 function posteriorPredict(w::World, predator::Placozoan)
 
   w.Pparticle_step .= 0.8*w.Pparticle_step +
-                     0.2*randn(w.nPparticles,2).*predator.speed[]
+                     1.0*randn(w.nPparticles,2).*predator.speed[]
   w.Pparticle .+= w.Pparticle_step
 
 end
@@ -452,7 +447,7 @@ end
        if ix==w.Lparticle[j,1]  # found matching x-coord
          if Int(round(w.Pparticle[i,2])) == w.Lparticle[j,2] #&y-coord
            ireplace = rand(1:w.nPparticles)[]  # pick particle to replace
-           w.Pparticle[ireplace,:] = w.Pparticle[i,:] + 5.0*randn(2)
+           w.Pparticle[ireplace,:] = w.Pparticle[i,:] + 2.0*randn(2)
          end
        end
      end

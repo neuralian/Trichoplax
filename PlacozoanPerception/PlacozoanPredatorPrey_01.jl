@@ -161,7 +161,7 @@ Pparticle_plt = scatter!(W.Pparticle[:,1], W.Pparticle[:,2],
 # the correct particle locations are inserted before first plot
 belief_plt = scatter!(scene,
               zeros(W.nPparticles), zeros(W.nPparticles),
-              color = :cyan, strokewidth = 0, markersize=2)[end]
+              color = predator.color, strokewidth = 0, markersize=2)[end]
 
 # Prey
 prey_plt = poly!(scene,
@@ -203,9 +203,7 @@ record(scene, "test.mp4", framerate = 24, 1:W.nFrames) do i
     Lparticle_plt[1] = W.Lparticle[:,1]   # update likelihood particle plot
     Lparticle_plt[2] = W.Lparticle[:,2]
 
-    observation = reflect(W, prey) # reflect samples into margin
-    observation_plt[1] = observation[:,1]     # update observation particle plot
-    observation_plt[2] = observation[:,2]
+
 
     # predict posterior using predator model
 #    posteriorPredict(W, predator)
@@ -214,16 +212,12 @@ record(scene, "test.mp4", framerate = 24, 1:W.nFrames) do i
     Pparticle_plt[1] = W.Pparticle[:,1]  # update posterior particle plot
     Pparticle_plt[2] = W.Pparticle[:,2]
 
+    (observation, belief) = reflect(W, prey) # reflect samples into margin
+    observation_plt[1] = observation[:,1]     # update observation particle plot
+    observation_plt[2] = observation[:,2]
 
-
-#    # check for collisions between belief particles and observation particles
-#    PParticle = collision(PParticle, Lparticle)
-#
-#     PParticlePlot[1] = PParticle[:,1]
-#     PParticlePlot[2] = PParticle[:,2]
-#
-#     reflectBelief(PParticle)
-
+    belief_plt[1] = belief[:,1]     # update observation particle plot
+    belief_plt[2] = belief[:,2]
 
     # level curves of likelihood
     #LhdPlot.levels[] = maximum(LikelihoodArray)*[0.1, .5 , .9]

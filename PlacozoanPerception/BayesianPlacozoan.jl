@@ -325,7 +325,7 @@ function likelihood(w::World, self::Placozoan)
 
 function reflect(w::World, p::Placozoan)
 
-  # likelihoods
+  # likelihood
   R = sqrt.(w.Lparticle[:,1].^2 + w.Lparticle[:,2].^2)
   r = (p.radius .- p.marginwidth*(R.-p.radius)./(w.radius-p.radius))::Array{Float64,1}
   #return (r.*xLhdSample./R, r.*yLhdSample./R)
@@ -333,6 +333,15 @@ function reflect(w::World, p::Placozoan)
   # observationPlot[2] = r.*W.Lparticle[:,2]./R
   observation = r.*W.Lparticle./R
 
+  # posterior
+  Rp = sqrt.(w.Pparticle[:,1].^2 + w.Pparticle[:,2].^2)
+  rp = (p.radius .- p.marginwidth*(Rp.-p.radius)./(w.radius-p.radius))::Array{Float64,1}
+  #return (r.*xLhdSample./R, r.*yLhdSample./R)
+  # observationPlot[1] = r.*W.Lparticle[:,1]./R            # update reflected sample plot
+  # observationPlot[2] = r.*W.Lparticle[:,2]./R
+  belief = rp.*W.Pparticle./Rp
+
+  (observation, belief)
 
 end
 

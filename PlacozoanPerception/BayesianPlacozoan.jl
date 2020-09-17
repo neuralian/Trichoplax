@@ -77,7 +77,7 @@ function World(nFrames::Int64, radius::Int64,
   postcolor = RGB(0.5, 0.75, 1.0)
   likelysize = 4
   postsize = 4
-  priorSD = 150.0
+  priorSD = 50.0
 
   Lparticle = fill(0.0, nLparticles,2)
   Pparticle = fill(0.0, nPparticles,2)
@@ -323,6 +323,18 @@ function likelihood(w::World, self::Placozoan)
    beliefPlot[2] = r.*beliefParticle_xy[:,2]./R
  end
 
+function reflect(w::World, p::Placozoan)
+
+  # likelihoods
+  R = sqrt.(w.Lparticle[:,1].^2 + w.Lparticle[:,2].^2)
+  r = (p.radius .- p.marginwidth*(R.-p.radius)./(w.radius-p.radius))::Array{Float64,1}
+  #return (r.*xLhdSample./R, r.*yLhdSample./R)
+  # observationPlot[1] = r.*W.Lparticle[:,1]./R            # update reflected sample plot
+  # observationPlot[2] = r.*W.Lparticle[:,2]./R
+  observation = r.*W.Lparticle./R
+
+
+end
 
  # Function to sample from normalized likelihood by rejection
  function sample_likelihood(w::World)
@@ -357,11 +369,18 @@ function likelihood(w::World, self::Placozoan)
 
 
 # rotate placozoan location through angle dψ around origin
-function orbit(w::World, p::Placozoan)
-  dψ = π/w.nFrames
+function orbit(dψ::Float64, p::Placozoan)
   p.x[] =  cos(dψ)*p.x[] + sin(dψ)*p.y[]
   p.y[] = -sin(dψ)*p.x[] + cos(dψ)*p.y[]
   # C = [cos(dψ) sin(dψ); -sin(dψ) cos(dψ)]
+end
+
+# rotate particles through angle dψ around origin
+function orbit(dψ::Float64, p::Array{Float64,2})
+  # p.x[] =  cos(dψ)*p.x[] + sin(dψ)*p.y[]
+  # p.y[] = -sin(dψ)*p.x[] + cos(dψ)*p.y[]
+  p = p*[cos(dψ) -sin(dψ); sin(dψ) cos(dψ)]
+
 end
 
 # predator movement
@@ -372,46 +391,71 @@ function stalk(w::World, predator::Placozoan, prey::Placozoan)
   v = sign(prey.radius + predator.radius + w.Δ[] - d)#(distance between edges)-Δ.
   # pink noise motion in mat frame
   predator.step[:] = 0.8*predator.step +
-        0.2*randn(2).*predator.speed[]  .+
-        0.1*v*predator.speed[].*([predator.x[], predator.y[]]) ./ d
+                    0.2*randn(2).*predator.speed[]  .+
+                    0.1*v*predator.speed[].*([predator.x[], predator.y[]]) ./ d
 
   # update predator coordinates
   predator.x[] += predator.step[1]
   predator.y[] += predator.step[2]
-  orbit(w, predator)
+  #orbit(π/w.nFrames, predator)
+
+  # particles die randomly, new particles diffuse in from mat edge
+  pDie = 0.005
+  for i in 1:w.nPparticles
+    if rand()[]<pDie
+      ϕ = 2*π*rand()[]
+      w.Pparticle[i,:] = [w.radius*cos(ϕ), w.radius*sin(ϕ)]
+      w.Pparticle_step[i,:] = [0.0, 0.0]
+    end
+  end
+
+  d2 = sqrt.(w.Pparticle[:,1].^2 + w.Pparticle[:,2].^2)
+  v2 = sign.( prey.radius  + w.Δ[] .- d2)
+  w.Pparticle_step .= 0.8*w.Pparticle_step +
+                     0.25*randn(w.nPparticles,2).*predator.speed[] .+
+                     0.1*v2*predator.speed[].*w.Pparticle ./ d2
+  w.Pparticle .=  w.Pparticle + w.Pparticle_step
+  #orbit(π/w.nFrames, w.Pparticle)
 
 end
 
-# prey motion = pink noise in mat frame
-#global preyStep = 0.9*preyStep + 0.1*randn(2).*preySpeed
 # initialize posterior samples
 # truncated Gaussian distribution of distance from mat edge
 # (i.e. diffusion from edge with absorbing barrier at prey)
-function initialize_posterior(w::World, p::Placozoan)
+# function initialize_posterior_Gaussian(w::World, p::Placozoan)
+#
+#   nP = 0
+#   while nP < w.nPparticles
+#     ϕ = 2.0*π*rand(1)[]
+#     β = 1.0e12
+#     while β > (w.radius-p.radius)
+#       β = w.priorSD[]*abs(randn(1)[])
+#     end
+#     #candidate = -matRadius .+ sceneWidth.*rand(2)  # random point in scene
+#     # d = sqrt(candidate[1]^2 + candidate[2]^2) # candidate distance from origin
+#     # if (d>preyRadius) & (d<matRadius)
+#       nP = nP+1
+#       w.Pparticle[nP,:] =  (w.radius-β).*[cos(ϕ), sin(ϕ)]
+#     # end
+#   end
+# end
 
-  nP = 0
-  while nP < w.nPparticles
-    ϕ = 2.0*π*rand(1)[]
-    β = 1.0e12
-    while β > (w.radius-p.radius)
-      β = w.priorSD[]*abs(randn(1)[])
-    end
-    #candidate = -matRadius .+ sceneWidth.*rand(2)  # random point in scene
-    # d = sqrt(candidate[1]^2 + candidate[2]^2) # candidate distance from origin
-    # if (d>preyRadius) & (d<matRadius)
-      nP = nP+1
-      w.Pparticle[nP,:] =  (w.radius-β).*[cos(ϕ), sin(ϕ)]
-    # end
-  end
+function initialize_posterior_uniform(w::World, p::Placozoan)
+
+    ϕ = 2.0*π*rand(w.nPparticles)
+    β = p.radius .+ rand(w.nPparticles).*(w.radius - p.radius)
+    w.Pparticle[:] =  hcat(β.*cos.(ϕ), β.*sin.(ϕ))
+
 end
 
-function posteriorPredict(w::World, predator::Placozoan)
-
-  w.Pparticle_step .= 0.8*w.Pparticle_step +
-                     1.0*randn(w.nPparticles,2).*predator.speed[]
-  w.Pparticle .+= w.Pparticle_step
-
-end
+# function posteriorPredict(w::World, predator::Placozoan)
+#
+#   w.Pparticle_step .= 0.8*w.Pparticle_step +
+#                      1.0*randn(w.nPparticles,2).*predator.speed[]
+#   w.Pparticle .=  w.Pparticle + w.Pparticle_step
+#   #orbit(π/w.nFrames, w.Pparticle)
+#
+# end
 
 # impose boundaries on posterior particle movement
  function diffusionBoundary(w::World, prey::Placozoan)

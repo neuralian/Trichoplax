@@ -12,24 +12,24 @@
 # y = LinRange(-matRadius, matRadius, Ngrid)
 
 # Simulation parameters
-nFrames = 500
+nFrames = 1000
 dt = 1.0
 
 # World/physical parameters
 mat_radius = 400
-n_likelihood_particles = 500
-n_posterior_particles = 500
+n_likelihood_particles = 2000
+n_posterior_particles = 2000
 
 # placozoan parameters
-prey_radius = 80.0
+prey_radius = 100.0
 prey_margin = 25.0
-Nreceptors = 12
+Nreceptors = 16
 
-predator_radius = 90.0
+predator_radius = 120.0
 predator_margin = 20.0
-predator_speed = 2.0
+predator_speed = 0.5
 
-approach_Δ = 40.0   # proximity at which predator stops approaching prey
+approach_Δ = 10.0   # proximity at which predator stops approaching prey
 
 # create world
 W = World(nFrames, mat_radius,
@@ -45,8 +45,8 @@ predator = Placozoan(predator_radius, predator_margin, 0,
                      RGB(.95, 0.1, 0.1) )
 predator.speed[] = predator_speed
 θ = π*rand()[] # Random initial heading (from above)
-predator.x[] = (mat_radius + predator_radius/2)*cos(θ)
-predator.y[] = (mat_radius + predator_radius/2)*sin(θ)
+predator.x[] = (mat_radius + predator_radius)*cos(θ)
+predator.y[] = (mat_radius + predator_radius)*sin(θ)
 # predator.edgecolor[:] = RGB(.45, 0.1, 0.1)
 # predator.color[:] = RGBA(.45, 0.1, 0.1, 0.25)
 
@@ -151,7 +151,7 @@ Lparticle_plt = scatter!(W.Lparticle[:,1], W.Lparticle[:,2],
 observation_plt = scatter!(scene,zeros(W.nLparticles),zeros(W.nLparticles),
       color = :yellow, strokewidth = 0, markersize=2)[end]
 
-initialize_posterior(W,prey)
+initialize_posterior_uniform(W,prey)
 Pparticle_plt = scatter!(W.Pparticle[:,1], W.Pparticle[:,2],
           color = W.postcolor, markersize = W.postsize[], strokewidth = 0.1)[end]
 
@@ -203,12 +203,12 @@ record(scene, "test.mp4", framerate = 24, 1:W.nFrames) do i
     Lparticle_plt[1] = W.Lparticle[:,1]   # update likelihood particle plot
     Lparticle_plt[2] = W.Lparticle[:,2]
 
-    observation = reflectObservation(W, prey) # reflect samples into margin
+    observation = reflect(W, prey) # reflect samples into margin
     observation_plt[1] = observation[:,1]     # update observation particle plot
     observation_plt[2] = observation[:,2]
 
     # predict posterior using predator model
-    posteriorPredict(W, predator)
+#    posteriorPredict(W, predator)
     bayesBelief(W)
     diffusionBoundary(W, prey) # stop particles diffusing out of the arena
     Pparticle_plt[1] = W.Pparticle[:,1]  # update posterior particle plot

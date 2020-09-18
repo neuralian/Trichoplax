@@ -77,7 +77,7 @@ function World(nFrames::Int64, radius::Int64,
   postcolor = RGB(0.5, 0.75, 1.0)
   likelysize = 4
   postsize = 4
-  priorSD = 50.0
+  priorSD = 100.0
 
   Lparticle = fill(0.0, nLparticles,2)
   Pparticle = fill(0.0, nPparticles,2)
@@ -176,7 +176,7 @@ function Placozoan(radius::Float64, margin::Float64, Nreceptors::Int64,
                     gutcolor = RGBA(1., 0.75, 0.75, 0.25),
                     edgecolor = RGB(0.0, 0.0, 0.0) )
     fieldrange = Int(round(radius*3))
-    receptor = Ereceptor(W,radius, Nreceptors,12.0)
+    receptor = Ereceptor(W,radius, Nreceptors,10.0)
     return Placozoan(radius, margin, radius-margin, 12.0, [0.0], [0.0],
             fill(0.0, fieldrange), fill(0.0, fieldrange), fieldrange,
             receptor, [0.0], [0.0, 0.0],
@@ -408,8 +408,9 @@ function stalk(w::World, predator::Placozoan, prey::Placozoan)
   predator.y[] += predator.step[2]
   #orbit(π/w.nFrames, predator)
 
-  # particles die randomly, new particles diffuse in from mat edge
-  pDie = 0.005
+  # particles die at random
+  # and are replaced by new particles at the mat edge
+  pDie = 0.0025
   for i in 1:w.nPparticles
     if rand()[]<pDie
       ϕ = 2*π*rand()[]
@@ -422,7 +423,7 @@ function stalk(w::World, predator::Placozoan, prey::Placozoan)
   v2 = sign.( prey.radius  + w.Δ[] .- d2)
   w.Pparticle_step .= 0.8*w.Pparticle_step +
                      0.25*randn(w.nPparticles,2).*predator.speed[] .+
-                     0.1*v2*predator.speed[].*w.Pparticle ./ d2
+                     0.1*v2.*predator.speed[].*w.Pparticle ./ d2
   w.Pparticle .=  w.Pparticle + w.Pparticle_step
   #orbit(π/w.nFrames, w.Pparticle)
 
@@ -431,23 +432,23 @@ end
 # initialize posterior samples
 # truncated Gaussian distribution of distance from mat edge
 # (i.e. diffusion from edge with absorbing barrier at prey)
-# function initialize_posterior_Gaussian(w::World, p::Placozoan)
-#
-#   nP = 0
-#   while nP < w.nPparticles
-#     ϕ = 2.0*π*rand(1)[]
-#     β = 1.0e12
-#     while β > (w.radius-p.radius)
-#       β = w.priorSD[]*abs(randn(1)[])
-#     end
-#     #candidate = -matRadius .+ sceneWidth.*rand(2)  # random point in scene
-#     # d = sqrt(candidate[1]^2 + candidate[2]^2) # candidate distance from origin
-#     # if (d>preyRadius) & (d<matRadius)
-#       nP = nP+1
-#       w.Pparticle[nP,:] =  (w.radius-β).*[cos(ϕ), sin(ϕ)]
-#     # end
-#   end
-# end
+function initialize_posterior_Gaussian(w::World, p::Placozoan)
+
+  nP = 0
+  while nP < w.nPparticles
+    ϕ = 2.0*π*rand(1)[]
+    β = 1.0e12
+    while β > (w.radius-p.radius)
+      β = w.priorSD[]*abs(randn(1)[])
+    end
+    #candidate = -matRadius .+ sceneWidth.*rand(2)  # random point in scene
+    # d = sqrt(candidate[1]^2 + candidate[2]^2) # candidate distance from origin
+    # if (d>preyRadius) & (d<matRadius)
+      nP = nP+1
+      w.Pparticle[nP,:] =  (w.radius-β).*[cos(ϕ), sin(ϕ)]
+    # end
+  end
+end
 
 function initialize_posterior_uniform(w::World, p::Placozoan)
 
@@ -498,7 +499,8 @@ end
      ix = Int(round(w.Pparticle[i,1]))  # x-grid coord ith particle
      for j in 1:w.nLparticles
        if ix==w.Lparticle[j,1]  # found matching x-coord
-         if Int(round(w.Pparticle[i,2])) == w.Lparticle[j,2] #&y-coord
+         iy = Int(round(w.Pparticle[i,2]))
+         if iy == w.Lparticle[j,2] #&y-coord
            ireplace = rand(1:w.nPparticles)[]  # pick particle to replace
            w.Pparticle[ireplace,:] = w.Pparticle[i,:] + 2.0*randn(2)
          end
@@ -506,3 +508,17 @@ end
      end
    end
  end
+
+function bayesCollision(w::World)
+
+  δ2 = 0.5
+  for i in 1:w.nPparticles
+    for j in 1:w.nLparticles
+         if (w.Pparticle[i,1] - w.Lparticle[j,1])^2 +
+            (w.Pparticle[i,2] - w.Lparticle[j,2])^2 < δ2
+            ireplace = rand(1:w.nPparticles)[]  # pick particle to replace
+            w.Pparticle[ireplace,:] = w.Pparticle[i,:] + 8.0*randn(2)
+        end
+    end
+  end
+end

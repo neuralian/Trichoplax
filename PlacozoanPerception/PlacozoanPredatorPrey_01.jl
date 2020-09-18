@@ -12,28 +12,28 @@
 # y = LinRange(-matRadius, matRadius, Ngrid)
 
 # Simulation parameters
-nFrames = 1000
+nFrames = 1440
 dt = 1.0
 
 # World/physical parameters
 mat_radius = 400
-n_likelihood_particles = 2000
-n_posterior_particles = 2000
+n_likelihood_particles = 1200
+max_n_posterior_particles = 800
 
 # placozoan parameters
 prey_radius = 100.0
 prey_margin = 25.0
-Nreceptors = 16
+Nreceptors = 32
 
 predator_radius = 120.0
-predator_margin = 20.0
-predator_speed = 0.5
+predator_margin = 25.0
+predator_speed = 0.25
 
-approach_Δ = 10.0   # proximity at which predator stops approaching prey
+approach_Δ = 0.0   # proximity at which predator stops approaching prey
 
 # create world
 W = World(nFrames, mat_radius,
-           n_likelihood_particles, n_posterior_particles, approach_Δ)
+           n_likelihood_particles, max_n_posterior_particles, approach_Δ)
 
 # create prey
 prey = Placozoan(prey_radius, prey_margin, Nreceptors)
@@ -151,7 +151,7 @@ Lparticle_plt = scatter!(W.Lparticle[:,1], W.Lparticle[:,2],
 observation_plt = scatter!(scene,zeros(W.nLparticles),zeros(W.nLparticles),
       color = :yellow, strokewidth = 0, markersize=2)[end]
 
-initialize_posterior_uniform(W,prey)
+initialize_posterior_Gaussian(W,prey)
 Pparticle_plt = scatter!(W.Pparticle[:,1], W.Pparticle[:,2],
           color = W.postcolor, markersize = W.postsize[], strokewidth = 0.1)[end]
 
@@ -178,12 +178,12 @@ receptor_plt = scatter!(scene, prey.receptor.x, prey.receptor.y ,
             strokecolor = :black, strokewidth = 0.25)[end]
 
 
-record(scene, "test.mp4", framerate = 24, 1:W.nFrames) do i
+record(scene, "test.mp4", framerate = 48, 1:W.nFrames) do i
 
-    # cause predator to drift away from prey in last 25% of animation
-    if i > 0.75*W.nFrames
-      W.Δ[] += 1000.0/W.nFrames
-    end
+    # #cause predator to drift away from prey in last 25% of animation
+    # if i > 0.85*W.nFrames
+    #   W.Δ[] += 400.0/W.nFrames
+    # end
 
     # predator random walk to within Δ of prey
     # small bias velocity added for drift towards prey & clockwise orbit
@@ -207,7 +207,8 @@ record(scene, "test.mp4", framerate = 24, 1:W.nFrames) do i
 
     # predict posterior using predator model
 #    posteriorPredict(W, predator)
-    bayesBelief(W)
+    #bayesBelief(W)
+    bayesCollision(W)
     diffusionBoundary(W, prey) # stop particles diffusing out of the arena
     Pparticle_plt[1] = W.Pparticle[:,1]  # update posterior particle plot
     Pparticle_plt[2] = W.Pparticle[:,2]

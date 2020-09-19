@@ -157,9 +157,9 @@ initialize_prior_Gaussian(W,prey)
 Pparticle_plt = scatter!(W.Pparticle[:,1], W.Pparticle[:,2],
           color = W.postcolor, markersize = W.postsize[], strokewidth = 0.1)[end]
 
-
+initialize_belief_Gaussian(W,prey)
 Bparticle_plt = scatter!(W.Bparticle[:,1], W.Bparticle[:,2],
-          color = :red, markersize = W.postsize[], strokewidth = 0.1)[end]
+          color = :white, markersize = W.postsize[], strokewidth = 0.1)[end]
 
 # plot projection of posterior particles into prey margin
 # nb this is a dummy plot
@@ -205,8 +205,7 @@ record(scene, "test.mp4", framerate = 48, 1:W.nFrames) do i
     # prey sensory observations (particles released by active sensors)
     likelihood(W, prey)      # likelihood given receptor states
     sample_likelihood(W)     # random sample from likelihood
-    Lparticle_plt[1] = W.Lparticle[:,1]   # update likelihood particle plot
-    Lparticle_plt[2] = W.Lparticle[:,2]
+
 
 
 
@@ -214,16 +213,25 @@ record(scene, "test.mp4", framerate = 48, 1:W.nFrames) do i
 #    posteriorPredict(W, predator)
     #bayesBelief(W)
     bayesUpdate(W)
-    Bparticle_plt[1] = W.Bparticle[:,1]  # update posterior particle plot
-    Bparticle_plt[2] = W.Bparticle[:,2]
+
 
     steadyPrior(W, prey) # stop particles diffusing out of the arena
+
+
+    (observation, belief) = reflect(W, prey) # reflect samples into margin
+
+
+    Lparticle_plt[1] = W.Lparticle[:,1]   # update likelihood particle plot
+    Lparticle_plt[2] = W.Lparticle[:,2]
+
+    observation_plt[1] = observation[:,1]     # update observation particle plot
+    observation_plt[2] = observation[:,2]
+
     Pparticle_plt[1] = W.Pparticle[:,1]  # update posterior particle plot
     Pparticle_plt[2] = W.Pparticle[:,2]
 
-    (observation, belief) = reflect(W, prey) # reflect samples into margin
-    observation_plt[1] = observation[:,1]     # update observation particle plot
-    observation_plt[2] = observation[:,2]
+    Bparticle_plt[1] = W.Bparticle[:,1]  # update posterior particle plot
+    Bparticle_plt[2] = W.Bparticle[:,2]
 
     belief_plt[1] = belief[:,1]     # update observation particle plot
     belief_plt[2] = belief[:,2]

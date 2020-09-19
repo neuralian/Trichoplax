@@ -427,7 +427,7 @@ function stalk(w::World, predator::Placozoan, prey::Placozoan)
   w.Bparticle_step .= 0.8*w.Bparticle_step +
                      0.25*randn(w.nBparticles[],2).*predator.speed[] .+
                      0.1*v3.*predator.speed[].*w.Bparticle ./ d3
-  w.Pparticle .=  w.Pparticle + w.Pparticle_step
+  w.Bparticle .=  w.Bparticle + w.Bparticle_step
 
 end
 
@@ -448,6 +448,24 @@ function initialize_prior_Gaussian(w::World, p::Placozoan)
     # if (d>preyRadius) & (d<matRadius)
       nP = nP+1
       w.Pparticle[nP,:] =  (w.radius-β).*[cos(ϕ), sin(ϕ)]
+    # end
+  end
+end
+
+function initialize_belief_Gaussian(w::World, p::Placozoan)
+
+  nP = 0
+  while nP < w.nPparticles
+    ϕ = 2.0*π*rand(1)[]
+    β = 1.0e12
+    while β > (w.radius-p.radius)
+      β = w.priorSD[]*abs(randn(1)[])
+    end
+    #candidate = -matRadius .+ sceneWidth.*rand(2)  # random point in scene
+    # d = sqrt(candidate[1]^2 + candidate[2]^2) # candidate distance from origin
+    # if (d>preyRadius) & (d<matRadius)
+      nP = nP+1
+      w.Bparticle[nP,:] =  (w.radius-β).*[cos(ϕ), sin(ϕ)]
     # end
   end
 end

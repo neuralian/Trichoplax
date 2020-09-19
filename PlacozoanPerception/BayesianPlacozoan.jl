@@ -340,12 +340,12 @@ function reflect(w::World, p::Placozoan)
   observation = r.*W.Lparticle./R
 
   # posterior
-  Rp = sqrt.(w.Pparticle[:,1].^2 + w.Pparticle[:,2].^2)
+  Rp = sqrt.(w.Bparticle[:,1].^2 + w.Bparticle[:,2].^2)
   rp = (p.radius .- p.marginwidth*(Rp.-p.radius)./(w.radius-p.radius))::Array{Float64,1}
   #return (r.*xLhdSample./R, r.*yLhdSample./R)
   # observationPlot[1] = r.*W.Lparticle[:,1]./R            # update reflected sample plot
   # observationPlot[2] = r.*W.Lparticle[:,2]./R
-  belief = rp.*W.Pparticle./Rp
+  belief = rp.*W.Bparticle./Rp
 
   (observation, belief)
 
@@ -423,6 +423,13 @@ function stalk(w::World, predator::Placozoan, prey::Placozoan)
   #orbit(π/w.nFrames, w.Pparticle)
 
   d3 = sqrt.(w.Bparticle[:,1].^2 + w.Bparticle[:,2].^2)
+  # for i in 1:w.nBparticles
+  #    if d3[i] > w.radius
+  #     w.Bparticle[i,:] ./ d3[i]
+  #     d3[i] = w.radius
+  #     w.Bparticle_step[i,:] = [0.0, 0.0]
+  #   end
+  # end
   v3 = sign.( prey.radius  + w.Δ[] .- d3)
   w.Bparticle_step .= 0.8*w.Bparticle_step +
                      0.25*randn(w.nBparticles[],2).*predator.speed[] .+
@@ -454,8 +461,8 @@ end
 
 function initialize_belief_Gaussian(w::World, p::Placozoan)
 
-  nP = 0
-  while nP < w.nPparticles
+  nB = 0
+  while nB < w.nBparticles
     ϕ = 2.0*π*rand(1)[]
     β = 1.0e12
     while β > (w.radius-p.radius)
@@ -464,8 +471,8 @@ function initialize_belief_Gaussian(w::World, p::Placozoan)
     #candidate = -matRadius .+ sceneWidth.*rand(2)  # random point in scene
     # d = sqrt(candidate[1]^2 + candidate[2]^2) # candidate distance from origin
     # if (d>preyRadius) & (d<matRadius)
-      nP = nP+1
-      w.Bparticle[nP,:] =  (w.radius-β).*[cos(ϕ), sin(ϕ)]
+      nB = nB+1
+      w.Bparticle[nB,:] =  (w.radius-β).*[cos(ϕ), sin(ϕ)]
     # end
   end
 end
@@ -520,36 +527,36 @@ end
    end
  end
 
- # duplicate belief particles that collide with observation particles
- function bayesBelief(w::World)
-
-   for i in 1:w.nPparticles
-     ix = Int(round(w.Pparticle[i,1]))  # x-grid coord ith particle
-     for j in 1:w.nLparticles
-       if ix==w.Lparticle[j,1]  # found matching x-coord
-         iy = Int(round(w.Pparticle[i,2]))
-         if iy == w.Lparticle[j,2] #&y-coord
-           ireplace = rand(1:w.nPparticles)[]  # pick particle to replace
-           w.Pparticle[ireplace,:] = w.Pparticle[i,:] + 2.0*randn(2)
-         end
-       end
-     end
-   end
- end
-
-function bayesCollision(w::World)
-
-  δ2 = 0.5
-  for i in 1:w.nPparticles
-    for j in 1:w.nLparticles
-         if (w.Pparticle[i,1] - w.Lparticle[j,1])^2 +
-            (w.Pparticle[i,2] - w.Lparticle[j,2])^2 < δ2
-            ireplace = rand(1:w.nPparticles)[]  # pick particle to replace
-            w.Pparticle[ireplace,:] = w.Pparticle[i,:] + 8.0*randn(2)
-        end
-    end
-  end
-end
+#  # duplicate belief particles that collide with observation particles
+#  function bayesBelief(w::World)
+#
+#    for i in 1:w.nPparticles
+#      ix = Int(round(w.Pparticle[i,1]))  # x-grid coord ith particle
+#      for j in 1:w.nLparticles
+#        if ix==w.Lparticle[j,1]  # found matching x-coord
+#          iy = Int(round(w.Pparticle[i,2]))
+#          if iy == w.Lparticle[j,2] #&y-coord
+#            ireplace = rand(1:w.nPparticles)[]  # pick particle to replace
+#            w.Pparticle[ireplace,:] = w.Pparticle[i,:] + 2.0*randn(2)
+#          end
+#        end
+#      end
+#    end
+#  end
+#
+# function bayesCollision(w::World)
+#
+#   δ2 = 0.5
+#   for i in 1:w.nPparticles
+#     for j in 1:w.nLparticles
+#          if (w.Pparticle[i,1] - w.Lparticle[j,1])^2 +
+#             (w.Pparticle[i,2] - w.Lparticle[j,2])^2 < δ2
+#             ireplace = rand(1:w.nPparticles)[]  # pick particle to replace
+#             w.Pparticle[ireplace,:] = w.Pparticle[i,:] + 8.0*randn(2)
+#         end
+#     end
+#   end
+# end
 
 # Bayes update rule: Create a new belief particle
 # when an observation particle collides with a hypothesis particle

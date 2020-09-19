@@ -17,14 +17,14 @@ dt = 1.0
 
 # World/physical parameters
 mat_radius = 400
-n_likelihood_particles = 1200
-n_prior_particles = 800
-max_n_posterior_particles = 800
+n_likelihood_particles = 2000
+n_prior_particles = 1000
+n_belief_particles = 1000
 
 # placozoan parameters
 prey_radius = 100.0
 prey_margin = 25.0
-Nreceptors = 32
+Nreceptors = 16
 
 predator_radius = 120.0
 predator_margin = 25.0
@@ -35,7 +35,7 @@ approach_Δ = 0.0   # proximity at which predator stops approaching prey
 # create world
 W = World(nFrames, mat_radius,
            n_likelihood_particles, n_prior_particles,
-           max_n_posterior_particles, approach_Δ)
+           n_belief_particles, approach_Δ)
 
 # create prey
 prey = Placozoan(prey_radius, prey_margin, Nreceptors)
@@ -215,7 +215,7 @@ record(scene, "test.mp4", framerate = 48, 1:W.nFrames) do i
     bayesUpdate(W)
 
 
-    steadyPrior(W, prey) # stop particles diffusing out of the arena
+    #steadyPrior(W, prey) # stop particles diffusing out of the arena
 
 
     (observation, belief) = reflect(W, prey) # reflect samples into margin

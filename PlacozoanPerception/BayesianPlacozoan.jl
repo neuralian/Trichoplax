@@ -57,16 +57,20 @@ struct World
   posterior::OffsetArray
   nLparticles::Int64
   nPparticles::Int64
-  Lparticle::Array{Float64,2}
-  Pparticle::Array{Float64,2}
+  nBparticles::Int64
+  Lparticle::Array{Float64,2}    # likelihood particles (samples)
+  Pparticle::Array{Float64,2}    # prior particles
+  Bparticle::Array{Float64,2}   # belief (posterior) particles
   Pparticle_step::Array{Float64,2}  # particle prediction steps
+  Bparticle_step::Array{Float64,2}  # particle prediction steps
   priorSD::Array{Float64}  # std. dev. of prior
   Δ::Array{Float64,1}    # closest approach of predator μm (animation parameter)
 end
 
 # World constructor
 function World(nFrames::Int64, radius::Int64,
-                nLparticles::Int64, nPparticles::Int64, Δ::Float64)
+                nLparticles::Int64, nPparticles::Int64, nBparticles::Int64,
+                Δ::Float64)
   indx = -radius:radius
   n_indx = length(indx)
   likelihood = OffsetArray(fill(0.0, n_indx,n_indx), indx, indx)
@@ -82,15 +86,17 @@ function World(nFrames::Int64, radius::Int64,
   Lparticle = fill(0.0, nLparticles,2)
   Pparticle = fill(0.0, nPparticles,2)
   Pparticle_step = zeros(nPparticles,2)
-# Δ: predator is attracted to prey if it is further than this
-# and repelled if it is closer; for animating stalking behaviour
+  Bparticle = fill(0.0, nBparticles,2)
+  Bparticle_step = zeros(nBparticles,2)
 
   default_matcolor = RGBA(.05, .35, .35, 1.0)
   default_bgcolor  = RGBA(0.0, 0.0, 0.0, 1.0)
   return World(nFrames, radius, default_matcolor, default_bgcolor,
               likelycolor, postcolor, [likelysize], [postsize],
                likelihood, prior, posterior,
-               nLparticles, nPparticles, Lparticle, Pparticle, Pparticle_step,
+               nLparticles, nPparticles, nBparticles,
+               Lparticle, Pparticle, Bparticle,
+               Pparticle_step, Bparticle_step,
                [priorSD], [Δ] )
 end
 
@@ -408,17 +414,6 @@ function stalk(w::World, predator::Placozoan, prey::Placozoan)
   predator.y[] += predator.step[2]
   #orbit(π/w.nFrames, predator)
 
-  # particles die at random
-  # and are replaced by new particles at the mat edge
-  pDie = 0.0025
-  for i in 1:w.nPparticles
-    if rand()[]<pDie
-      ϕ = 2*π*rand()[]
-      w.Pparticle[i,:] = [w.radius*cos(ϕ), w.radius*sin(ϕ)]
-      w.Pparticle_step[i,:] = [0.0, 0.0]
-    end
-  end
-
   d2 = sqrt.(w.Pparticle[:,1].^2 + w.Pparticle[:,2].^2)
   v2 = sign.( prey.radius  + w.Δ[] .- d2)
   w.Pparticle_step .= 0.8*w.Pparticle_step +
@@ -427,12 +422,19 @@ function stalk(w::World, predator::Placozoan, prey::Placozoan)
   w.Pparticle .=  w.Pparticle + w.Pparticle_step
   #orbit(π/w.nFrames, w.Pparticle)
 
+  d3 = sqrt.(w.Bparticle[:,1].^2 + w.Bparticle[:,2].^2)
+  v3 = sign.( prey.radius  + w.Δ[] .- d3)
+  w.Bparticle_step .= 0.8*w.Bparticle_step +
+                     0.25*randn(w.nBparticles[],2).*predator.speed[] .+
+                     0.1*v3.*predator.speed[].*w.Bparticle ./ d3
+  w.Pparticle .=  w.Pparticle + w.Pparticle_step
+
 end
 
 # initialize posterior samples
 # truncated Gaussian distribution of distance from mat edge
 # (i.e. diffusion from edge with absorbing barrier at prey)
-function initialize_posterior_Gaussian(w::World, p::Placozoan)
+function initialize_prior_Gaussian(w::World, p::Placozoan)
 
   nP = 0
   while nP < w.nPparticles
@@ -450,7 +452,7 @@ function initialize_posterior_Gaussian(w::World, p::Placozoan)
   end
 end
 
-function initialize_posterior_uniform(w::World, p::Placozoan)
+function initialize_prior_uniform(w::World, p::Placozoan)
 
     ϕ = 2.0*π*rand(w.nPparticles)
     β = p.radius .+ rand(w.nPparticles).*(w.radius - p.radius)
@@ -468,8 +470,9 @@ end
 # end
 
 # impose boundaries on posterior particle movement
- function diffusionBoundary(w::World, prey::Placozoan)
+ function steadyPrior(w::World, prey::Placozoan)
 
+     pDie = 0.0025
    for j in 1:w.nPparticles
 
      d = sqrt(w.Pparticle[j,1]^2 + w.Pparticle[j,2]^2)
@@ -479,16 +482,23 @@ end
      if d>w.radius
         w.Pparticle[j,:] = w.radius.*w.Pparticle[j,:]./d
         w.Pparticle_step[j,:] = [0.0, 0.0]
-     end
 
      # edge of prey is an absorbing barrier
      # particles are anihilated if they hit it
      # and are reborn at rest on the edge of the mat
-     if d < prey.radius
+   elseif d < prey.radius
         ϕ = 2.0*π*rand(1)[]
         w.Pparticle[j,:] = w.radius.*[cos(ϕ), sin(ϕ)]
         w.Pparticle_step[j,:] = [0.0, 0.0]
-     end
+
+     # particles die at random
+     # and are replaced by new particles at the mat edge
+   elseif rand()[]<pDie
+         ϕ = 2*π*rand()[]
+         w.Pparticle[j,:] = [w.radius*cos(ϕ), w.radius*sin(ϕ)]
+         w.Pparticle_step[j,:] = [0.0, 0.0]
+      end
+
    end
  end
 
@@ -522,3 +532,31 @@ function bayesCollision(w::World)
     end
   end
 end
+
+# Bayes update rule: Create a new belief particle
+# when an observation particle collides with a hypothesis particle
+# A hypothesis is a belief or a prior belief
+function bayesUpdate(w::World)
+
+  δ2 = 0.5
+  for i in 1:w.nLparticles
+
+    for j in 1:w.nPparticles  # check for collisions with prior
+      if (w.Pparticle[j,1] - w.Lparticle[i,1])^2 +
+         (w.Pparticle[j,2] - w.Lparticle[i,2])^2 < δ2   # collision
+            ireplace = rand(1:w.nBparticles[])[]  # pick particle to replace
+            w.Bparticle[ireplace,:] = w.Lparticle[i,:] + 8.0*randn(2)
+      end
+    end
+
+      for j in 1:w.nBparticles[]  # check for collisions with belief
+        if (w.Bparticle[j,1] - w.Lparticle[i,1])^2 +
+           (w.Bparticle[j,2] - w.Lparticle[i,2])^2 < δ2   # collision
+              ireplace = rand(1:w.nBparticles[])[]  # pick particle to replace
+              w.Bparticle[ireplace,:] = w.Lparticle[i,:] + 8.0*randn(2)
+        end
+      end   # for Bparticles
+
+    end  # for Lparticles
+
+  end

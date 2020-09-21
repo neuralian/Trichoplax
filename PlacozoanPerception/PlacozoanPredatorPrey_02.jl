@@ -9,7 +9,8 @@ approach_Δ = 0.0         # predator closest approach distance
 dt = 1.0
 
 # construct observer
-priorSD = 100.0
+priorSD = 25.0
+posteriorSD = 100.0
 n_likelihood_particles = 2500
 n_prior_particles = 1000
 n_posterior_particles = 1000
@@ -25,7 +26,7 @@ prey_fieldrange = 0   # no field
 prey = Placozoan(prey_radius, prey_margin, prey_fieldrange,
                   Nreceptors, sizeof_receptor, mat_radius,
                   n_likelihood_particles, n_prior_particles,
-                  n_posterior_particles, priorSD)
+                  n_posterior_particles, priorSD, posteriorSD)
 
 # construct predator
 # nb has dummy observer

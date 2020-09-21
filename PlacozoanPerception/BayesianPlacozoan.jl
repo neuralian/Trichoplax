@@ -87,14 +87,15 @@ struct Observer
   Bparticle::Array{Float64,2}   # belief (posterior) particles
   Pparticle_step::Array{Float64,2}  # particle prediction steps
   Bparticle_step::Array{Float64,2}  # particle prediction steps
-  priorSD::Array{Float64}  # std. dev. of prior
+  priorSD::Float64  # std. dev. of prior
+  posteriorSD::Float64  # std. dev. of prior
 
 end
 
 # Observer constructor
 function Observer(range,
                   nLparticles::Int64, nPparticles::Int64, nBparticles::Int64,
-                  priorSD::Float64)
+                  priorSD::Float64, posteriorSD::Float64)
 
   likelihood = zeros(-range:range, -range:range)
   prior = zeros(-range:range, -range:range)
@@ -110,7 +111,7 @@ function Observer(range,
                nLparticles, nPparticles, nBparticles,
                Lparticle, Pparticle, Bparticle,
                Pparticle_step, Bparticle_step,
-               [priorSD])
+               priorSD, posteriorSD)
 end
 
 # dummy observer constructor
@@ -118,7 +119,7 @@ end
 function Observer()
   z = zeros(1,1)
   zOff = OffsetArray(z, 0:0, 0:0)
-  Observer(1, zOff, zOff, zOff, 1, 1, 1, z, z, z, z, z, [1.0])
+  Observer(1, zOff, zOff, zOff, 1, 1, 1, z, z, z, z, z, 1.0, 1.0)
 end
 
 
@@ -206,12 +207,14 @@ end
 #
 function Placozoan(radius::Int64, margin::Int64, fieldrange::Int64,
                     nEreceptors::Int64, receptorSize::Float64, eRange::Int64,
-                    nLparticles, nPparticles, nBparticles, priorSD::Float64,
+                    nLparticles, nPparticles, nBparticles,
+                    priorSD::Float64,   posteriorSD::Float64,
                     bodycolor=RGBA(0.9, 0.75, 0.65, 0.5),
                     gutcolor = RGBA(1., 0.65, 0.8, 0.5),
                     edgecolor = RGB(0.0, 0.0, 0.0) )
 
-    observer = Observer(eRange, nLparticles, nPparticles, nBparticles,priorSD)
+    observer = Observer(eRange, nLparticles, nPparticles, nBparticles,
+               priorSD, posteriorSD)
     receptor = Ereceptor(eRange,radius, Nreceptors, receptorSize,
               colour_receptor_OPEN, colour_receptor_CLOSED)
 
@@ -517,7 +520,7 @@ function initialize_posterior_Gaussian(p::Placozoan)
     ϕ = 2.0*π*rand(1)[]
     β = 1.0e12
     while β > (p.observer.range - p.radius)
-      β = p.observer.priorSD[]*abs(randn(1)[])
+      β = p.observer.posteriorSD[]*abs(randn(1)[])
     end
     #candidate = -matRadius .+ sceneWidth.*rand(2)  # random point in scene
     # d = sqrt(candidate[1]^2 + candidate[2]^2) # candidate distance from origin
@@ -548,7 +551,7 @@ end
 # impose boundaries on posterior particle movement
  function steadyPrior(p::Placozoan)
 
-     pDie = 0.0025
+     pDie = 0.01
    for j in 1:p.observer.nPparticles
 
      d = sqrt(p.observer.Pparticle[j,1]^2 + p.observer.Pparticle[j,2]^2)

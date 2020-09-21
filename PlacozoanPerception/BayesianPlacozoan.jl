@@ -619,7 +619,7 @@ end
 # A hypothesis is a belief or a prior belief
 function bayesUpdate(p::Placozoan)
 
-  δ2 = 0.5
+  δ2 = 0.50
   for i in 1:p.observer.nLparticles
 
     for j in 1:p.observer.nPparticles  # check for collisions with prior

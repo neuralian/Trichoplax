@@ -6,7 +6,7 @@
 nFrames = 800            # number of animation frames
 mat_radius = 365
 approach_Δ = 0.0         # predator closest approach distance
-dt = 1.0
+dt = 1.00
 
 # construct observer
 priorSD = 25.0

@@ -56,7 +56,7 @@ function Physics()
 
   ρ = 25.0          # Resisitivity of seawater 25Ω.cm
   δ = 20.e-6*100.   # dipole separation 10μm in cm
-  I = 2.5e-11*1.0e6 # dipole current 25pA. converted to μA
+  I = 1.0e-12*1.0e6 # dipole current 1pA. converted to μA
 
   # Johnson-Nyquist noise
   kB = 1.38e-23           # Bolzmann's constant
@@ -305,7 +305,8 @@ function placozoanFieldstrength(p::Placozoan)
     x = [ a*cos(2π*i/n) for i in 1:n]     # location of dipole
     y = [ a*sin(2π*i/n) for i in 1:n]
     for d in 1:p.fieldrange
-      r = sqrt.(((d.+p.radius.-x).^2 + y.^2)).*1.0e-4
+    #  r = sqrt.(((d.+p.radius.-x).^2 + y.^2)).*1.0e-4
+      r = sqrt.(((d.-x).^2 + y.^2)).*1.0e-4
       p.field[d] = p.field[d] + sum(dipoleFieldstrength.(r))
     end
     # electric field in μV/cm converted to potential across 10μm receptor
@@ -357,26 +358,26 @@ function likelihood(p::Placozoan)
 
 
 
- # construct sensory particles in prey margin
- # by reflectObservationg likelihood sample points through skin
- function reflectObservation(p::Placozoan)
-   R = sqrt.(p.observer.Lparticle[:,1].^2 + p.observer.Lparticle[:,2].^2)
-   r = (p.radius .- p.marginwidth*(R.-p.radius)./
-       (p.observer.range-prey.radius))::Array{Float64,1}
-   #return (r.*xLhdSample./R, r.*yLhdSample./R)
-   # observationPlot[1] = r.*W.Lparticle[:,1]./R            # update reflected sample plot
-   # observationPlot[2] = r.*W.Lparticle[:,2]./R
-
-   observation = r.*p.observer.Lparticle./R
- end
-
- function reflectBelief(beliefParticle_xy)
-   R = sqrt.(beliefParticle_xy[:,1].^2 + beliefParticle_xy[:,2].^2)
-   r = (preyRadius .- preyMargin*(R.-preyRadius)./(matRadius-preyRadius))::Array{Float64,1}
-   #return (r.*xLhdSample./R, r.*yLhdSample./R)
-   beliefPlot[1] = r.*beliefParticle_xy[:,1]./R            # update reflected sample plot
-   beliefPlot[2] = r.*beliefParticle_xy[:,2]./R
- end
+ # # construct sensory particles in prey margin
+ # # by reflectObservationg likelihood sample points through skin
+ # function reflectObservation(p::Placozoan)
+ #   R = sqrt.(p.observer.Lparticle[:,1].^2 + p.observer.Lparticle[:,2].^2)
+ #   r = (p.radius .- p.marginwidth*(R.-p.radius)./
+ #       (p.observer.range-prey.radius))::Array{Float64,1}
+ #   #return (r.*xLhdSample./R, r.*yLhdSample./R)
+ #   # observationPlot[1] = r.*W.Lparticle[:,1]./R            # update reflected sample plot
+ #   # observationPlot[2] = r.*W.Lparticle[:,2]./R
+ #
+ #   observation = r.*p.observer.Lparticle./R
+ # end
+ #
+ # function reflectBelief(beliefParticle_xy)
+ #   R = sqrt.(beliefParticle_xy[:,1].^2 + beliefParticle_xy[:,2].^2)
+ #   r = (preyRadius .- preyMargin*(R.-preyRadius)./(matRadius-preyRadius))::Array{Float64,1}
+ #   #return (r.*xLhdSample./R, r.*yLhdSample./R)
+ #   beliefPlot[1] = r.*beliefParticle_xy[:,1]./R            # update reflected sample plot
+ #   beliefPlot[2] = r.*beliefParticle_xy[:,2]./R
+ # end
 
 function reflect(p::Placozoan)
 
@@ -551,7 +552,7 @@ end
 # impose boundaries on posterior particle movement
  function steadyPrior(p::Placozoan)
 
-     pDie = 0.01
+     pDie = 0.005
    for j in 1:p.observer.nPparticles
 
      d = sqrt(p.observer.Pparticle[j,1]^2 + p.observer.Pparticle[j,2]^2)
@@ -582,37 +583,6 @@ end
 
    end
  end
-
-#  # duplicate belief particles that collide with observation particles
-#  function bayesBelief(w::World)
-#
-#    for i in 1:w.nPparticles
-#      ix = Int(round(w.Pparticle[i,1]))  # x-grid coord ith particle
-#      for j in 1:w.nLparticles
-#        if ix==w.Lparticle[j,1]  # found matching x-coord
-#          iy = Int(round(w.Pparticle[i,2]))
-#          if iy == w.Lparticle[j,2] #&y-coord
-#            ireplace = rand(1:w.nPparticles)[]  # pick particle to replace
-#            w.Pparticle[ireplace,:] = w.Pparticle[i,:] + 2.0*randn(2)
-#          end
-#        end
-#      end
-#    end
-#  end
-#
-# function bayesCollision(w::World)
-#
-#   δ2 = 0.5
-#   for i in 1:w.nPparticles
-#     for j in 1:w.nLparticles
-#          if (w.Pparticle[i,1] - w.Lparticle[j,1])^2 +
-#             (w.Pparticle[i,2] - w.Lparticle[j,2])^2 < δ2
-#             ireplace = rand(1:w.nPparticles)[]  # pick particle to replace
-#             w.Pparticle[ireplace,:] = w.Pparticle[i,:] + 8.0*randn(2)
-#         end
-#     end
-#   end
-# end
 
 # Bayes update rule: Create a new belief particle
 # when an observation particle collides with a hypothesis particle

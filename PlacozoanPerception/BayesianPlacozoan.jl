@@ -3,7 +3,7 @@
 using Makie
 using Colors
 using OffsetArrays
-
+using Distributions
 
 # colors
 # scene
@@ -11,9 +11,10 @@ colour_mat = RGBA(.05, .35, .35, 1.0)
 colour_background = RGBA(0.0, 0.0, 0.0, 1.0)
 
 # external/world particles
-colour_likelihood = :yellow
+colour_likelihood = RGB(1.0, 0.55, 0.25)
 colour_prior = RGB(0.75, 0.45, 0.45)
-colour_posterior = RGB(0.85, 0.25, 0.25)
+#colour_posterior = RGB(0.85, 0.25, 0.25)
+colour_posterior = RGB(.75,.75,1.0)
 
 # internal/spike particles
 colour_observation = :yellow
@@ -22,16 +23,16 @@ colour_observation = :yellow
 # receptors
 colour_receptor_OPEN  = RGB(1.0, 1.0, 0.25)
 colour_receptor_CLOSED  = RGB(0.35, 0.45, 0.35)
-sizeof_receptor = 10.0
+sizeof_receptor = 8.0
 
 # Particle sizes
-size_likelihood = 2
+size_likelihood = 1.5
 size_prior = 4
-size_posterior = 4
+size_posterior = 2.5
 
-size_observation = 2
+size_observation = .5
 size_prediction = 2
-size_belief = 2
+size_belief = .75
 
 # Physics structure
 # contains physical parameters
@@ -56,7 +57,7 @@ function Physics()
 
   ρ = 25.0          # Resisitivity of seawater 25Ω.cm
   δ = 20.e-6*100.   # dipole separation 10μm in cm
-  I = 1.0e-12*1.0e6 # dipole current 1pA. converted to μA
+  I = 1.0e-11*1.0e6 # dipole current 1pA. converted to μA
 
   # Johnson-Nyquist noise
   kB = 1.38e-23           # Bolzmann's constant
@@ -299,14 +300,14 @@ dipoleFieldstrength(r::Float64) = 2π*physics.ρ*physics.I*physics.δ./r.^3
 # as a function of distance in μm from edge of body
 # due to all dipoles in a placozoan.
 # updates placozoan.field and placozoan.potential
-function placozoanFieldstrength(p::Placozoan)
+function placozoanFieldstrength!(p::Placozoan)
   for a in p.celldiam:p.celldiam:(p.gutradius - p.celldiam)
     n = round(2π*a/p.celldiam)    # number of dipoles in layer
     x = [ a*cos(2π*i/n) for i in 1:n]     # location of dipole
     y = [ a*sin(2π*i/n) for i in 1:n]
     for d in 1:p.fieldrange
-    #  r = sqrt.(((d.+p.radius.-x).^2 + y.^2)).*1.0e-4
-      r = sqrt.(((d.-x).^2 + y.^2)).*1.0e-4
+      r = sqrt.(((d.+p.radius.-x).^2 + y.^2)).*1.0e-4
+      #r = sqrt.(((d.-x).^2 + y.^2)).*1.0e-4
       p.field[d] = p.field[d] + sum(dipoleFieldstrength.(r))
     end
     # electric field in μV/cm converted to potential across 10μm receptor
@@ -356,28 +357,6 @@ function likelihood(p::Placozoan)
 
  end
 
-
-
- # # construct sensory particles in prey margin
- # # by reflectObservationg likelihood sample points through skin
- # function reflectObservation(p::Placozoan)
- #   R = sqrt.(p.observer.Lparticle[:,1].^2 + p.observer.Lparticle[:,2].^2)
- #   r = (p.radius .- p.marginwidth*(R.-p.radius)./
- #       (p.observer.range-prey.radius))::Array{Float64,1}
- #   #return (r.*xLhdSample./R, r.*yLhdSample./R)
- #   # observationPlot[1] = r.*W.Lparticle[:,1]./R            # update reflected sample plot
- #   # observationPlot[2] = r.*W.Lparticle[:,2]./R
- #
- #   observation = r.*p.observer.Lparticle./R
- # end
- #
- # function reflectBelief(beliefParticle_xy)
- #   R = sqrt.(beliefParticle_xy[:,1].^2 + beliefParticle_xy[:,2].^2)
- #   r = (preyRadius .- preyMargin*(R.-preyRadius)./(matRadius-preyRadius))::Array{Float64,1}
- #   #return (r.*xLhdSample./R, r.*yLhdSample./R)
- #   beliefPlot[1] = r.*beliefParticle_xy[:,1]./R            # update reflected sample plot
- #   beliefPlot[2] = r.*beliefParticle_xy[:,2]./R
- # end
 
 function reflect(p::Placozoan)
 
@@ -448,7 +427,7 @@ function orbit(dψ::Float64, p::Array{Float64,2})
   # p.x[] =  cos(dψ)*p.x[] + sin(dψ)*p.y[]
   # p.y[] = -sin(dψ)*p.x[] + cos(dψ)*p.y[]
   p = p*[cos(dψ) -sin(dψ); sin(dψ) cos(dψ)]
-
+   nothing
 end
 
 # predator movement
@@ -470,8 +449,8 @@ function stalk(predator::Placozoan, prey::Placozoan, Δ::Float64)
   d2 = sqrt.(prey.observer.Pparticle[:,1].^2 + prey.observer.Pparticle[:,2].^2)
   v2 = sign.( prey.radius  + Δ .- d2)
   prey.observer.Pparticle_step .= 0.8*prey.observer.Pparticle_step +
-                0.25*randn(prey.observer.nPparticles,2).*predator.speed[] .+
-                0.1*v2.*predator.speed[].*prey.observer.Pparticle ./ d2
+                0.2*randn(prey.observer.nPparticles,2).*predator.speed[] .+
+              0.1*v2.*predator.speed[].*prey.observer.Pparticle ./ d2
   prey.observer.Pparticle .=  prey.observer.Pparticle +
                               prey.observer.Pparticle_step
   #orbit(π/w.nFrames, w.Pparticle)
@@ -486,7 +465,7 @@ function stalk(predator::Placozoan, prey::Placozoan, Δ::Float64)
   # end
   v3 = sign.( prey.radius  + Δ .- d3)
   prey.observer.Bparticle_step .= 0.8*prey.observer.Bparticle_step +
-          0.25*randn(prey.observer.nBparticles[],2).*predator.speed[] .+
+          0.2*randn(prey.observer.nBparticles[],2).*predator.speed[] .+
           0.1*v3.*predator.speed[].*prey.observer.Bparticle ./ d3
   prey.observer.Bparticle .=  prey.observer.Bparticle +
                               prey.observer.Bparticle_step
@@ -552,7 +531,7 @@ end
 # impose boundaries on posterior particle movement
  function steadyPrior(p::Placozoan)
 
-     pDie = 0.005
+     pDie = 0.025
    for j in 1:p.observer.nPparticles
 
      d = sqrt(p.observer.Pparticle[j,1]^2 + p.observer.Pparticle[j,2]^2)
@@ -587,29 +566,85 @@ end
 # Bayes update rule: Create a new belief particle
 # when an observation particle collides with a hypothesis particle
 # A hypothesis is a belief or a prior belief
-function bayesUpdate(p::Placozoan)
+# function bayesUpdate(p::Placozoan)
+#
+#   δ2 = 1.0
+#   for i in 1:p.observer.nLparticles
+#
+#     for j in 1:p.observer.nPparticles  # check for collisions with prior
+#       if (p.observer.Pparticle[j,1] - p.observer.Lparticle[i,1])^2 +
+#          (p.observer.Pparticle[j,2] - p.observer.Lparticle[i,2])^2 < δ2   # collision
+#             ireplace = rand(1:p.observer.nBparticles[])[]  # pick particle to replace
+#             p.observer.Bparticle[ireplace,:] =
+#                                  p.observer.Lparticle[i,:] + 8.0*randn(2)
+#       end
+#     end
+#
+#       for j in 1:p.observer.nBparticles[]  # check for collisions with belief
+#         if (p.observer.Bparticle[j,1] - p.observer.Lparticle[i,1])^2 +
+#            (p.observer.Bparticle[j,2] - p.observer.Lparticle[i,2])^2 < δ2   # collision
+#               ireplace = rand(1:p.observer.nBparticles[])[]  # pick particle to replace
+#               p.observer.Bparticle[ireplace,:] =
+#                    p.observer.Lparticle[i,:] + 8.0*randn(2)
+#
+#         else # if no collision then kill
+#           if rand()[] < 1.0e-6
+#           ϕ = 2*π*rand()[]
+#           p.observer.Bparticle[j,:] =
+#                [p.observer.range*cos(ϕ), p.observer.range*sin(ϕ)]
+#           p.observer.Bparticle_step[j,:] = [0.0, 0.0]
+#        end
+#         end
+#
+#       end   # for Bparticles
+#
+#     end  # for Lparticles
+#
+#   end
 
-  δ2 = 0.50
-  for i in 1:p.observer.nLparticles
+  function bayesUpdate(p::Placozoan)
 
-    for j in 1:p.observer.nPparticles  # check for collisions with prior
-      if (p.observer.Pparticle[j,1] - p.observer.Lparticle[i,1])^2 +
-         (p.observer.Pparticle[j,2] - p.observer.Lparticle[i,2])^2 < δ2   # collision
-            ireplace = rand(1:p.observer.nBparticles[])[]  # pick particle to replace
-            p.observer.Bparticle[ireplace,:] =
-                                 p.observer.Lparticle[i,:] + 8.0*randn(2)
-      end
-    end
-
+    δ2 = 9.0   # squared collision range
+    nCollision = 0
+    collision = fill(0, 10*p.observer.nLparticles)
+    # list Bparticles that have collided with Lparticles
+    for i in 1:p.observer.nLparticles
       for j in 1:p.observer.nBparticles[]  # check for collisions with belief
         if (p.observer.Bparticle[j,1] - p.observer.Lparticle[i,1])^2 +
-           (p.observer.Bparticle[j,2] - p.observer.Lparticle[i,2])^2 < δ2   # collision
-              ireplace = rand(1:p.observer.nBparticles[])[]  # pick particle to replace
-              p.observer.Bparticle[ireplace,:] =
-                   p.observer.Lparticle[i,:] + 8.0*randn(2)
+          (p.observer.Bparticle[j,2] - p.observer.Lparticle[i,2])^2 < δ2   # collision
+           nCollision = nCollision + 1
+           collision[nCollision] = j
+         end
+       end
+     end
+     if nCollision > 0
+     # each collision produces a Poisson-distributed number of new particles
+     # such that expected number of new particles is p.observer.nBparticles
+     newBelief = fill(0.0, p.observer.nBparticles, 2)
+
+     n_newparticles = rand(Poisson(p.observer.nBparticles/nCollision), nCollision)
+     count = 0
+     for i in 1:nCollision
+        for j in 1:n_newparticles[i]
+          count = count + 1
+          if count <= p.observer.nBparticles
+          newBelief[count,:] = p.observer.Bparticle[collision[i],:] + 8.0*randn(2)
+          end
         end
-      end   # for Bparticles
+      end
 
-    end  # for Lparticles
+    p.observer.Bparticle[:] = newBelief[:]
 
-  end
+    # scatter 10% of Bparticles on boundary
+    nscatter = Int(round(0.005*p.observer.nBparticles))
+    iscatter = rand(1:p.observer.nBparticles, nscatter )
+    ϕ = 2*π*rand(nscatter)
+    r =  p.observer.range .-  rand(Exponential(50.0),nscatter)
+    for i in 1:nscatter
+      p.observer.Bparticle[iscatter[i], :] = [r[i]*cos(ϕ[i]), r[i]*sin(ϕ[i])]
+      p.observer.Bparticle_step[iscatter[i],:] = [0.0, 0.0]
+    end
+
+end
+
+end

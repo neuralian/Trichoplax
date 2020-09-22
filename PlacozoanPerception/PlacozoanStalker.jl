@@ -3,34 +3,33 @@
 #import BayesianPlacozoan
 
 # simulation parameters
-nFrames = 1200            # number of animation frames
-mat_radius = 365
-approach_Δ = 100.0         # predator closest approach distance
+nFrames = 1000            # number of animation frames
+mat_radius = 400
+approach_Δ = 20.0         # predator closest approach distance
 dt = 1.00
 
 # construct observer
-priorSD = 25.0
+priorSD = 50.0
 posteriorSD = 100.0
-n_likelihood_particles = 2500
-n_prior_particles = 500
-n_posterior_particles = 500
+n_likelihood_particles = 2000
+#n_prior_particles = 500
+n_posterior_particles = 800
 # observer = Observer(mat_radius,
 #             n_likelihood_particles, n_prior_particles, n_posterior_particles,
 #             approach_Δ)
 
 # construct prey
-prey_radius = 100
-prey_margin = 25
+prey_radius = 200
+prey_margin = 50
 Nreceptors = 32
 prey_fieldrange = 0   # no field
 prey = Placozoan(prey_radius, prey_margin, prey_fieldrange,
                   Nreceptors, sizeof_receptor, mat_radius,
-                  n_likelihood_particles, n_prior_particles,
-                  n_posterior_particles, priorSD, posteriorSD)
+                  n_likelihood_particles, n_posterior_particles, priorSD)
 
 # construct predator
 # nb has dummy observer
-predator_radius = 120
+predator_radius = 250
 predator_margin = 0
 predator_speed = 0.4
 predator_fieldrange = mat_radius
@@ -121,13 +120,13 @@ Bparticle_plt = scatter!(
 # nb this is a dummy plot
 # the correct particle locations are inserted before first plot
 belief_plt = scatter!(scene,
-            zeros(prey.observer.nPparticles), zeros(prey.observer.nPparticles),
+            zeros(prey.observer.nBparticles), zeros(prey.observer.nBparticles),
             color = colour_posterior, strokewidth = 0, markersize=size_belief)[end]
 
 # Prey
 prey_plt = poly!(scene,
        decompose(Point2f0, Circle(Point2f0(0.,0.), prey.radius)),
-       color = prey.color, strokewidth = .25, strokecolor = :black)
+       color = prey.color, strokewidth = 1, strokecolor = RGB(.5, .75, .85))
 preyGut_plt = poly!(scene,
       decompose(Point2f0, Circle(Point2f0(0.,0.), prey.gutradius)),
       color = prey.gutcolor, strokewidth = 0.0)

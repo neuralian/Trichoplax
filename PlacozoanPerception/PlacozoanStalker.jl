@@ -6,12 +6,12 @@ using AbstractPlotting
 #import BayesianPlacozoan
 
 # choose display output format: "particles", "arrays" or "all"
-PLOT_OUTPUT = "particles"
-# PLOT_OUTPUT = "arrays"
+# PLOT_OUTPUT = "particles"
+PLOT_OUTPUT = "arrays"
 # PLOT_OUTPUT = "all"
 
 # simulation parameters
-nFrames = 100            # number of animation frames
+nFrames = 600            # number of animation frames
 mat_radius = 400
 approach_Δ = 25.0         # predator closest approach distance
 dt = 1.00
@@ -62,7 +62,7 @@ precomputeBayesianRF(prey, predator)
 likelihood(prey)  # initialize likelihood given initial receptor states
 sample_likelihood(prey) # sample from normalized likelihood
 initialize_posterior_particles_Gaussian(prey)
-initialize_posterior_array_Gaussian(prey)
+initialize_prior_array_Gaussian(prey)
 
 # time observable
 # used to force scene update (nothing depends explicitly on time)
@@ -84,13 +84,19 @@ if PLOT_OUTPUT == "particles"
 end
 
 if PLOT_OUTPUT == "arrays"
-    scene, panel = layoutscene(resolution = (2*WorldSize + 20, WorldSize))
-    panel[1,1] = LAxis(scene)
-    panel[1,2] = LAxis(scene)
-    colsize!(panel, 1, fixed(WorldSize))
-    colsize!(panel, 2, fixed(WorldSize))
-              # limits = FRect(-mat_radius, -mat_radius ,WorldSize, WorldSize ),
-              # show_axis=false, backgroundcolor = colour_background)
+    scene, layout = layoutscene(resolution = (3*WorldSize + 20, WorldSize))
+    left_panel = layout[1,1] = LAxis(scene, backgroundcolor = colour_background)
+    middle_panel = layout[1,2] = LAxis(scene)
+    right_panel  = layout[1,3] = LAxis(scene)
+    colsize!(layout, 1, WorldSize)
+    colsize!(layout, 2, WorldSize)
+    colsize!(layout, 3, WorldSize)
+    hidespines!(left_panel)
+    hidedecorations!(left_panel)
+    hidespines!(middle_panel)
+    hidedecorations!(middle_panel)
+    hidespines!(right_panel)
+    hidedecorations!(right_panel)
 end
 
 
@@ -111,32 +117,60 @@ predator_plt = poly!(left_panel,
       color = predator.color, strokecolor = predator.edgecolor,
       strokewidth = .5)
 
+if PLOT_OUTPUT == "particles"
 
+    # plot likelihood particles (samples from likelihood)
+    Lparticle_plt = scatter!(
+        left_panel,
+        prey.observer.Lparticle[:, 1],
+        prey.observer.Lparticle[:, 2],
+        color = :yellow,
+        markersize = size_likelihood,
+        strokewidth = 0.1,
+    )
 
-# plot likelihood particles (samples from likelihood)
-Lparticle_plt = scatter!(left_panel,
-          prey.observer.Lparticle[:,1], prey.observer.Lparticle[:,2],
-          color =:yellow, markersize = size_likelihood,
-          strokewidth = 0.1)
+    # plot projection of likelihood particles into prey margin
+    # nb this is a dummy plot
+    # the correct particle locations are inserted before first plot
+    observation_plt = scatter!(
+        left_panel,
+        zeros(prey.observer.nLparticles),
+        zeros(prey.observer.nLparticles),
+        color = :yellow,
+        strokewidth = 0,
+        markersize = size_observation,
+    )
 
-# plot projection of likelihood particles into prey margin
-# nb this is a dummy plot
-# the correct particle locations are inserted before first plot
-observation_plt = scatter!(left_panel,
-    zeros(prey.observer.nLparticles),zeros(prey.observer.nLparticles),
-      color = :yellow, strokewidth = 0, markersize=size_observation)
+    Bparticle_plt = scatter!(
+        left_panel,
+        prey.observer.Bparticle[:, 1],
+        prey.observer.Bparticle[:, 2],
+        color = colour_posterior,
+        markersize = size_posterior,
+        strokewidth = 0.1,
+    )
 
-Bparticle_plt = scatter!(left_panel,
-          prey.observer.Bparticle[:,1], prey.observer.Bparticle[:,2],
-          color = colour_posterior,
-          markersize = size_posterior, strokewidth = 0.1)
+    # plot projection of posterior particles into prey margin
+    # nb this is a dummy plot
+    # the correct particle locations are inserted before first plot
+    belief_plt = scatter!(
+        left_panel,
+        zeros(prey.observer.nBparticles),
+        zeros(prey.observer.nBparticles),
+        color = colour_posterior,
+        strokewidth = 0,
+        markersize = size_belief,
+    )
+end  # plot particles
 
-# plot projection of posterior particles into prey margin
-# nb this is a dummy plot
-# the correct particle locations are inserted before first plot
-belief_plt = scatter!(left_panel,
-            zeros(prey.observer.nBparticles), zeros(prey.observer.nBparticles),
-            color = colour_posterior, strokewidth = 0, markersize=size_belief)
+if PLOT_OUTPUT == "arrays"
+
+  Likely_plt = heatmap!(middle_panel,
+       OffsetArrays.no_offset_view(prey.observer.likelihood) )
+
+  Posty_plt = heatmap!(right_panel,
+            OffsetArrays.no_offset_view(prey.observer.posterior) )
+end
 
 # Prey
 prey_plt = poly!(left_panel,
@@ -165,31 +199,40 @@ record(scene, "PlacozoanPerception.mp4", framerate = 24, 1:nFrames) do i
     # prey receptors respond to predator electric field
     updateReceptors(prey, predator)
     # set color of each receptor, indicating open or closed state
-    receptorColor = [prey.receptor.closedColor  for j in 1:prey.receptor.N]
-    receptorColor[findall(x->x==1, prey.receptor.state)] .=
-         prey.receptor.openColor
+    receptorColor = [prey.receptor.closedColor for j = 1:prey.receptor.N]
+    receptorColor[findall(x -> x == 1, prey.receptor.state)] .=
+        prey.receptor.openColor
     receptor_plt.color[] = receptorColor
 
     # prey sensory observations (particles released by active sensors)
     likelihood(prey)      # likelihood given receptor states
-    sample_likelihood(prey)     # random sample from likelihood
-    bayesParticleUpdate(prey)
-    bayesArrayUpdate(prey)
 
-    (observation, belief) = reflect(prey) # reflect samples into margin
+    if PLOT_OUTPUT == "particles"
+        sample_likelihood(prey)     # random sample from likelihood
+        bayesParticleUpdate(prey)
 
-    Lparticle_plt[1] = prey.observer.Lparticle[:,1]   # update likelihood particle plot
-    Lparticle_plt[2] = prey.observer.Lparticle[:,2]
 
-    observation_plt[1] = observation[:,1]     # update observation particle plot
-    observation_plt[2] = observation[:,2]
+        (observation, belief) = reflect(prey) # reflect samples into margin
 
-    Bparticle_plt[1] = prey.observer.Bparticle[:,1]  # update posterior particle plot
-    Bparticle_plt[2] = prey.observer.Bparticle[:,2]
+        Lparticle_plt[1] = prey.observer.Lparticle[:, 1]   # update likelihood particle plot
+        Lparticle_plt[2] = prey.observer.Lparticle[:, 2]
 
-    belief_plt[1] = belief[:,1]     # update observation particle plot
-    belief_plt[2] = belief[:,2]
+        observation_plt[1] = observation[:, 1]     # update observation particle plot
+        observation_plt[2] = observation[:, 2]
 
+        Bparticle_plt[1] = prey.observer.Bparticle[:, 1]  # update posterior particle plot
+        Bparticle_plt[2] = prey.observer.Bparticle[:, 2]
+
+        belief_plt[1] = belief[:, 1]     # update observation particle plot
+        belief_plt[2] = belief[:, 2]
+
+    end
+
+    if PLOT_OUTPUT == "arrays"
+        bayesArrayUpdate(prey)
+        Likely_plt[1] = OffsetArrays.no_offset_view(prey.observer.likelihood)
+        Posty_plt[1] = OffsetArrays.no_offset_view(prey.observer.posterior)
+    end
     # level curves of likelihood
     #LhdPlot.levels[] = maximum(LikelihoodArray)*[0.1, .5 , .9]
 
@@ -197,7 +240,7 @@ record(scene, "PlacozoanPerception.mp4", framerate = 24, 1:nFrames) do i
     clock_plt.text = "              t = " * string(floor(t[])) * "s"
 
     # Node update causes redraw
-    t[] = dt*(i+1)
+    t[] = dt * (i + 1)
 
 end
 

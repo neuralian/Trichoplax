@@ -57,7 +57,7 @@ function Physics()
 
   ρ = 25.0          # Resisitivity of seawater 25Ω.cm
   δ = 20.e-6*100.   # dipole separation 10μm in cm
-  I = 1.0e-12*1.0e6 # dipole current 1pA. converted to μA
+  I = 2.0e-12*1.0e6 # dipole current 1pA. converted to μA
 
   # Johnson-Nyquist noise
   kB = 1.38e-23           # Bolzmann's constant
@@ -78,6 +78,7 @@ struct Observer
 
   range::Int64 # world radius = range of indices for arrays
   likelihood::OffsetArray     # likelihood given all receptor states
+  prior::OffsetArray
   posterior::OffsetArray
   nLparticles::Int64
   nBparticles::Int64
@@ -94,13 +95,14 @@ function Observer(range, nLparticles::Int64, nBparticles::Int64,
                  priormean::Float64, priorsd::Float64)
 
   likelihood = zeros(-range:range, -range:range)
+  prior = zeros(-range:range, -range:range)
   posterior = zeros(-range:range, -range:range)
 
   Lparticle = zeros(nLparticles,2)
   Bparticle = zeros(nBparticles,2)
   Bparticle_step = zeros(nBparticles,2)
 
-  return Observer(range, likelihood, posterior, nLparticles, nBparticles,
+  return Observer(range, likelihood, prior, posterior, nLparticles, nBparticles,
                Lparticle, Bparticle, Bparticle_step, priormean, priorsd)
 end
 
@@ -109,7 +111,7 @@ end
 function Observer()
   z = zeros(1,1)
   zOff = OffsetArray(z, 0:0, 0:0)
-  Observer(1, zOff, zOff, 1, 1, z, z, z, 1.0, 1.0)
+  Observer(1, zOff, zOff, zOff, 1, 1, z, z, z, 1.0, 1.0)
 end
 
 
@@ -530,16 +532,20 @@ function bayesParticleUpdate(p::Placozoan)
 end
 
 
-function initialize_posterior_array_Gaussian(p::Placozoan)
+function initialize_prior_array_Gaussian(p::Placozoan)
 
   Gdist = Normal(p.observer.priormean, p.observer.priorsd)
 
+  priorsum = 0.0
   for i = -p.observer.range:p.observer.range
     for j = -p.observer.range:p.observer.range
       d = sqrt(i^2 + j^2)
-      p.observer.posterior[i, j] = pdf(Gdist, sqrt(i^2 + j^2))
+      p.observer.prior[i, j] = pdf(Gdist, sqrt(i^2 + j^2))
+      priorsum += p.observer.prior[i, j]
     end
   end
+   p.observer.posterior[:,:] = p.observer.prior[:,:] ./ priorsum
+   p.observer.prior[:,:] = p.observer.posterior[:,:] / 10.0 # because we add 10%
 end
 
 function bayesArrayUpdate(p::Placozoan)
@@ -552,6 +558,7 @@ function bayesArrayUpdate(p::Placozoan)
        posteriorSum += p.observer.posterior[i,j]
      end
    end
-   p.observer.posterior ./= posteriorSum
+   p.observer.posterior[:,:] ./= (posteriorSum/0.9)
+   p.observer.posterior[:,:] += p.observer.prior[:,:]
 
  end

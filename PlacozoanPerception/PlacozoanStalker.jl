@@ -11,7 +11,7 @@ PLOT_OUTPUT = "arrays"
 # PLOT_OUTPUT = "all"
 
 # simulation parameters
-nFrames = 600            # number of animation frames
+nFrames = 100            # number of animation frames
 mat_radius = 400
 approach_Δ = 25.0         # predator closest approach distance
 dt = 1.00
@@ -84,13 +84,17 @@ if PLOT_OUTPUT == "particles"
 end
 
 if PLOT_OUTPUT == "arrays"
-    scene, layout = layoutscene(resolution = (3*WorldSize + 20, WorldSize))
-    left_panel = layout[1,1] = LAxis(scene, backgroundcolor = colour_background)
-    middle_panel = layout[1,2] = LAxis(scene)
-    right_panel  = layout[1,3] = LAxis(scene)
-    colsize!(layout, 1, WorldSize)
-    colsize!(layout, 2, WorldSize)
-    colsize!(layout, 3, WorldSize)
+    scene, layout = layoutscene(resolution = (3*WorldSize+40, WorldSize))
+    shim = layout[1,1] = LAxis(scene)
+    left_panel = layout[1,2] = LAxis(scene, backgroundcolor = colour_background)
+    middle_panel = layout[1,3] = LAxis(scene, title = "Likelihood")
+    right_panel  = layout[1,4] = LAxis(scene, title = "Posterior")
+    colsize!(layout, 1, Relative(0.04))
+    colsize!(layout, 2, Relative(0.32))
+    colsize!(layout, 3, Relative(0.32))
+    colsize!(layout, 4, Relative(0.32))
+    hidespines!(shim)
+    hidedecorations!(shim)
     hidespines!(left_panel)
     hidedecorations!(left_panel)
     hidespines!(middle_panel)
@@ -106,7 +110,8 @@ mat_plt = poly!(left_panel,
        color = colour_mat, strokewidth = 0, strokecolor = :black)
 
 # display nominal time on background
-clock_plt =LText(scene,"              t = 0.0s", color = :white)
+clock_plt =LText(scene,"                                              t = 0.0s",
+             color = :white)
 
 # predator drawn using lift(..., node)
 # (predatorLocation does not depend explicitly on t, but this causes
@@ -237,7 +242,8 @@ record(scene, "PlacozoanPerception.mp4", framerate = 24, 1:nFrames) do i
     #LhdPlot.levels[] = maximum(LikelihoodArray)*[0.1, .5 , .9]
 
     # clock display
-    clock_plt.text = "              t = " * string(floor(t[])) * "s"
+    clock_plt.text = "                                              t = " *
+                    string(floor(t[])) * "s"
 
     # Node update causes redraw
     t[] = dt * (i + 1)

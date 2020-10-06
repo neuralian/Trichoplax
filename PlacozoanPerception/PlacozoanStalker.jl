@@ -1,11 +1,17 @@
-# PlacozoanPredatorPrey
+# PlacozoanStalker
+
+using AbstractPlotting.MakieLayout
+using AbstractPlotting
 
 #import BayesianPlacozoan
 
-# NO_PLOT = false
+# choose display output format: "particles", "arrays" or "all"
+PLOT_OUTPUT = "particles"
+# PLOT_OUTPUT = "arrays"
+# PLOT_OUTPUT = "all"
 
 # simulation parameters
-nFrames = 600            # number of animation frames
+nFrames = 100            # number of animation frames
 mat_radius = 400
 approach_Δ = 25.0         # predator closest approach distance
 dt = 1.00
@@ -55,7 +61,8 @@ precomputeBayesianRF(prey, predator)
 
 likelihood(prey)  # initialize likelihood given initial receptor states
 sample_likelihood(prey) # sample from normalized likelihood
-initialize_posterior_Gaussian(prey)
+initialize_posterior_particles_Gaussian(prey)
+initialize_posterior_array_Gaussian(prey)
 
 # time observable
 # used to force scene update (nothing depends explicitly on time)
@@ -65,66 +72,90 @@ t = Node(0.0)
 
 # construct scene
 WorldSize = 2*mat_radius+1
-scene = Scene(resolution = (WorldSize, WorldSize),
-              limits = FRect(-mat_radius, -mat_radius ,WorldSize, WorldSize ),
-              show_axis=false, backgroundcolor = colour_background)
+if PLOT_OUTPUT == "particles"
+    scene, layout = layoutscene(resolution = (WorldSize, WorldSize))
+    left_panel = layout[1,1] = LAxis(scene, backgroundcolor = colour_background)
+    # clock_panel = LAxis(scene,
+    #      bbox = BBox(100 , 100, 100, 100) )
+    hidespines!(left_panel)
+    hidedecorations!(left_panel)
+    # hidespines!(clock_panel)
+    # hidedecorations!(clock_panel)
+end
+
+if PLOT_OUTPUT == "arrays"
+    scene, panel = layoutscene(resolution = (2*WorldSize + 20, WorldSize))
+    panel[1,1] = LAxis(scene)
+    panel[1,2] = LAxis(scene)
+    colsize!(panel, 1, fixed(WorldSize))
+    colsize!(panel, 2, fixed(WorldSize))
+              # limits = FRect(-mat_radius, -mat_radius ,WorldSize, WorldSize ),
+              # show_axis=false, backgroundcolor = colour_background)
+end
+
 
 # mat is a dark green disc
-mat_plt = poly!(scene,
+mat_plt = poly!(left_panel,
        decompose(Point2f0, Circle(Point2f0(0.,0.), mat_radius)),
        color = colour_mat, strokewidth = 0, strokecolor = :black)
 
 # display nominal time on background
-clock_plt =text!(scene,"t = 0.0s",textsize = 24, color = :white,
-     position = (- 0.925*mat_radius , -0.95*mat_radius))[end]
+clock_plt =LText(scene,"              t = 0.0s", color = :white)
 
 # predator drawn using lift(..., node)
 # (predatorLocation does not depend explicitly on t, but this causes
 #  the plot to be updated when the node t changes)
-predator_plt = poly!(scene,
+predator_plt = poly!(left_panel,
       lift(s->decompose(Point2f0, Circle(Point2f0(predator.x[], predator.y[]),
       predator.radius)), t),
       color = predator.color, strokecolor = predator.edgecolor,
       strokewidth = .5)
 
+
+
 # plot likelihood particles (samples from likelihood)
-Lparticle_plt = scatter!(
+Lparticle_plt = scatter!(left_panel,
           prey.observer.Lparticle[:,1], prey.observer.Lparticle[:,2],
           color =:yellow, markersize = size_likelihood,
-          strokewidth = 0.1)[end]
+          strokewidth = 0.1)
 
 # plot projection of likelihood particles into prey margin
 # nb this is a dummy plot
 # the correct particle locations are inserted before first plot
-observation_plt = scatter!(scene,
+observation_plt = scatter!(left_panel,
     zeros(prey.observer.nLparticles),zeros(prey.observer.nLparticles),
-      color = :yellow, strokewidth = 0, markersize=size_observation)[end]
+      color = :yellow, strokewidth = 0, markersize=size_observation)
 
-Bparticle_plt = scatter!(
+Bparticle_plt = scatter!(left_panel,
           prey.observer.Bparticle[:,1], prey.observer.Bparticle[:,2],
           color = colour_posterior,
-          markersize = size_posterior, strokewidth = 0.1)[end]
+          markersize = size_posterior, strokewidth = 0.1)
 
 # plot projection of posterior particles into prey margin
 # nb this is a dummy plot
 # the correct particle locations are inserted before first plot
-belief_plt = scatter!(scene,
+belief_plt = scatter!(left_panel,
             zeros(prey.observer.nBparticles), zeros(prey.observer.nBparticles),
-            color = colour_posterior, strokewidth = 0, markersize=size_belief)[end]
+            color = colour_posterior, strokewidth = 0, markersize=size_belief)
 
 # Prey
-prey_plt = poly!(scene,
+prey_plt = poly!(left_panel,
        decompose(Point2f0, Circle(Point2f0(0.,0.), prey.radius)),
        color = prey.color, strokewidth = 1, strokecolor = RGB(.5, .75, .85))
-preyGut_plt = poly!(scene,
+preyGut_plt = poly!(left_panel,
       decompose(Point2f0, Circle(Point2f0(0.,0.), prey.gutradius)),
       color = prey.gutcolor, strokewidth = 0.0)
 
 
-receptor_plt = scatter!(scene, prey.receptor.x, prey.receptor.y ,
+receptor_plt = scatter!(left_panel, prey.receptor.x, prey.receptor.y ,
             markersize = prey.receptor.size,
             color = [prey.receptor.openColor for i in 1:prey.receptor.N],
-            strokecolor = :black, strokewidth = 0.25)[end]
+            strokecolor = :black, strokewidth = 0.25)
+
+# reset axis limits (have been auto-adjusted by MakieLayout)
+xlims!(left_panel, -mat_radius, mat_radius)
+ylims!(left_panel, -mat_radius, mat_radius)
+
 
 record(scene, "PlacozoanPerception.mp4", framerate = 24, 1:nFrames) do i
 
@@ -142,7 +173,8 @@ record(scene, "PlacozoanPerception.mp4", framerate = 24, 1:nFrames) do i
     # prey sensory observations (particles released by active sensors)
     likelihood(prey)      # likelihood given receptor states
     sample_likelihood(prey)     # random sample from likelihood
-    bayesUpdate(prey)
+    bayesParticleUpdate(prey)
+    bayesArrayUpdate(prey)
 
     (observation, belief) = reflect(prey) # reflect samples into margin
 
@@ -162,7 +194,7 @@ record(scene, "PlacozoanPerception.mp4", framerate = 24, 1:nFrames) do i
     #LhdPlot.levels[] = maximum(LikelihoodArray)*[0.1, .5 , .9]
 
     # clock display
-    clock_plt[1] = "t = " * string(floor(t[])) * "s"
+    clock_plt.text = "              t = " * string(floor(t[])) * "s"
 
     # Node update causes redraw
     t[] = dt*(i+1)
@@ -175,6 +207,6 @@ end
 #         updateReceptors(prey, predator)
 #         likelihood(prey)      # likelihood given receptor states
 #         sample_likelihood(prey)     # random sample from likelihood
-#         bayesUpdate(prey)
+#         bayesParticleUpdate(prey)
 #     end
 # end

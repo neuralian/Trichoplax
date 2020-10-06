@@ -460,7 +460,7 @@ function stalk(predator::Placozoan, prey::Placozoan, Δ::Float64)
 
 end
 
-function initialize_posterior_Gaussian(p::Placozoan)
+function initialize_posterior_particles_Gaussian(p::Placozoan)
 
   nB = 0
   while nB < p.observer.nBparticles
@@ -477,50 +477,81 @@ function initialize_posterior_Gaussian(p::Placozoan)
   end
 end
 
-function bayesUpdate(p::Placozoan)
+function bayesParticleUpdate(p::Placozoan)
 
-    δ2 = 9.0   # squared collision range
-    nCollision = 0
-    collision = fill(0, 10*p.observer.nLparticles)
-    # list Bparticles that have collided with Lparticles
-    for i in 1:p.observer.nLparticles
-      for j in 1:p.observer.nBparticles[]  # check for collisions with belief
-        if (p.observer.Bparticle[j,1] - p.observer.Lparticle[i,1])^2 +
-          (p.observer.Bparticle[j,2] - p.observer.Lparticle[i,2])^2 < δ2   # collision
-           nCollision = nCollision + 1
-           collision[nCollision] = j
-         end
-       end
-     end
-     if nCollision > 0
-     # each collision produces a Poisson-distributed number of new particles
-     # such that expected number of new particles is p.observer.nBparticles
-     newBelief = fill(0.0, p.observer.nBparticles, 2)
+  δ2 = 9.0   # squared collision range
+  sδ = 9.0  # scatter range
+  nCollision = 0
+  collision = fill(0, 10 * p.observer.nLparticles)
+  # list Bparticles that have collided with Lparticles
+  for i = 1:p.observer.nLparticles
+    for j = 1:p.observer.nBparticles[]  # check for collisions with belief
+      if (p.observer.Bparticle[j, 1] - p.observer.Lparticle[i, 1])^2 +
+         (p.observer.Bparticle[j, 2] - p.observer.Lparticle[i, 2])^2 < δ2   # collision
+        nCollision = nCollision + 1
+        collision[nCollision] = j
+      end
+    end
+  end
+  if nCollision > 0
+    # each collision produces a Poisson-distributed number of new particles
+    # such that expected number of new particles is p.observer.nBparticles
+    newBelief = fill(0.0, p.observer.nBparticles, 2)
 
-     n_newparticles = rand(Poisson(p.observer.nBparticles/nCollision), nCollision)
-     count = 0
-     for i in 1:nCollision
-        for j in 1:n_newparticles[i]
-          count = count + 1
-          if count <= p.observer.nBparticles
-          newBelief[count,:] = p.observer.Bparticle[collision[i],:] + 9.0*randn(2)
-          end
+    n_newparticles =
+      rand(Poisson(p.observer.nBparticles / nCollision), nCollision)
+    count = 0
+    for i = 1:nCollision
+      for j = 1:n_newparticles[i]
+        count = count + 1
+        if count <= p.observer.nBparticles
+          newBelief[count, :] =
+            p.observer.Bparticle[collision[i], :] + sδ * randn(2)
         end
       end
+    end
 
     p.observer.Bparticle[:] = newBelief[:]
 
     # draw 100S% of Bparticles from prior
     S = 0.002
-    nscatter = Int(round(S*p.observer.nBparticles))
-    iscatter = rand(1:p.observer.nBparticles, nscatter )
-    ϕ = 2*π*rand(nscatter)
-    r =  p.observer.priormean .+  p.observer.priorsd.*randn(nscatter)
-    for i in 1:nscatter
-      p.observer.Bparticle[iscatter[i], :] = [r[i]*cos(ϕ[i]), r[i]*sin(ϕ[i])]
-      p.observer.Bparticle_step[iscatter[i],:] = [0.0, 0.0]
+    nscatter = Int(round(S * p.observer.nBparticles))
+    iscatter = rand(1:p.observer.nBparticles, nscatter)
+    ϕ = 2 * π * rand(nscatter)
+    r = p.observer.priormean .+ p.observer.priorsd .* randn(nscatter)
+    for i = 1:nscatter
+      p.observer.Bparticle[iscatter[i], :] =
+        [r[i] * cos(ϕ[i]), r[i] * sin(ϕ[i])]
+      p.observer.Bparticle_step[iscatter[i], :] = [0.0, 0.0]
     end
 
-end
+  end
 
 end
+
+
+function initialize_posterior_array_Gaussian(p::Placozoan)
+
+  Gdist = Normal(p.observer.priormean, p.observer.priorsd)
+
+  for i = -p.observer.range:p.observer.range
+    for j = -p.observer.range:p.observer.range
+      d = sqrt(i^2 + j^2)
+      p.observer.posterior[i, j] = pdf(Gdist, sqrt(i^2 + j^2))
+    end
+  end
+end
+
+function bayesArrayUpdate(p::Placozoan)
+
+  posteriorSum = 0.0
+  for i in -p.observer.range:p.observer.range
+     for j in -p.observer.range:p.observer.range
+       # posterior is dynamic prior
+       p.observer.posterior[i,j] *= p.observer.likelihood[i,j]
+       posteriorSum += p.observer.posterior[i,j]
+     end
+   end
+   p.observer.posterior ./= posteriorSum
+
+ end

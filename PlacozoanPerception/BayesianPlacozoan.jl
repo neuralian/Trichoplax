@@ -1,14 +1,17 @@
 # BayesianPlacozoan module
- 
+
 using Makie
+using AbstractPlotting.MakieLayout
+using AbstractPlotting
 using Colors
 using OffsetArrays
 using Distributions
+using ImageFiltering
 
 # colors
 # scene
 colour_mat = RGBA(.05, .35, .35, 1.0)
-colour_background = RGBA(0.0, 0.0, 0.0, 1.0)
+colour_background = RGBA(68/255, 1/255, 84/255, 1.0)
 
 # external/world particles
 colour_likelihood = RGB(1.0, 0.55, 0.25)
@@ -57,7 +60,7 @@ function Physics()
 
   ρ = 25.0          # Resisitivity of seawater 25Ω.cm
   δ = 20.e-6*100.   # dipole separation 10μm in cm
-  I = 2.0e-12*1.0e6 # dipole current 1pA. converted to μA
+  I = 2.5e-12*1.0e6 # dipole current 1pA. converted to μA
 
   # Johnson-Nyquist noise
   kB = 1.38e-23           # Bolzmann's constant
@@ -455,8 +458,9 @@ function stalk(predator::Placozoan, prey::Placozoan, Δ::Float64)
   # end
   v3 = sign.( prey.radius  + Δ .- d3)
   prey.observer.Bparticle_step .= 0.8*prey.observer.Bparticle_step +
-          0.2*randn(prey.observer.nBparticles[],2).*predator.speed[] .+
-          0.1*v3.*predator.speed[].*prey.observer.Bparticle ./ d3
+          0.2*randn(prey.observer.nBparticles[],2).*predator.speed[]
+          #  .+
+          # 0.1*v3.*predator.speed[].*prey.observer.Bparticle ./ d3
   prey.observer.Bparticle .=  prey.observer.Bparticle +
                               prey.observer.Bparticle_step
 
@@ -481,7 +485,7 @@ end
 
 function bayesParticleUpdate(p::Placozoan)
 
-  δ2 = 9.0   # squared collision range
+  δ2 = 4.0   # squared collision range
   sδ = 9.0  # scatter range
   nCollision = 0
   collision = fill(0, 10 * p.observer.nLparticles)
@@ -516,7 +520,7 @@ function bayesParticleUpdate(p::Placozoan)
     p.observer.Bparticle[:] = newBelief[:]
 
     # draw 100S% of Bparticles from prior
-    S = 0.002
+    S = 0.01
     nscatter = Int(round(S * p.observer.nBparticles))
     iscatter = rand(1:p.observer.nBparticles, nscatter)
     ϕ = 2 * π * rand(nscatter)
@@ -545,7 +549,7 @@ function initialize_prior_array_Gaussian(p::Placozoan)
     end
   end
    p.observer.posterior[:,:] = p.observer.prior[:,:] ./ priorsum
-   p.observer.prior[:,:] = p.observer.posterior[:,:] / 10.0 # because we add 10%
+   p.observer.prior[:,:] = 0.01*p.observer.posterior[:,:]  # because we add 1%
 end
 
 function bayesArrayUpdate(p::Placozoan)
@@ -558,7 +562,8 @@ function bayesArrayUpdate(p::Placozoan)
        posteriorSum += p.observer.posterior[i,j]
      end
    end
-   p.observer.posterior[:,:] ./= (posteriorSum/0.9)
+   p.observer.posterior[:,:] =
+        0.99*imfilter(p.observer.posterior, Kernel.gaussian(5))./posteriorSum
    p.observer.posterior[:,:] += p.observer.prior[:,:]
 
  end

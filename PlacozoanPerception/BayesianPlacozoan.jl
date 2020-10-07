@@ -567,3 +567,17 @@ function bayesArrayUpdate(p::Placozoan)
    p.observer.posterior[:,:] += p.observer.prior[:,:]
 
  end
+
+
+# Utility functions
+
+# plot field and receptor open state probability as a function of distance
+# using CairoMakie
+function plot_sensor(p::Placozoan)
+
+  plt = lines(p.field)
+  lines!(maximum(predator.field)*
+      pOpenGivenFieldstrength(predator.potential*1.0e-6))
+
+ return(plt)
+end

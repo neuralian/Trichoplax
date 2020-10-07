@@ -14,7 +14,7 @@ approach_Δ = 25.0         # predator closest approach distance
 dt = 1.00
 
 # construct observer
-priormean = 300.
+priormean = 350.
 priorsd = 25.0
 posteriorSD = 100.0
 n_likelihood_particles = 5000
@@ -218,6 +218,7 @@ if PLOT_ARRAYS
 
     Posty_plt =
         plot!(right_panel, OffsetArrays.no_offset_view(prey.observer.posterior))
+
     predator_right_plt = poly!(
         right_panel,
         lift(
@@ -235,7 +236,7 @@ if PLOT_ARRAYS
         ),
         color = RGBA(0.0, 0.0, 0.0, 0.0),
         strokecolor = predator.edgecolor,
-        strokewidth = 0.5,
+        strokewidth = 1.0,
     )
     predator_middle_plt = poly!(
         middle_panel,
@@ -254,7 +255,7 @@ if PLOT_ARRAYS
         ),
         color = RGBA(0.0, 0.0, 0.0, 0.0),
         strokecolor = predator.edgecolor,
-        strokewidth = 0.5,
+        strokewidth = 1.0,
     )
 
     prey_Lcopy_plt = poly!(

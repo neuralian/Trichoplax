@@ -15,7 +15,7 @@ dt = 1.00
 
 # construct observer
 priormean = 350.
-priorsd = 25.0
+priorsd = 50.0
 posteriorSD = 100.0
 n_likelihood_particles = 5000
 #n_prior_particles = 500
@@ -32,7 +32,7 @@ prey_fieldrange = 0   # no field
 prey = Placozoan(prey_radius, prey_margin, prey_fieldrange,
                   Nreceptors, sizeof_receptor, mat_radius,
                   n_likelihood_particles, n_posterior_particles,
-                  priormean, priorsd)
+                  priormean, priorsd, nFrames)
 
 # construct predator
 # nb has dummy observer
@@ -347,12 +347,19 @@ record(scene, "PlacozoanPerception.mp4", framerate = 24, 1:nFrames) do i
 
     end
 
-if PLOT_ARRAYS
-    bayesArrayUpdate(prey)
-    Likely_plt[1] =
-        mask.*OffsetArrays.no_offset_view(prey.observer.likelihood)
-    Posty_plt[1] = mask .* OffsetArrays.no_offset_view(prey.observer.posterior)
-end
+    if PLOT_ARRAYS
+        bayesArrayUpdate(prey)
+        Likely_plt[1] =
+            mask.*OffsetArrays.no_offset_view(prey.observer.likelihood)
+        Posty_plt[1] = mask .* OffsetArrays.no_offset_view(prey.observer.posterior)
+    end
+
+    # record posterior entropy (in prey.observer.PosteriorEntropy)
+    recordEntropyBits(prey.observer, i)
+    recordRange(prey.observer, predator, i)
+    recordKLDBits(prey.observer, i)
+    println(prey.observer.PosteriorEntropy[1] -
+            prey.observer.PosteriorEntropy[i], ", ", KLDBits(prey.observer))
 
     # clock display
     clock_plt.text =
@@ -364,3 +371,11 @@ end
     t[] = dt * (i + 1)
 
 end
+
+
+# save data
+CSV.write("PlacozoanStalkerData.csv",
+    DataFrame(hcat(prey.observer.range[:],
+                   prey.observer.PosteriorEntropy[:],
+                   prey.observer.KLD[:]) ),
+                    header=false)

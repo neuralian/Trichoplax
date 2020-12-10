@@ -1,4 +1,5 @@
 # PlacozoanStalker
+#function main(nFrames=100)
 
 #import BayesianPlacozoan
 
@@ -8,9 +9,9 @@ PLOT_INT_PARTICLES = true
 PLOT_ARRAYS = true
 
 # simulation parameters
-nFrames = 600            # number of animation frames
+nFrames = 180            # number of animation frames
 mat_radius = 400
-approach_Δ = 25.0         # predator closest approach distance
+approach_Δ = 16.0         # predator closest approach distance
 dt = 1.00
 
 # construct observer
@@ -25,20 +26,22 @@ n_posterior_particles = 2500
 #             approach_Δ)
 
 # construct prey
-prey_radius = 200
-prey_margin = 50
-Nreceptors = 24
+prey_radius = 120
+prey_margin = 30
+Nreceptors = 16
+Ncrystals = 8
 prey_fieldrange = 0   # no field
 prey = Placozoan(prey_radius, prey_margin, prey_fieldrange,
                   Nreceptors, sizeof_receptor, mat_radius,
+                  Ncrystals, sizeof_crystal, mat_radius,
                   n_likelihood_particles, n_posterior_particles,
                   priormean, priorsd, nFrames)
 
 # construct predator
 # nb has dummy observer
-predator_radius = 225
+predator_radius = 150
 predator_margin = 0
-predator_speed = 0.5
+predator_speed = 2.0
 predator_fieldrange = mat_radius
 predator = Placozoan(predator_radius, predator_margin, predator_fieldrange,
                      RGBA(.25, 0.1, 0.1, 1.0),
@@ -46,20 +49,22 @@ predator = Placozoan(predator_radius, predator_margin, predator_fieldrange,
                      RGB(.95, 0.1, 0.1) )
 predator.speed[] = predator_speed
 θ = π*rand()[] # Random initial heading (from above)
-predator.x[] = (mat_radius + predator_radius)*cos(θ)
-predator.y[] = (mat_radius + predator_radius)*sin(θ)
+predator.x[] = (mat_radius + 0.5*predator_radius)*cos(θ)
+predator.y[] = (mat_radius + 0.5*predator_radius)*sin(θ)
 
 
 # compute field and potential as a fcn of distance from edge of predator
 placozoanFieldstrength!(predator)
 
-# compute Bayesian receptive fields for each of prey's receptors
-precomputeBayesianRF(prey, predator)
+# pre-compute Bayesian receptive fields for each of prey's receptors
+Ereceptor_RF(prey, predator)
+Vreceptor_RF(prey)
 
-likelihood(prey)  # initialize likelihood given initial receptor states
-sample_likelihood(prey) # sample from normalized likelihood
-initialize_posterior_particles_Gaussian(prey)
-initialize_prior_array_Gaussian(prey)
+# initialize observers
+likelihood(prey)           # initialize likelihood given initial receptor states
+sample_likelihood(prey)    # sample from normalized likelihood
+initialize_particles(prey) # draw initial sample from prior
+initialize_prior(prey)     # initialize numerical Bayesian prior
 
 # time observable
 # used to force scene update (nothing depends explicitly on time)
@@ -81,7 +86,7 @@ if !PLOT_ARRAYS    # not plotting likelihoods or posterior
     left_panel =
         layout[1, 1] = LAxis(
             scene,
-            title = "Placozoan Predation",
+            title = "Placozoan",
             backgroundcolor = colour_background,
         )
     # clock_panel = LAxis(scene,
@@ -89,12 +94,12 @@ if !PLOT_ARRAYS    # not plotting likelihoods or posterior
     hidespines!(left_panel)
     hidedecorations!(left_panel)
 else
-    scene, layout = layoutscene(resolution = (3 * WorldSize + 40, WorldSize+20))
+    scene, layout = layoutscene(resolution = (3 * 0.75*WorldSize + 40, 0.75*WorldSize+30))
     shim = layout[1, 1] = LAxis(scene)
     left_panel =
         layout[1, 2] = LAxis(
             scene,
-            title = "Placozoan Predation",
+            title = "Placozoan",
             backgroundcolor = colour_background,
         )
     middle_panel = layout[1, 3] = LAxis(scene, title = "Likelihood")
@@ -294,6 +299,12 @@ receptor_plt = scatter!(left_panel, prey.receptor.x, prey.receptor.y ,
             color = [prey.receptor.openColor for i in 1:prey.receptor.N],
             strokecolor = :black, strokewidth = 0.25)
 
+crystal_plt = scatter!(left_panel, prey.photoreceptor.x, prey.photoreceptor.y,
+            markersize = prey.photoreceptor.size,
+            color = [prey.photoreceptor.lightColor for i in 1:prey.photoreceptor.N],
+            strokecolor = :black, strokewidth = 0.25)
+
+
 # reset axis limits (have been auto-adjusted by MakieLayout)
 xlims!(left_panel, -mat_radius, mat_radius)
 ylims!(left_panel, -mat_radius, mat_radius)
@@ -304,21 +315,40 @@ xlims!(right_panel, 0, WorldSize)
 ylims!(right_panel, 0, WorldSize)
 end
 
-record(scene, "PlacozoanPerception.mp4", framerate = 24, 1:nFrames) do i
+
+
+for rep = 1:24
+
+
+
+record(scene, "PlacozoanStalker"*string(rep)*".mp4", framerate = 18, 1:nFrames) do i
+ #for i in 1:nFrames
 
     # predator random walk to within Δ of prey
     stalk(predator, prey, approach_Δ)
 
-    # prey receptors respond to predator electric field
-    updateReceptors(prey, predator)
+    # electroreception
+    electroreception(prey, predator)
     # set color of each receptor, indicating open or closed state
     receptorColor = [prey.receptor.closedColor for j = 1:prey.receptor.N]
     receptorColor[findall(x -> x == 1, prey.receptor.state)] .=
         prey.receptor.openColor
     receptor_plt.color[] = receptorColor
 
-    # prey sensory observations (particles released by active sensors)
-    likelihood(prey)      # likelihood given receptor states
+
+    # photoreception
+    photoreception(prey)
+    # set color of each receptor, indicating open or closed state
+    crystalColor = [prey.photoreceptor.lightColor  for j in 1:prey.photoreceptor.N]
+    crystalColor[findall(x->x==1, prey.photoreceptor.state)] .=
+         prey.photoreceptor.darkColor
+    crystal_plt.color[] = crystalColor
+
+
+    # inference
+    # likelihood(prey)                     # likelihood given all receptor states
+    # likelihood(prey, true, false)      # likelihood given electroreceptor states
+    likelihood(prey, false, true)      # likelihood given photoreceptor states
 
     sample_likelihood(prey)     # random sample from likelihood
     bayesParticleUpdate(prey)
@@ -354,12 +384,13 @@ record(scene, "PlacozoanPerception.mp4", framerate = 24, 1:nFrames) do i
         Posty_plt[1] = mask .* OffsetArrays.no_offset_view(prey.observer.posterior)
     end
 
-    # record posterior entropy (in prey.observer.PosteriorEntropy)
-    recordEntropyBits(prey.observer, i)
+    # record posterior entropy (& display during simulation)
+    prey.observer.PosteriorEntropy[i] = entropyBits(prey.observer)
+    prey.observer.KLD[i] = KLDBits(prey.observer)
     recordRange(prey.observer, predator, i)
     recordKLDBits(prey.observer, i)
-    println(prey.observer.PosteriorEntropy[1] -
-            prey.observer.PosteriorEntropy[i], ", ", KLDBits(prey.observer))
+    println("t=", i, ", ", prey.observer.PosteriorEntropy[1] -
+            prey.observer.PosteriorEntropy[i], ", ", prey.observer.KLD[i])
 
     # clock display
     clock_plt.text =
@@ -374,8 +405,18 @@ end
 
 
 # save data
-CSV.write("PlacozoanStalkerData.csv",
+CSV.write("PlacozoanStalkerData"*string(rep)*".csv",
     DataFrame(hcat(prey.observer.range[:],
                    prey.observer.PosteriorEntropy[:],
                    prey.observer.KLD[:]) ),
                     header=false)
+
+initialize_particles(prey) # draw initial sample from prior
+initialize_prior(prey)     # initialize numerical Bayesian prior
+θ = π*rand()[] # Random initial heading (from above)
+predator.x[] = (mat_radius + 0.5*predator_radius)*cos(θ)
+predator.y[] = (mat_radius + 0.5*predator_radius)*sin(θ)
+t[]=0
+
+
+end #rep

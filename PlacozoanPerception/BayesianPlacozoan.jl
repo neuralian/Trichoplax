@@ -26,18 +26,24 @@ colour_observation = :yellow
 
 
 # receptors
-colour_receptor_OPEN  = RGB(1.0, 1.0, 0.25)
+colour_receptor_OPEN  = RGB(1.0, .4, 0.4)
 colour_receptor_CLOSED  = RGB(0.35, 0.45, 0.35)
-sizeof_receptor = 8.0
+sizeof_receptor = 7.0
 
-# Particle sizes
+#crystal cells
+vision_light = RGB(1.0, 1.0, 1.0)
+vision_dark = RGB(0.0, 0.0, 0.0)
+sizeof_crystal = 7.0
+vision_SD = 0.8
+
+# Particle sizes  
 size_likelihood = 1.5
 #size_prior = 4
 size_posterior = 2.5
 
-size_observation = 1.5
+size_observation = 0.5
 #size_prediction = 2
-size_belief = 2.0
+size_belief = 1.0
 
 # Physics structure
 # contains physical parameters
@@ -101,14 +107,6 @@ end
 function Observer(maxRange, nLparticles::Int64, nBparticles::Int64,
                  priormean::Float64, priorsd::Float64, nFrames::Int64)
 
-  # likelihood = zeros(-maxRange:maxRange, -maxRange:maxRange)
-  # prior = zeros(-maxRange:maxRange, -maxRange:maxRange)
-  # posterior = zeros(-maxRange:maxRange, -maxRange:maxRange)
-  #
-  # Lparticle = zeros(nLparticles,2)
-  # Bparticle = zeros(nBparticles,2)
-  # Bparticle_step = zeros(nBparticles,2)
-
   return Observer(maxRange,
                zeros(-maxRange:maxRange, -maxRange:maxRange),
                zeros(-maxRange:maxRange, -maxRange:maxRange),
@@ -121,8 +119,7 @@ function Observer(maxRange, nLparticles::Int64, nBparticles::Int64,
                zeros(nFrames), zeros(nFrames), zeros(nFrames))
 end
 
-# dummy observer constructor
-# (for constructing placozoans without observers)
+# dummy observer constructor (for constructing placozoans without observers)
 function Observer()
   z1 = zeros(1)
   z2 = zeros(1,1)
@@ -131,8 +128,7 @@ function Observer()
 end
 
 
-# electroreceptor array
-# including Bayesian receptive fields (likelihoods for prey proximity)
+# Electroreceptor definition
 struct Ereceptor
   N::Int64
   size::Float64  # symbol size for drawing receptors
@@ -151,10 +147,7 @@ struct Ereceptor
   closedColor::RGB
 end
 
-# Ereceptor constructor
-# creates N receptors in a ring centred at (0,0)
-# creates likelihood array (Bayesian receptive field) for each receptor
-#    initialized to all zeros
+# Electroreceptor constructor
 function Ereceptor(worldradius::Int64, placozoanradius::Int64,
                    N::Int64, receptorSize::Float64,
                    openColor::RGB, closedColor::RGB)
@@ -177,15 +170,58 @@ function Ereceptor(worldradius::Int64, placozoanradius::Int64,
                     Lhd, colour_receptor_OPEN, colour_receptor_CLOSED)
 end
 
-# dummy Ereceptor constructor
-# for constructing placozoan without receptors
+# dummy electroreceptor constructor (for constructing placozoan without electroreceptors)
 function Ereceptor()
 
   return Ereceptor(0, 0, [0], [0], zeros(1),
                  Array{OffsetArray,1}(undef,1), RGB(0,0,0), RGB(0,0,0))
 end
 
-# Placozoan structure
+
+# Crystal cell receptor definition
+struct CrystalCell
+  N::Int64
+  size::Float64  # symbol size for drawing receptors
+  x::Array{Float64,1}  # receptor x-coords relative to centre of placozoan
+  y::Array{Float64,1}  # receptor y-coords
+  state::Array{Float64,1} # 0/1 for receptor in closed/open state
+  lineOfSight::Array{Float64,1}
+  pOpenV::Array{OffsetArray,1}
+  lightColor::RGB
+  darkColor::RGB
+end
+
+# crystal cell constructor
+function CrystalCell(worldradius::Int64, placozoancrystalmargin::Int64,
+                   N::Int64, crystalSize::Float64,
+                   lightColor::RGB, darkColor::RGB)
+   if floor(N/4)!=N/4  ###???floor?? code for lowest?
+     error("Number of receptors must be a multiple of 4")
+   end
+
+   # N receptors equally spaced in a ring at radius of (gut?/Inside margin?)
+   lineOfSight = [2π*i/N for i in 0:(N-1)]  # each xtal faces radially outwards
+   x = placozoancrystalmargin.*cos.(lineOfSight)
+   y = placozoancrystalmargin.*sin.(lineOfSight)
+   # lineOfSight = [atan(y[i],x[i]) for i in 1:N]
+   # 1d vector containing N offset arrays; ith will contain RF for ith receptor
+   Lhd = Array{OffsetArray,1}(undef,N)
+   for i in 1:N
+     Lhd[i] = zeros(-worldradius:worldradius,-worldradius:worldradius)
+   end
+
+   return CrystalCell(N, crystalSize, x, y, zeros(N), lineOfSight,
+                    Lhd, vision_light, vision_dark)
+end
+
+# crystal cell dummy constructor
+function CrystalCell()
+
+  return CrystalCell(0, 0, [0], [0], zeros(1), [0],
+                 Array{OffsetArray,1}(undef,1), RGB(0,0,0), RGB(0,0,0))
+end
+
+# Placozoan definition
 struct Placozoan
   radius::Float64
   marginwidth::Float64
@@ -199,6 +235,7 @@ struct Placozoan
   potential::Array{Float64,1}  # in μV
   fieldrange::Int64   # number of elements in field (= max maxRange in μm)
   receptor::Ereceptor  # electroreceptor array
+  photoreceptor::CrystalCell
   observer::Observer
   speed::Array{Float64,1}
   step::Array{Float64,1}
@@ -207,12 +244,7 @@ struct Placozoan
   edgecolor::RGB{Float64}
 end
 
-# placozoan constructor
-#   radius::Int64 = placozoan disc radius
-#   margin::Int64 = margin width (observer zone)
-#   nEreceptors::Int64 = number of electroreceptors
-#   eRange::Int64 = maxRange of observations (typically the radius of the 'world')
-#
+# Placozoan constructor
 function Placozoan(
   radius::Int64,
   margin::Int64,
@@ -220,6 +252,9 @@ function Placozoan(
   nEreceptors::Int64,
   receptorSize::Float64,
   eRange::Int64,
+  nCrystalCells::Int64,
+  crystalSize::Float64,
+  crystalRange::Int64,
   nLparticles,
   nBparticles,
   priormean::Float64,
@@ -228,42 +263,42 @@ function Placozoan(
   bodycolor = RGBA(0.9, 0.75, 0.65, 0.5),
   gutcolor = RGBA(1.0, 0.65, 0.8, 0.25),
   edgecolor = RGB(0.0, 0.0, 0.0),
-)
-
-  observer =
-    Observer(eRange, nLparticles, nBparticles, priormean, priorsd, nFrames)
-  receptor = Ereceptor(
-    eRange,
-    radius,
-    Nreceptors,
-    receptorSize,
-    colour_receptor_OPEN,
-    colour_receptor_CLOSED,
   )
 
-  if fieldrange < 1
-    fieldrange = 1
-  end
+  observer =  Observer(eRange, nLparticles, nBparticles, priormean, priorsd, nFrames)
+  
+    receptor = Ereceptor( eRange, radius, Nreceptors, receptorSize,  
+                          colour_receptor_OPEN, colour_receptor_CLOSED)
 
-  return Placozoan(
-    radius,
-    margin,
-    radius - margin,
-    12.0,
-    [0.0],
-    [0.0],
-    zeros(fieldrange),
-    zeros(fieldrange),
-    fieldrange,
-    receptor,
-    observer,
-    [0.0],
-    [0.0, 0.0],
-    bodycolor,
-    gutcolor,
-    edgecolor,
-  )
-end
+    crystalcell = CrystalCell(crystalRange, (radius-margin), Ncrystals, crystalSize,
+                          vision_light, vision_dark)
+
+
+    if fieldrange < 1
+      fieldrange = 1
+    end
+
+    return Placozoan(
+      radius,
+      margin,
+      radius - margin,
+      12.0,
+      [0.0],
+      [0.0],
+      zeros(fieldrange),
+      zeros(fieldrange),
+      fieldrange,
+      receptor,
+      crystalcell,
+      observer,
+      [0.0],
+      [0.0, 0.0],
+      bodycolor,
+      gutcolor,
+      edgecolor,
+    )
+
+end # Placozoan constructor
 
 # placozoan constructor with field but no receptors or observer
 function Placozoan(radius::Int64, margin::Int64, fieldrange::Int64,
@@ -271,59 +306,13 @@ function Placozoan(radius::Int64, margin::Int64, fieldrange::Int64,
 
    return Placozoan(radius, margin, radius-margin, 12.0, [0.0], [0.0],
      zeros(fieldrange), zeros(fieldrange), fieldrange,
-     Ereceptor(), Observer(), [0.0], [0.0, 0.0],
+     Ereceptor(), CrystalCell(), Observer(), [0.0], [0.0, 0.0],
      bodycolor, gutcolor, edgecolor )
 
 end
 
-# # computes Bayesian receptive fields for each receptor
-# # i.e. normalized likelihood for nearest edge of predator at (x,y)
-# # given that the receptor channel is open
-# function precomputeBayesianRF(w::World, self::Placozoan, other::Placozoan)
-#
-#   for i in 1:self.receptor.N  # for each receptor
-#     # precompute likelihood (open state probability) for this receptor
-#     # nb likelihood of predator inside self is zero
-#     # (because self must be still alive to do this computation)
-#    for j in -w.radius:w.radius
-#       for k in -w.radius:w.radius
-#         self.receptor.pOpen[i][j,k] = sqrt(j^2+k^2) > self.radius ?
-#             pOpen(sqrt((self.receptor.x[i]-j)^2 + (self.receptor.y[i]-k)^2),
-#                    other.potential) : 0.0
-#       end
-#     end
-#   end
-#
-# end
 
-# computes Bayesian receptive fields for each receptor
-# i.e. normalized likelihood for nearest edge of predator at (x,y)
-# given that the receptor channel is open
-function precomputeBayesianRF(self::Placozoan, other::Placozoan)
 
-  # computes RFs for receptors in 1st quadrant, copies to other quadrants
-  Nq = self.receptor.N ÷ 4         # receptors per quadrant
-  for i in 1:Nq  # for each receptor
-    # precompute likelihood (open state probability) for this receptor
-    # nb likelihood of predator inside self is zero
-    # (because self must be still alive to do this computation)
-   for j in -self.observer.maxRange:self.observer.maxRange
-      for k in -self.observer.maxRange:self.observer.maxRange
-
-        # likelihood at (j,k)
-        L = sqrt(j^2+k^2) > self.radius ?
-            pOpen(sqrt((self.receptor.x[i]-j)^2 + (self.receptor.y[i]-k)^2),
-                   other.potential) : 0.0
-        # copy to each quadrant
-        self.receptor.pOpen[i][j,k]         = L
-        self.receptor.pOpen[Nq+i][-k,j]     = L
-        self.receptor.pOpen[2*Nq+i][-j,-k]  = L
-        self.receptor.pOpen[3*Nq+i][k,-j]   = L
-      end
-    end
-  end
-
-end
 
 # function computes receptor channel Open probability
 # as a function of electric field strength
@@ -354,15 +343,10 @@ function placozoanFieldstrength!(p::Placozoan)
   end
 end
 
-# # compute microvolts across receptor from electric field
-# function microvoltsFromField(p::Placozoan)
-#   V = cumsum(p.field)*1.0e-4
-#   p.potential[:] = V[end].-V
-# end
 
 # electroreceptor open state probability
 # as a function of distance to edge of predator
-function pOpen(d, V)
+function Electroreceptor_pOpen(d, V)
    i = Int(round(d)) + 1
    if i > length(V)
      i = length(V)
@@ -371,17 +355,102 @@ function pOpen(d, V)
  end
 
 
- # compute likelihood given receptor states
-function likelihood(p::Placozoan)
+# precompute Bayesian receptive fields for each receptor
+# i.e. normalized likelihood for nearest edge of predator at (x,y)
+# given that the receptor channel is open
+function Ereceptor_RF(self::Placozoan, other::Placozoan)
 
-   p.observer.likelihood .= 1.0
-   for i = 1:p.receptor.N
-     if p.receptor.state[i]==1
-       p.observer.likelihood .*= p.receptor.pOpen[i]
-     else
-       p.observer.likelihood .*= (1.0 .- p.receptor.pOpen[i])
-     end
-   end
+  # computes RFs for receptors in 1st quadrant, copies to other quadrants
+  Nq = self.receptor.N ÷ 4         # receptors per quadrant
+  for i in 1:Nq  # for each receptor
+    # precompute likelihood (open state probability) for this receptor
+    # nb likelihood of predator inside self is zero
+    # (because self must be still alive to do this computation)
+   for j in -self.observer.maxRange:self.observer.maxRange
+      for k in -self.observer.maxRange:self.observer.maxRange
+
+        # likelihood at (j,k)
+        L = sqrt(j^2+k^2) > self.radius ?
+        Electroreceptor_pOpen(sqrt((self.receptor.x[i]-j)^2 + (self.receptor.y[i]-k)^2),
+                   other.potential) : 0.0
+        # copy to each quadrant
+        self.receptor.pOpen[i][j,k]         = L
+        self.receptor.pOpen[Nq+i][-k,j]     = L
+        self.receptor.pOpen[2*Nq+i][-j,-k]  = L
+        self.receptor.pOpen[3*Nq+i][k,-j]   = L
+      end
+    end
+  end
+
+end
+
+
+ function Vreceptor_RF(self::Placozoan)
+
+  # computes VFs for vision/crystal cells in 1st quadrant, copies to other quadrants
+  Nq = self.photoreceptor.N ÷ 4
+  for i in 1:Nq  # for each receptor
+   for j in -self.observer.maxRange:self.observer.maxRange
+      for k in -self.observer.maxRange:self.observer.maxRange
+
+        angleFromLineOfSight = atan(k-self.photoreceptor.y[i],j-self.photoreceptor.x[i]) -
+                               2π*(i-1)/self.photoreceptor.N
+
+        if angleFromLineOfSight > π
+          angleFromLineOfSight -= 2π
+        end
+        if angleFromLineOfSight < -π
+          angleFromLineOfSight += 2π
+        end
+
+        L = sqrt(j^2+k^2) > self.radius ? Photoreceptor_pOpen(angleFromLineOfSight) : 0.0
+        # copy to each quadrant
+       self.photoreceptor.pOpenV[i][j,k]         = L  #[j,k]
+       self.photoreceptor.pOpenV[Nq+i][-k,j]     = L  #[-k,j]
+       self.photoreceptor.pOpenV[2*Nq+i][-j,-k]  = L  #[-j,-k]
+       self.photoreceptor.pOpenV[3*Nq+i][k,-j]   = L  #[k,-j]
+      end
+    end
+  end
+
+end
+
+
+ # photoreceptor open state probability
+ function Photoreceptor_pOpen(deviationFromLineofSight::Float64) #lineOfSight::Array{Float64,1},
+  distribution = Normal(0, 0.8)
+  peak = pdf(distribution, 0.0)
+  # 50% open probability for shadow on line of sight
+  p = pdf(distribution, deviationFromLineofSight)*.1/peak
+  return (p)
+end
+
+
+ # compute likelihood given receptor states
+ # option to switch off each sensory modality (Electroreception/Photoreception = false)
+function likelihood(p::Placozoan, Electroreception::Bool = true, Photoreception::Bool = true)
+
+  p.observer.likelihood .= 1.0
+
+  if Electroreception
+     for i = 1:p.receptor.N
+      if p.receptor.state[i]==1
+        p.observer.likelihood .*= p.receptor.pOpen[i]
+      else
+        p.observer.likelihood .*= (1.0 .- p.receptor.pOpen[i])
+      end
+    end
+  end
+
+  if Photoreception
+     for i = 1:p.photoreceptor.N
+      if p.photoreceptor.state[i]==1
+        p.observer.likelihood .*= p.photoreceptor.pOpenV[i]
+      else
+        p.observer.likelihood .*= (1.0 .- p.photoreceptor.pOpenV[i])
+      end
+    end
+  end
 
    for j in -p.observer.maxRange:p.observer.maxRange
      for k in -p.observer.maxRange:p.observer.maxRange
@@ -436,9 +505,10 @@ end
      end
  end
 
- function updateReceptors(prey::Placozoan, predator::Placozoan)
 
-   # calculate receptor states
+ # electroreceptor states as function of predator location
+ function electroreception(prey::Placozoan, predator::Placozoan)
+   
    for j = 1:length(prey.receptor.state)
       maxRange = sqrt( (predator.x[] - prey.receptor.x[j])^2  +
                    (predator.y[] - prey.receptor.y[j])^2 ) - predator.radius
@@ -447,9 +517,36 @@ end
          maxRange = 0.0
        end
 
-      prey.receptor.state[j] = Int(rand()[] < pOpen(maxRange, predator.potential))
+      prey.receptor.state[j] = Int(rand()[] < Electroreceptor_pOpen(maxRange, predator.potential))
    end
  end
+
+
+ # photoreceptor states as function of predator location (approach angle)
+ function photoreception(prey::Placozoan) 
+
+  for j = 1:length(prey.photoreceptor.state)
+
+     angle2predator = atan( predator.y[] - prey.photoreceptor.y[j],
+                               predator.x[] - prey.photoreceptor.x[j])
+
+     deviationFromLineOfSight = angle2predator - prey.photoreceptor.lineOfSight[j]
+
+    #println(j, ", ", prey.photoreceptor.lineOfSight[j], ", ", angle2predator, ", ", deviationFromLineOfSight)
+
+    #  if deviationFromLineOfSight > π
+    #    deviationFromLineOfSight -= 2π
+    #  end
+    #  if deviationFromLineOfSight < -π
+    #    deviationFromLineOfSight += 2π
+    #  end
+
+     prey.photoreceptor.state[j] = Int(rand()[] < Photoreceptor_pOpen(deviationFromLineOfSight))
+
+  end
+
+end
+
 
 
 
@@ -528,6 +625,13 @@ function initialize_posterior_particles_Gaussian(p::Placozoan)
   end
 end
 
+function initialize_particles(p::Placozoan)
+
+  p.observer.Bparticle[:,:] = samplePrior(p.observer.nBparticles, p)
+
+
+end
+
 function bayesParticleUpdate(p::Placozoan)
 
   δ2 = 4.0   # squared collision maxRange
@@ -535,8 +639,8 @@ function bayesParticleUpdate(p::Placozoan)
   nCollision = 0
   collision = fill(0, 10 * p.observer.nLparticles)
   # list Bparticles that have collided with Lparticles
-  for i = 1:p.observer.nLparticles
-    for j = 1:p.observer.nBparticles[]  # check for collisions with belief
+   for i = 1:p.observer.nLparticles
+     for j = 1:p.observer.nBparticles[]  # check for collisions with belief
       if (p.observer.Bparticle[j, 1] - p.observer.Lparticle[i, 1])^2 +
          (p.observer.Bparticle[j, 2] - p.observer.Lparticle[i, 2])^2 < δ2   # collision
         nCollision = nCollision + 1
@@ -552,8 +656,8 @@ function bayesParticleUpdate(p::Placozoan)
     n_newparticles =
       rand(Poisson(p.observer.nBparticles / nCollision), nCollision)
     count = 0
-    for i = 1:nCollision
-      for j = 1:n_newparticles[i]
+     for i = 1:nCollision
+       for j = 1:n_newparticles[i]
         count = count + 1
         if count <= p.observer.nBparticles
           R = Inf
@@ -575,25 +679,50 @@ function bayesParticleUpdate(p::Placozoan)
     p.observer.Bparticle[:] = newBelief[:]
 
     # draw 100S% of Bparticles from prior
-    S = 0.01
-    nscatter = Int(round(S * p.observer.nBparticles))
-    iscatter = rand(1:p.observer.nBparticles, nscatter)
-    ϕ = 2 * π * rand(nscatter)
-    for i = 1:nscatter
-      r = Inf
-      while r > p.observer.maxRange
-        r = p.observer.priormean + p.observer.priorsd * randn()[]
-      end
-      p.observer.Bparticle[iscatter[i], :] = [r * cos(ϕ[i]), r * sin(ϕ[i])]
-      p.observer.Bparticle_step[iscatter[i], :] = [0.0, 0.0]
-    end
+    S = 0.002
+    nscatter = Int(round(S*p.observer.nBparticles))
+    # select particles from posterior to scatter into prior
+    iscatter = rand(1:p.observer.nBparticles, nscatter )
+    p.observer.Bparticle[iscatter, :] = samplePrior(nscatter, p)
+    p.observer.Bparticle_step[iscatter,:] .= 0.0
 
   end
 
 end
 
 
-function initialize_prior_array_Gaussian(p::Placozoan)
+# draw n samples from prior
+# uniform on mat external to prey (annulus)
+function samplePrior(n, p::Placozoan)
+
+  # uniform angles
+  ϕ = 2*π*rand(n)
+  # uniform across mat disc
+  r =  p.radius .+  (p.observer.maxRange - p.radius).*rand(n)
+
+  return (hcat(r.*cos.(ϕ), r.*sin.(ϕ)))
+
+end
+
+
+function initialize_prior(p::Placozoan)
+
+  priorsum = 0.0
+  p.observer.prior .= 0.0
+  for i = -p.observer.maxRange:p.observer.maxRange
+    for j = -p.observer.maxRange:p.observer.maxRange
+      d = sqrt(i^2 + j^2)
+      if ( (d>p.radius) & (d<p.observer.maxRange) )
+         p.observer.prior[i, j] = 1.0
+         priorsum += 1.0
+      end
+    end
+  end
+   p.observer.prior[:,:] ./= priorsum
+   p.observer.posterior[:,:] = p.observer.prior[:,:]  
+end
+
+#= function initialize_prior_array_Gaussian(p::Placozoan)
 
   Gdist = Normal(p.observer.priormean, p.observer.priorsd)
 
@@ -607,21 +736,21 @@ function initialize_prior_array_Gaussian(p::Placozoan)
   end
    p.observer.posterior[:,:] = p.observer.prior[:,:] ./ priorsum
    p.observer.prior[:,:] = 0.01*p.observer.posterior[:,:]  # because we add 1%
-end
+end =#
 
 function bayesArrayUpdate(p::Placozoan)
 
   posteriorSum = 0.0
-  for i in -p.observer.maxRange:p.observer.maxRange
+   for i in -p.observer.maxRange:p.observer.maxRange
      for j in -p.observer.maxRange:p.observer.maxRange
        # posterior is dynamic prior
        p.observer.posterior[i,j] *= p.observer.likelihood[i,j]
        posteriorSum += p.observer.posterior[i,j]
      end
    end
-   p.observer.posterior[:,:] =
-        0.99*imfilter(p.observer.posterior, Kernel.gaussian(5))./posteriorSum
-   p.observer.posterior[:,:] += p.observer.prior[:,:]
+   p.observer.posterior[:,:] = 
+       0.998*imfilter(p.observer.posterior, Kernel.gaussian(5))./posteriorSum
+   p.observer.posterior[:,:] += 0.002.*p.observer.prior[:,:]
 
  end
 
@@ -642,13 +771,14 @@ end
 
 # Entropy of "true" posterior in bits
 function entropyBits(I::Observer)
-  return -sum(I.posterior.*log2.(I.posterior))
+  support = findall(x->x>1.0e-6, I.posterior)
+  return -sum(I.posterior[support].*log2.(I.posterior[support]))
 end
 
-# Entropy recorder (saves entropy on ith timestep)
+#= # Entropy recorder (saves entropy on ith timestep)
 function recordEntropyBits(I::Observer, i::Int64)
   I.PosteriorEntropy[i] = -sum(I.posterior.*log2.(I.posterior))
-end
+end =#
 
 # range recorder (saves distance to predator on ith timestep)
 # nb this is centre of predator from centre of prey
@@ -681,7 +811,7 @@ function KLDBits(I::Observer)
    for k in 1:I.nBparticles
      i = Int64(round(I.Bparticle[k,1]))
      j = Int64(round(I.Bparticle[k,2]))
-     Q[k] = I.posterior[i,j]
+     Q[k] = max(I.posterior[i,j], 1.0e-6)
      sumQ += Q[k]
    end
    Q  = Q./sumQ   # normalize posterior at sample points
@@ -697,7 +827,7 @@ function recordKLDBits(I::Observer, frame::Int64)
    for k in 1:I.nBparticles
      i = Int64(round(I.Bparticle[k,1]))
      j = Int64(round(I.Bparticle[k,2]))
-     Q[k] = I.posterior[i,j]
+     Q[k] = max(I.posterior[i,j], 1.0e-6)
      sumQ += Q[k]
    end
    Q  = Q./sumQ   # normalize posterior at sample points

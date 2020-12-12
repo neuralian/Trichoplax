@@ -96,8 +96,9 @@ struct Observer
   Lparticle::Array{Float64,2}    # likelihood particles (samples)
   Bparticle::Array{Float64,2}   # belief (posterior) particles
   Bparticle_step::Array{Float64,2}  # particle prediction steps
-  priormean::Float64
-  priorsd::Float64  # std. dev. of prior
+  priorDensity::Float64
+  # priormean::Float64
+  # priorsd::Float64  # std. dev. of prior
   PosteriorEntropy::Array{Float64,1} # in bits, 1 per time step
   KLD::Array{Float64,1} # K-L divergence from particles to posterior
   range::Array{Float64,1} # track distance between predator & prey edges
@@ -105,7 +106,7 @@ end
 
 # Observer constructor
 function Observer(maxRange, nLparticles::Int64, nBparticles::Int64,
-                 priormean::Float64, priorsd::Float64, nFrames::Int64)
+                 priorDensity::Float64, nFrames::Int64)
 
   return Observer(maxRange,
                zeros(-maxRange:maxRange, -maxRange:maxRange),
@@ -115,7 +116,7 @@ function Observer(maxRange, nLparticles::Int64, nBparticles::Int64,
                zeros(nLparticles,2),
                zeros(nBparticles,2),
                zeros(nBparticles,2),
-               priormean, priorsd,
+               priorDensity,
                zeros(nFrames), zeros(nFrames), zeros(nFrames))
 end
 
@@ -124,7 +125,7 @@ function Observer()
   z1 = zeros(1)
   z2 = zeros(1,1)
   zOff = OffsetArray(z2, 0:0, 0:0)
-  Observer(1, zOff, zOff, zOff, 1, 1, z2, z2, z2, 1.0, 1.0, z1, z1, z1)
+  Observer(1, zOff, zOff, zOff, 1, 1, z2, z2, z2, 1.0, z1, z1, z1)
 end
 
 
@@ -192,7 +193,7 @@ struct CrystalCell
 end
 
 # crystal cell constructor
-function CrystalCell(worldradius::Int64, placozoancrystalmargin::Int64,
+function CrystalCell(worldradius::Int64, placozoancrystalmargin::Float64,
                    N::Int64, crystalSize::Float64,
                    lightColor::RGB, darkColor::RGB)
    if floor(N/4)!=N/4  ###???floor?? code for lowest?
@@ -257,20 +258,19 @@ function Placozoan(
   crystalRange::Int64,
   nLparticles,
   nBparticles,
-  priormean::Float64,
-  priorsd::Float64,
+  priorDensity::Float64,
   nFrames::Int64,
   bodycolor = RGBA(0.9, 0.75, 0.65, 0.5),
   gutcolor = RGBA(1.0, 0.65, 0.8, 0.25),
   edgecolor = RGB(0.0, 0.0, 0.0),
   )
 
-  observer =  Observer(eRange, nLparticles, nBparticles, priormean, priorsd, nFrames)
+  observer =  Observer(eRange, nLparticles, nBparticles, priorDensity, nFrames)
   
-    receptor = Ereceptor( eRange, radius, Nreceptors, receptorSize,  
+    receptor = Ereceptor( eRange, radius, nEreceptors, receptorSize,  
                           colour_receptor_OPEN, colour_receptor_CLOSED)
 
-    crystalcell = CrystalCell(crystalRange, (radius-margin), Ncrystals, crystalSize,
+    crystalcell = CrystalCell(crystalRange, (radius-0.75*margin), nCrystalCells, crystalSize,
                           vision_light, vision_dark)
 
 
@@ -470,7 +470,7 @@ function reflect(p::Placozoan)
   # likelihood
   R = sqrt.(p.observer.Lparticle[:,1].^2 + p.observer.Lparticle[:,2].^2)
   r = (p.radius .- p.marginwidth*(R.-p.radius)./
-      (p.observer.maxRange-prey.radius))::Array{Float64,1}
+      (p.observer.maxRange-p.radius))::Array{Float64,1}
   #return (r.*xLhdSample./R, r.*yLhdSample./R)
   # observationPlot[1] = r.*W.Lparticle[:,1]./R            # update reflected sample plot
   # observationPlot[2] = r.*W.Lparticle[:,2]./R
@@ -523,7 +523,7 @@ end
 
 
  # photoreceptor states as function of predator location (approach angle)
- function photoreception(prey::Placozoan) 
+ function photoreception(prey::Placozoan, predator::Placozoan) 
 
   for j = 1:length(prey.photoreceptor.state)
 
@@ -749,8 +749,8 @@ function bayesArrayUpdate(p::Placozoan)
      end
    end
    p.observer.posterior[:,:] = 
-       0.998*imfilter(p.observer.posterior, Kernel.gaussian(5))./posteriorSum
-   p.observer.posterior[:,:] += 0.002.*p.observer.prior[:,:]
+       (1.0-p.observer.priorDensity)*imfilter(p.observer.posterior, Kernel.gaussian(5))./posteriorSum
+   p.observer.posterior[:,:] += p.observer.priorDensity.*p.observer.prior[:,:]
 
  end
 

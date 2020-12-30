@@ -23,7 +23,7 @@ colour_background = RGBA(68/255, 1/255, 84/255, 1.0)
 colour_likelihood = RGB(1.0, 0.55, 0.25)
 #colour_prior = RGB(0.75, 0.45, 0.45)
 #colour_posterior = RGB(0.85, 0.25, 0.25)
-colour_posterior = RGB(.75,.75,1.0)
+colour_posterior = RGB(1.00,.75,.75)
 
 # internal/spike particles
 colour_observation = :yellow
@@ -31,14 +31,14 @@ colour_observation = :yellow
 
 
 # receptors
-colour_receptor_OPEN  = RGB(1.0, .4, 0.4)
-colour_receptor_CLOSED  = RGB(0.35, 0.45, 0.35)
-sizeof_receptor = 5.0
+colour_receptor_OPEN  = RGB(1.0, 1.0, 1.0)
+colour_receptor_CLOSED  = RGB(0.25, 0.35, 0.25)
+sizeof_receptor = 6.0
 
 #crystal cells
 vision_light = RGB(1.0, 1.0, 1.0)
 vision_dark = RGB(0.0, 0.0, 0.0)
-sizeof_crystal = 4.0
+sizeof_crystal = 5.0
 vision_SD = 0.8
 
 # Particle sizes  
@@ -863,8 +863,8 @@ function recordKLDBits(I::Observer, frame::Int64)
    Q = zeros(I.nBparticles[])
    sumQ = 0.0
    for k in 1:I.nBparticles[]
-     i = Int64(round(I.Bparticle[k,1]))
-     j = Int64(round(I.Bparticle[k,2]))
+    i = max(-I.maxRange, min(I.maxRange, Int64(round(I.Bparticle[k,1]))))
+    j = max(-I.maxRange, min(I.maxRange, Int64(round(I.Bparticle[k,2]))))
      Q[k] = max(I.posterior[i,j], 1.0e-6)
      sumQ += Q[k]
    end

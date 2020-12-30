@@ -100,7 +100,7 @@ Vreceptor_RF(dummy_prey)
 for rep = 1:nReps
     for n_likelihood_particles = [1024 2048 4096 8192]
         for n_posterior_particles = n_likelihood_particles .÷ [1 2 4 8]
-            for priorDensity = [0.0005 0.001 0.002 0.004 0.008]
+            for priorDensity = [0.0005 0.001 0.005 0.01 0.05]
 
                 # construct placozoans
                 prey = Placozoan(prey_radius, prey_margin, prey_fieldrange,
@@ -479,7 +479,7 @@ for rep = 1:nReps
                     iMAP = findmax(prey.observer.posterior)[2]
 
 # save data
-                    CSV.write(FileName,
+                    CSV.write(FileName* ".csv",
     DataFrame(hcat(prey.observer.range[i], predator.x[], predator.y[], iMAP[1], iMAP[2],
                    prey.observer.PosteriorEntropy[i], prey.observer.KLD[i], Nreceptors, 
                    n_likelihood_particles, n_posterior_particles,  priorDensity)),
@@ -508,3 +508,11 @@ end # rep
 
 
 # end # main
+
+
+
+
+
+
+
+

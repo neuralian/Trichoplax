@@ -10,6 +10,9 @@ using ImageFiltering
 using CSV
 using DataFrames
 
+const max_nLparticles = 2^14
+const max_nBparticles = 2^14
+
 
 # colors
 # scene
@@ -30,12 +33,12 @@ colour_observation = :yellow
 # receptors
 colour_receptor_OPEN  = RGB(1.0, .4, 0.4)
 colour_receptor_CLOSED  = RGB(0.35, 0.45, 0.35)
-sizeof_receptor = 7.0
+sizeof_receptor = 5.0
 
 #crystal cells
 vision_light = RGB(1.0, 1.0, 1.0)
 vision_dark = RGB(0.0, 0.0, 0.0)
-sizeof_crystal = 7.0
+sizeof_crystal = 4.0
 vision_SD = 0.8
 
 # Particle sizes  
@@ -93,12 +96,12 @@ struct Observer
   likelihood::OffsetArray     # likelihood given all receptor states
   prior::OffsetArray
   posterior::OffsetArray
-  nLparticles::Int64
-  nBparticles::Int64
+  nLparticles::Array{Int64,1}
+  nBparticles::Array{Int64,1}
   Lparticle::Array{Float64,2}    # likelihood particles (samples)
   Bparticle::Array{Float64,2}   # belief (posterior) particles
   Bparticle_step::Array{Float64,2}  # particle prediction steps
-  priorDensity::Float64
+  priorDensity::Array{Float64,1}
   # priormean::Float64
   # priorsd::Float64  # std. dev. of prior
   PosteriorEntropy::Array{Float64,1} # in bits, 1 per time step
@@ -114,11 +117,11 @@ function Observer(maxRange, nLparticles::Int64, nBparticles::Int64,
                zeros(-maxRange:maxRange, -maxRange:maxRange),
                zeros(-maxRange:maxRange, -maxRange:maxRange),
                zeros(-maxRange:maxRange, -maxRange:maxRange),
-               nLparticles, nBparticles,
-               zeros(nLparticles,2),
-               zeros(nBparticles,2),
-               zeros(nBparticles,2),
-               priorDensity,
+               [nLparticles], [nBparticles],
+               zeros(max_nLparticles,2),
+               zeros(max_nBparticles,2),
+               zeros(max_nBparticles,2),
+               [priorDensity],
                zeros(nFrames), zeros(nFrames), zeros(nFrames))
 end
 
@@ -127,8 +130,10 @@ function Observer()
   z1 = zeros(1)
   z2 = zeros(1,1)
   zOff = OffsetArray(z2, 0:0, 0:0)
-  Observer(1, zOff, zOff, zOff, 1, 1, z2, z2, z2, 1.0, z1, z1, z1)
+  Observer(1, zOff, zOff, zOff, [1], [1], z2, z2, z2, [1.0], z1, z1, z1)
 end
+
+
 
 
 # Electroreceptor definition
@@ -239,7 +244,7 @@ struct Placozoan
   fieldrange::Int64   # number of elements in field (= max maxRange in μm)
   receptor::Ereceptor  # electroreceptor array
   photoreceptor::CrystalCell
-  observer::Observer
+  observer::Observer  # pointer to observer
   speed::Array{Float64,1}
   step::Array{Float64,1}
   color::RGBA{Float64}
@@ -313,7 +318,24 @@ function Placozoan(radius::Int64, margin::Int64, fieldrange::Int64,
 
 end
 
+function initializeObserver(p::Placozoan, nLparticles::Int64, nBparticles::Int64,
+  priorDensity::Float64)
 
+   p.observer.nLparticles[]  = nLparticles
+   p.observer.nBparticles[]  = nBparticles
+   p.observer.priorDensity[] = priorDensity
+
+# +   p.observer.Lparticle = zeros(nLparticles,2)
+#    p.observer.Bparticle = zeros(nBparticles,2)
+#    p.observer.Bparticle_step = zeros(nBparticles,2)
+
+
+   likelihood(p)           # initialize likelihood given initial receptor states
+   sample_likelihood(p)    # sample from normalized likelihood
+   initialize_particles(p) # draw initial sample from prior
+   initialize_prior(p)     # initialize numerical Bayesian prior
+
+end
 
 
 # function computes receptor channel Open probability
@@ -343,6 +365,7 @@ function placozoanFieldstrength!(p::Placozoan)
     # nb 1cm = 10^4 μm
     p.potential[:] = p.field./10.0e4*10.0
   end
+
 end
 
 
@@ -461,6 +484,7 @@ function likelihood(p::Placozoan, Electroreception::Bool = true, Photoreception:
        end
      end
    end
+  # println("m:", maximum(p.observer.likelihood))
 
    p.observer.likelihood ./= maximum(p.observer.likelihood)
 
@@ -470,23 +494,23 @@ function likelihood(p::Placozoan, Electroreception::Bool = true, Photoreception:
 function reflect(p::Placozoan)
 
   # likelihood
-  R = sqrt.(p.observer.Lparticle[:,1].^2 + p.observer.Lparticle[:,2].^2)
+  R = sqrt.(p.observer.Lparticle[1:p.observer.nLparticles[],1].^2 + p.observer.Lparticle[1:p.observer.nLparticles[],2].^2)
   r = (p.radius .- p.marginwidth*(R.-p.radius)./
       (p.observer.maxRange-p.radius))::Array{Float64,1}
   #return (r.*xLhdSample./R, r.*yLhdSample./R)
   # observationPlot[1] = r.*W.Lparticle[:,1]./R            # update reflected sample plot
   # observationPlot[2] = r.*W.Lparticle[:,2]./R
 
-  observation = r.*p.observer.Lparticle./R
+  observation = r.*p.observer.Lparticle[1:p.observer.nLparticles[], :]./R
 
   # posterior
-  Rp = sqrt.(p.observer.Bparticle[:,1].^2 + p.observer.Bparticle[:,2].^2)
+  Rp = sqrt.(p.observer.Bparticle[1:p.observer.nBparticles[],1].^2 + p.observer.Bparticle[1:p.observer.nBparticles[],2].^2)
   rp = (p.radius .- p.marginwidth*(Rp.-p.radius)./
       (p.observer.maxRange-p.radius))::Array{Float64,1}
   #return (r.*xLhdSample./R, r.*yLhdSample./R)
   # observationPlot[1] = r.*W.Lparticle[:,1]./R            # update reflected sample plot
   # observationPlot[2] = r.*W.Lparticle[:,2]./R
-  belief = rp.*p.observer.Bparticle./Rp
+  belief = rp.*p.observer.Bparticle[1:p.observer.nBparticles[],:]./Rp
 
   (observation, belief)
 
@@ -496,7 +520,7 @@ end
  function sample_likelihood(p::Placozoan)
 
      n = 0
-     while n < p.observer.nLparticles
+     while n < p.observer.nLparticles[]
        candidate = rand(-p.observer.maxRange:p.observer.maxRange,2)
        if sqrt(candidate[1]^2 + candidate[2]^2) < p.observer.maxRange
          if rand()[] < p.observer.likelihood[candidate...]
@@ -592,7 +616,9 @@ function stalk(predator::Placozoan, prey::Placozoan, Δ::Float64)
   #                             prey.observer.Pparticle_step
   #orbit(π/w.nFrames, w.Pparticle)
 
-  d3 = sqrt.(prey.observer.Bparticle[:,1].^2 + prey.observer.Bparticle[:,2].^2)
+
+  
+  d3 = sqrt.(prey.observer.Bparticle[1:prey.observer.nBparticles[],1].^2 + prey.observer.Bparticle[1:prey.observer.nBparticles[],2].^2)
   # for i in 1:w.nBparticles
   #    if d3[i] > w.radius
   #     w.Bparticle[i,:] ./ d3[i]
@@ -601,19 +627,19 @@ function stalk(predator::Placozoan, prey::Placozoan, Δ::Float64)
   #   end
   # end
   v3 = sign.( prey.radius  + Δ .- d3)
-  prey.observer.Bparticle_step .= 0.8*prey.observer.Bparticle_step +
+  prey.observer.Bparticle_step[1:prey.observer.nBparticles[],:].= 0.8*prey.observer.Bparticle_step[1:prey.observer.nBparticles[],:] +
           0.2*randn(prey.observer.nBparticles[],2).*predator.speed[]
           #  .+
           # 0.1*v3.*predator.speed[].*prey.observer.Bparticle ./ d3
-  prey.observer.Bparticle .=  prey.observer.Bparticle +
-                              prey.observer.Bparticle_step
+  prey.observer.Bparticle[1:prey.observer.nBparticles[],:] .=  prey.observer.Bparticle[1:prey.observer.nBparticles[],:] +
+                              prey.observer.Bparticle_step[1:prey.observer.nBparticles[],:]
 
 end
 
 function initialize_posterior_particles_Gaussian(p::Placozoan)
 
   nB = 0
-  while nB < p.observer.nBparticles
+  while nB < p.observer.nBparticles[]
 
     # uniform random angle + Gaussian maxRange (truncated at edge of body and mat)
     ϕ = 2.0*π*rand(1)[]
@@ -629,7 +655,7 @@ end
 
 function initialize_particles(p::Placozoan)
 
-  p.observer.Bparticle[:,:] = samplePrior(p.observer.nBparticles, p)
+  p.observer.Bparticle[1:p.observer.nBparticles[],:] = samplePrior(p.observer.nBparticles[], p)
 
 
 end
@@ -639,29 +665,39 @@ function bayesParticleUpdate(p::Placozoan)
   δ2 = 4.0   # squared collision maxRange
   sδ = 9.0  # scatter maxRange
   nCollision = 0
-  collision = fill(0, 10 * p.observer.nLparticles)
+  collision = fill(0, p.observer.nBparticles[])
   # list Bparticles that have collided with Lparticles
-   for i = 1:p.observer.nLparticles
+
      for j = 1:p.observer.nBparticles[]  # check for collisions with belief
-      if (p.observer.Bparticle[j, 1] - p.observer.Lparticle[i, 1])^2 +
-         (p.observer.Bparticle[j, 2] - p.observer.Lparticle[i, 2])^2 < δ2   # collision
-        nCollision = nCollision + 1
-        collision[nCollision] = j
+      collided = false
+      for k = 1:nCollision
+        if collision[k]==j
+          collided = true
+        end
+      end
+      if !collided
+        for i = 1:p.observer.nLparticles[]
+        if ((p.observer.Bparticle[j, 1] - p.observer.Lparticle[i, 1])^2 +
+            (p.observer.Bparticle[j, 2] - p.observer.Lparticle[i, 2])^2 < δ2)  # new collision
+          nCollision = nCollision + 1
+          collision[nCollision] = j
+          break
+        end
       end
     end
   end
   if nCollision > 0
     # each collision produces a Poisson-distributed number of new particles
     # such that expected number of new particles is p.observer.nBparticles
-    newBelief = fill(0.0, p.observer.nBparticles, 2)
+    newBelief = fill(0.0, p.observer.nBparticles[], 2)
 
     n_newparticles =
-      rand(Poisson(p.observer.nBparticles / nCollision), nCollision)
+      rand(Poisson(p.observer.nBparticles[] / nCollision), nCollision)
     count = 0
      for i = 1:nCollision
        for j = 1:n_newparticles[i]
         count = count + 1
-        if count <= p.observer.nBparticles
+        if count <= p.observer.nBparticles[]
           R = Inf
           while R > p.observer.maxRange  # no beliefs beyond edge of world
           newBelief[count, :] =
@@ -674,17 +710,17 @@ function bayesParticleUpdate(p::Placozoan)
 
     # kluge number of particles (normalize the discrete distribution)
     # by random particle duplication
-    for i in 1:(p.observer.nBparticles-count)
+    for i in 1:(p.observer.nBparticles[]-count)
       newBelief[count+i,:] = newBelief[rand(1:count),:]
     end
 
-    p.observer.Bparticle[:] = newBelief[:]
+    p.observer.Bparticle[1:p.observer.nBparticles[],:] = newBelief[:,:]
 
     # draw 100S% of Bparticles from prior
     S = 0.002
-    nscatter = Int(round(S*p.observer.nBparticles))
+    nscatter = Int(round(S*p.observer.nBparticles[]))
     # select particles from posterior to scatter into prior
-    iscatter = rand(1:p.observer.nBparticles, nscatter )
+    iscatter = rand(1:p.observer.nBparticles[], nscatter )
     p.observer.Bparticle[iscatter, :] = samplePrior(nscatter, p)
     p.observer.Bparticle_step[iscatter,:] .= 0.0
 
@@ -751,7 +787,7 @@ function bayesArrayUpdate(p::Placozoan)
      end
    end
    p.observer.posterior[:,:] = 
-       (1.0-p.observer.priorDensity)*imfilter(p.observer.posterior, Kernel.gaussian(5))./posteriorSum
+       (1.0-p.observer.priorDensity[])*imfilter(p.observer.posterior, Kernel.gaussian(5))./posteriorSum
    p.observer.posterior[:,:] += p.observer.priorDensity.*p.observer.prior[:,:]
 
  end
@@ -790,48 +826,48 @@ end
 
 function KLDBits_rev(I::Observer)
    KLD = 0.0
-   Q = zeros(I.nBparticles)
+   Q = zeros(I.nBparticles[])
    sumQ = 0.0
-   for k in 1:I.nBparticles
+   for k in 1:I.nBparticles[]
      i = Int64(round(I.Bparticle[k,1]))
      j = Int64(round(I.Bparticle[k,2]))
      Q[k] = I.posterior[i,j]
      sumQ += Q[k]
    end
    Q  = Q./sumQ   # normalize posterior at sample points
-   for k in 1:I.nBparticles
+   for k in 1:I.nBparticles[]
      KLD = KLD - log(2,Q[k])
    end
-   KLD = KLD/I.nBparticles - log(2,I.nBparticles)
+   KLD = KLD/I.nBparticles[] - log(2,I.nBparticles[])
    return KLD
 end
 
 function KLDBits(I::Observer)
    KLD = 0.0
-   Q = zeros(I.nBparticles)
+   Q = zeros(I.nBparticles[])
    sumQ = 0.0
-   for k in 1:I.nBparticles
-     i = Int64(round(I.Bparticle[k,1]))
-     j = Int64(round(I.Bparticle[k,2]))
+   for k in 1:I.nBparticles[]
+     i = max(-I.maxRange, min(I.maxRange, Int64(round(I.Bparticle[k,1]))))
+     j = max(-I.maxRange, min(I.maxRange, Int64(round(I.Bparticle[k,2]))))
      Q[k] = max(I.posterior[i,j], 1.0e-6)
      sumQ += Q[k]
    end
    Q  = Q./sumQ   # normalize posterior at sample points
-   KLD = sum(Q.*log2.(Q)) + log2(I.nBparticles)
+   KLD = sum(Q.*log2.(Q)) + log2(I.nBparticles[])
 end
 
 
 
 function recordKLDBits(I::Observer, frame::Int64)
 
-   Q = zeros(I.nBparticles)
+   Q = zeros(I.nBparticles[])
    sumQ = 0.0
-   for k in 1:I.nBparticles
+   for k in 1:I.nBparticles[]
      i = Int64(round(I.Bparticle[k,1]))
      j = Int64(round(I.Bparticle[k,2]))
      Q[k] = max(I.posterior[i,j], 1.0e-6)
      sumQ += Q[k]
    end
    Q  = Q./sumQ   # normalize posterior at sample points
-   I.KLD[frame] = sum(Q.*log2.(Q)) + log2(I.nBparticles)
+   I.KLD[frame] = sum(Q.*log2.(Q)) + log2(I.nBparticles[])
 end

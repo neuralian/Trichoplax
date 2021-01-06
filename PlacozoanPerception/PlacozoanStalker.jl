@@ -4,14 +4,30 @@
 using TickTock
 # import BayesianPlacozoan
 # function main()
+
+# to create a video file, find the line starting "record(scene ..."
+# and comment it out (about line 400)
     
-# choose display output
+# choose what gets plotted (for demo/explanatory videos)
+# the default is to plot 3 panels showing all particles + likelihood and posterior
+# in which case the following switches are all ON (true)
 PLOT_EXT_PARTICLES = true
 PLOT_INT_PARTICLES = true
 PLOT_ARRAYS = true
 
+# DO_PLOTS switches plotting ON/OFF, for running multiple simulations
+# to collect data without plotting. DO_PLOTS must be true for the 
+# settings above to take effect
+DO_PLOTS = true
+if DO_PLOTS == false
+    PLOT_EXT_PARTICLES = false
+    PLOT_INT_PARTICLES = false
+    PLOT_ARRAYS = false
+end
+
+
 # simulation parameters
-nReps = 200
+nReps = 64
 nFrames = 180       # number of animation frames
 mat_radius = 400
 approach_Δ = 16.0         # predator closest approach distance
@@ -75,7 +91,7 @@ tick()
 FileName = "PlacozoanStalker" * string(Int(ELECTRORECEPTION)) * string(Int(PHOTORECEPTION)) * "_" *
     string(Nreceptors) 
 
-CSV.write(FileName* ".csv",
+CSV.write(FileName * ".csv",
     DataFrame(Range=Float64[], predatorx=Float64[], predatory=Float64[], xMAP=Int64[], yMAP=Int64[], 
                    PosteriorEntropy=Float64[], KLD=Float64[], Nreceptors=Int[], 
                    n_likelihood_particles=Int64[], n_posterior_particles=Int64[],  priorDensity=Float64[]))
@@ -98,27 +114,28 @@ Vreceptor_RF(dummy_prey)
 
 
 for rep = 1:nReps
-    for n_likelihood_particles = [1024 2048 4096 8192]
+    for n_likelihood_particles = [512]
         for n_posterior_particles = n_likelihood_particles .÷ [1 2 4 8]
-            for priorDensity = [0.0005 0.001 0.005 0.01 0.05]
+            for priorDensity = [0.01 .05 .1 .25 ]
 
                 # construct placozoans
                 prey = Placozoan(prey_radius, prey_margin, prey_fieldrange,
-                Nreceptors, sizeof_receptor, mat_radius,
-                Ncrystals, sizeof_crystal, mat_radius,
-                n_likelihood_particles, n_posterior_particles,
-                priorDensity, nFrames)
+                    Nreceptors, sizeof_receptor, mat_radius,
+                    Ncrystals, sizeof_crystal, mat_radius,
+                    n_likelihood_particles, n_posterior_particles,
+                    priorDensity, nFrames)
+
                 prey.receptor.pOpen[:] = dummy_prey.receptor.pOpen[:] 
                 prey.photoreceptor.pOpenV[:] = dummy_prey.photoreceptor.pOpenV[:] 
                 # println("____")
                 # println(maximum(prey.receptor.pOpen[1]), " ", maximum(dummy_prey.receptor.pOpen[1]))
                 # println("____")
-                #if NTRIALS[]==0
+                # if NTRIALS[]==0
                 initialize_particles(prey) # draw initial sample from prior
                 initialize_prior(prey)     # initialize numerical Bayesian prior
-                #end
+                # end
                 
-                #initializeObserver(prey, n_likelihood_particles, n_posterior_particles, priorDensity)
+                # initializeObserver(prey, n_likelihood_particles, n_posterior_particles, priorDensity)
 
 
                 predator = Placozoan(predator_radius, predator_margin, predator_fieldrange,
@@ -131,50 +148,47 @@ for rep = 1:nReps
                 predator.y[] = (mat_radius + 0.5 * predator_radius) * sin(θ)
                 predator.field[:] = dummy_predator.field[:]
                 predator.potential[:] = dummy_predator.potential[:]
+
+                if DO_PLOTS
                 
-                if !PLOT_ARRAYS    # not plotting likelihoods or posterior
-                    scene, layout = layoutscene(resolution=(WorldSize, WorldSize))
-                    left_panel =
-                layout[1, 1] = LAxis(
-                scene,
-                title="Placozoan",
-                backgroundcolor=colour_background,
-                )
+                    if !PLOT_ARRAYS    # not plotting likelihoods or posterior
+                        scene, layout = layoutscene(resolution=(WorldSize, WorldSize))
+                        left_panel =    layout[1, 1] = LAxis(scene, title="Placozoan", 
+                                                         backgroundcolor=colour_background )
                 # clock_panel = LAxis(scene,
                 #      bbox = BBox(100 , 100, 100, 100) )
-                    hidespines!(left_panel)
-                    hidedecorations!(left_panel)
-                else
-                    scene, layout = layoutscene(resolution=(3 * .75 * WorldSize , .75 * WorldSize + 40))
-                    shim = layout[1, 1] = LAxis(scene)
-                    left_panel =
-                layout[1, 2] = LAxis(
-                scene,
-                title="Particles: "*string(n_likelihood_particles)*":"*
-                string(n_posterior_particles)*":"*string(priorDensity),
-                backgroundcolor=colour_background,
-                )
-                    middle_panel = layout[1, 3] = LAxis(scene, title="Likelihood")
-                    right_panel = layout[1, 4] = LAxis(scene, title="Posterior")
-                    colsize!(layout, 1, Relative(0.04))
-                    colsize!(layout, 2, Relative(0.32))
-                    colsize!(layout, 3, Relative(0.32))
-                    colsize!(layout, 4, Relative(0.32))
-                    hidespines!(shim)
-                    hidedecorations!(shim)
-                    hidespines!(left_panel)
-                    hidedecorations!(left_panel)
-                    hidespines!(middle_panel)
-                    hidedecorations!(middle_panel)
-                    hidespines!(right_panel)
-                    hidedecorations!(right_panel)
-                end
+                        hidespines!(left_panel)
+                        hidedecorations!(left_panel)
+                    else
+                        scene, layout = layoutscene(resolution=(3 * .75 * WorldSize, .75 * WorldSize + 40))
+                        shim = layout[1, 1] = LAxis(scene)
+                        left_panel = layout[1, 2] = 
+                            LAxis( scene,  title="Particles: " * string(n_likelihood_particles) * ":" *
+                                string(n_posterior_particles) * ":" * string(priorDensity),
+                                backgroundcolor=colour_background )
+                        middle_panel = layout[1, 3] = LAxis(scene, title="Likelihood")
+                        right_panel = layout[1, 4] = LAxis(scene, title="Posterior")
+                        colsize!(layout, 1, Relative(0.04))
+                        colsize!(layout, 2, Relative(0.32))
+                        colsize!(layout, 3, Relative(0.32))
+                        colsize!(layout, 4, Relative(0.32))
+                        hidespines!(shim)
+                        hidedecorations!(shim)
+                        hidespines!(left_panel)
+                        hidedecorations!(left_panel)
+                        hidespines!(middle_panel)
+                        hidedecorations!(middle_panel)
+                        hidespines!(right_panel)
+                        hidedecorations!(right_panel)
+                    end
                 
                 
                 # mat is a dark green disc in left panel (always present)
-                mat_plt = poly!(left_panel,
+                    mat_plt = poly!(left_panel,
                 decompose(Point2f0, Circle(Point2f0(0., 0.), mat_radius)),
                 color=colour_mat, strokewidth=0, strokecolor=:black)
+                display(scene)
+                end # DO_PLOTS
                 
                 if PLOT_ARRAYS
                     mat_middle_plt = poly!(
@@ -199,13 +213,12 @@ for rep = 1:nReps
                 )
                 end
                 
-                
+                if DO_PLOTS
                 # display nominal time on background
                 clock_plt = LText(scene,
                 "                         t = 0.0s",
-                color=:white, textsize = 18, halign = :left)
+                color=:white, textsize=18, halign=:left)
 
-#println("Hello1")
 
 # predator drawn using lift(..., node)
 # (predatorLocation does not depend explicitly on t, but this causes
@@ -216,7 +229,8 @@ for rep = 1:nReps
       color=predator.color, strokecolor=predator.edgecolor,
       strokewidth=.5)
 
-      #println("Hello2")
+                end # DO_PLOTS
+
 
                 if PLOT_EXT_PARTICLES
 
@@ -242,7 +256,6 @@ for rep = 1:nReps
 
                 end # plot external particles
 
-                #println("Hello3")
 
                 if PLOT_INT_PARTICLES
 
@@ -271,16 +284,14 @@ for rep = 1:nReps
         markersize=size_belief,
     )
                 end  # plot internal particles
-                #println("Hello4")
+
                 if PLOT_ARRAYS
 
-                    Likely_plt = plot!(
-        middle_panel,
-        OffsetArrays.no_offset_view(prey.observer.likelihood),
-    )
+                    Likely_plt = plot!( middle_panel,
+                        OffsetArrays.no_offset_view(prey.observer.likelihood), colorrange = (0.0, 1.0))
 
-                    Posty_plt =
-        plot!(right_panel, OffsetArrays.no_offset_view(prey.observer.posterior))
+                    Posty_plt =  plot!(right_panel, 
+                        OffsetArrays.no_offset_view(prey.observer.posterior), colorrange = (0.0, 1.0e-4))
 
                     predator_right_plt = poly!(
         right_panel,
@@ -343,6 +354,8 @@ for rep = 1:nReps
     )
                 end
 
+                if DO_PLOTS
+
 # Prey
                 prey_plt = poly!(left_panel,
        decompose(Point2f0, Circle(Point2f0(0., 0.), prey.radius)),
@@ -373,34 +386,42 @@ for rep = 1:nReps
                     ylims!(right_panel, 0, WorldSize)
                 end
 
+            end #DO_PLOTS
 
-                #println("Hello5")
+                # println("Hello5")
 
 
                # initializeObserver(prey, n_likelihood_particles, n_posterior_particles, priorDensity)
 
-                #println("Hello6")
+                # println("Hello6")
                     # FileName = "PlacozoanStalker" * string(Int(ELECTRORECEPTION)) * string(Int(PHOTORECEPTION)) * "_" *
                     # string(Nreceptors) * "_" * string(n_likelihood_particles) * "_" * string(n_posterior_particles) *
                     # "_" * string(priorDensity) * "_" * string(rep)
 
-                    videoName = FileName*"_"*string(rep)*"_"*string(n_likelihood_particles)*"_"*
-                           string(n_posterior_particles)*"_"*string(priorDensity)*".mp4"
+                videoName = FileName * "_" * string(rep) * "_" * string(n_likelihood_particles) * "_" *
+                           string(n_posterior_particles) * "_" * string(priorDensity) * ".mp4"
 
-              record(scene, videoName , framerate=18, 1:nFrames) do i
-                #for i in 1:nFrames
-                   # println("Hello7")
+
+            # VIDEO RECORDING
+            # comment out ONE of the following 2 lines to (not) generate video file
+             record(scene, videoName , framerate=12, 1:nFrames) do i     # generate video file
+               # for i in 1:nFrames                                      # just compute
+
+
     # predator random walk to within Δ of prey
                     stalk(predator, prey, approach_Δ)
 
     # electroreception
                     if ELECTRORECEPTION
                         electroreception(prey, predator)
+
+                        if DO_PLOTS
         # set color of each receptor, indicating open or closed state
                         receptorColor = [prey.receptor.closedColor for j = 1:prey.receptor.N]
                         receptorColor[findall(x -> x == 1, prey.receptor.state)] .=
             prey.receptor.openColor
                         receptor_plt.color[] = receptorColor
+                        end # DO_PLOTS
                     end
 
 
@@ -418,15 +439,15 @@ for rep = 1:nReps
     # inference
     # ELECTRORECEPTION & PHOTORECEPTION are bools 
     #   specifying whether the respective receptor states are included in the inference
-    #print("7")
+    # print("7")
                     likelihood(prey, ELECTRORECEPTION, PHOTORECEPTION)  
-                    #print(" ", maximum(prey.observer.likelihood), " ", maximum(prey.receptor.pOpen[1]))
-                    #print("8")
+                    # print(" ", maximum(prey.observer.likelihood), " ", maximum(prey.receptor.pOpen[1]))
+                    # print("8")
                     sample_likelihood(prey)     # random sample from likelihood
-                    #print("9")
+                    # print("9")
                     bayesParticleUpdate(prey)   # Bayesian particle filter
                     (observation, belief) = reflect(prey) # reflect samples into margin
-                    #print("A")
+                    # print("A")
 
                     if PLOT_EXT_PARTICLES
         # update likelihood particle plot
@@ -467,19 +488,20 @@ for rep = 1:nReps
 
 
     # clock display
+    if DO_PLOTS
                     clock_plt.text =
         "                         t = " *   string(Int(floor(t[]))) *
         "s"
 
     # Node update causes redraw
                     t[] = dt * (i + 1)
-
+    end # DO_PLOTS
 
         # MAP predator location            
                     iMAP = findmax(prey.observer.posterior)[2]
 
 # save data
-                    CSV.write(FileName* ".csv",
+                    CSV.write(FileName * ".csv",
     DataFrame(hcat(prey.observer.range[i], predator.x[], predator.y[], iMAP[1], iMAP[2],
                    prey.observer.PosteriorEntropy[i], prey.observer.KLD[i], Nreceptors, 
                    n_likelihood_particles, n_posterior_particles,  priorDensity)),
@@ -500,7 +522,6 @@ for rep = 1:nReps
                 predator.x[] = (mat_radius + 0.5 * predator_radius) * cos(θ)
                 predator.y[] = (mat_radius + 0.5 * predator_radius) * sin(θ)
                 t[] = 0
-
             end # n_prior_particles
         end # n_likelihood_particles
     end # priorDensity
@@ -516,3 +537,5 @@ end # rep
 
 
 
+
+   

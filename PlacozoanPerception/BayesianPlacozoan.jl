@@ -716,9 +716,13 @@ function bayesParticleUpdate(p::Placozoan)
 
     p.observer.Bparticle[1:p.observer.nBparticles[],:] = newBelief[:,:]
 
-    # draw 100S% of Bparticles from prior
-    S = 0.002
-    nscatter = Int(round(S*p.observer.nBparticles[]))
+    # mix the posterior with the initial prior
+    # this prevents the particle filter from converging fully,
+    # maintains "attention" over all possible locations of predator
+    # even when the posterior indicates low uncertainty about predator location.
+    # (This is a known problem with particle filters - they assign zero probability 
+    # density to locations where the true density is nonzero)
+    nscatter = Int(round(p.observer.priorDensity[]*p.observer.nBparticles[]))
     # select particles from posterior to scatter into prior
     iscatter = rand(1:p.observer.nBparticles[], nscatter )
     p.observer.Bparticle[iscatter, :] = samplePrior(nscatter, p)

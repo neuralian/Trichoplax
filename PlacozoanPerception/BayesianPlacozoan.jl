@@ -846,6 +846,7 @@ function KLDBits_rev(I::Observer)
    return KLD
 end
 
+
 function KLDBits(I::Observer)
    KLD = 0.0
    Q = zeros(I.nBparticles[])

@@ -290,8 +290,10 @@ for rep = 1:nReps
                     Likely_plt = plot!( middle_panel,
                         OffsetArrays.no_offset_view(prey.observer.likelihood), colorrange = (0.0, 1.0))
 
-                    Posty_plt =  plot!(right_panel, 
-                        OffsetArrays.no_offset_view(prey.observer.posterior), colorrange = (0.0, 1.0e-4))
+                    Posty_plt =  surface!(right_panel, 1:WorldSize, 1:WorldSize,
+                        OffsetArrays.no_offset_view(prey.observer.posterior), colorrange = (0.0, 1.0e-5))
+                    PostContour_plt = contour!(right_panel, 1:WorldSize, 1:WorldSize,
+                        lift(u->u, Posty_plt[3]), levels = [1.0e-6, 1.0e-4, 1.0e-3], color = :white)
 
                     predator_right_plt = poly!(
         right_panel,
@@ -475,7 +477,7 @@ for rep = 1:nReps
                         bayesArrayUpdate(prey)
                         Likely_plt[1] =
             mask .* OffsetArrays.no_offset_view(prey.observer.likelihood)
-                        Posty_plt[1] = mask .* OffsetArrays.no_offset_view(prey.observer.posterior)
+                        Posty_plt[3] = mask .* OffsetArrays.no_offset_view(prey.observer.posterior)
                     end
 
     # record posterior entropy (& display during simulation)

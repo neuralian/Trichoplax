@@ -666,6 +666,21 @@ function bayesParticleUpdate(p::Placozoan)
   sδ = 9.0  # scatter maxRange
   nCollision = 0
   collision = fill(0, p.observer.nBparticles[])
+
+    # mix the posterior with the initial prior
+    # this prevents the particle filter from converging fully,
+    # maintains "attention" over all possible locations of predator
+    # even when the posterior indicates low uncertainty about predator location.
+    # (This is a known problem with particle filters - they assign zero probability 
+    # density to locations where the true density is nonzero)
+    nscatter = Int(round(p.observer.priorDensity[]*p.observer.nBparticles[]))
+    # select particles from posterior to scatter into prior
+    iscatter = rand(1:p.observer.nBparticles[], nscatter )
+    p.observer.Bparticle[iscatter, :] = samplePrior(nscatter, p)
+    p.observer.Bparticle_step[iscatter,:] .= 0.0
+
+
+
   # list Bparticles that have collided with Lparticles
 
      for j = 1:p.observer.nBparticles[]  # check for collisions with belief
@@ -716,17 +731,17 @@ function bayesParticleUpdate(p::Placozoan)
 
     p.observer.Bparticle[1:p.observer.nBparticles[],:] = newBelief[:,:]
 
-    # mix the posterior with the initial prior
-    # this prevents the particle filter from converging fully,
-    # maintains "attention" over all possible locations of predator
-    # even when the posterior indicates low uncertainty about predator location.
-    # (This is a known problem with particle filters - they assign zero probability 
-    # density to locations where the true density is nonzero)
-    nscatter = Int(round(p.observer.priorDensity[]*p.observer.nBparticles[]))
-    # select particles from posterior to scatter into prior
-    iscatter = rand(1:p.observer.nBparticles[], nscatter )
-    p.observer.Bparticle[iscatter, :] = samplePrior(nscatter, p)
-    p.observer.Bparticle_step[iscatter,:] .= 0.0
+    # # mix the posterior with the initial prior
+    # # this prevents the particle filter from converging fully,
+    # # maintains "attention" over all possible locations of predator
+    # # even when the posterior indicates low uncertainty about predator location.
+    # # (This is a known problem with particle filters - they assign zero probability 
+    # # density to locations where the true density is nonzero)
+    # nscatter = Int(round(p.observer.priorDensity[]*p.observer.nBparticles[]))
+    # # select particles from posterior to scatter into prior
+    # iscatter = rand(1:p.observer.nBparticles[], nscatter )
+    # p.observer.Bparticle[iscatter, :] = samplePrior(nscatter, p)
+    # p.observer.Bparticle_step[iscatter,:] .= 0.0
 
   end
 
@@ -798,6 +813,29 @@ function bayesArrayUpdate(p::Placozoan)
 
 
 # Utility functions
+function particleStats(p::Placozoan)
+
+
+xmean = 0.0
+ymean = 0.0
+d0 = p.observer.maxRange^2  # distance to closest particle
+for i in 1:p.observer.nBparticles[]
+  xmean += p.observer.Bparticle[i,1]
+  ymean += p.observer.Bparticle[i,2]  
+  d2 =    p.observer.Bparticle[i,1]^2 + p.observer.Bparticle[i,2]^2
+  if d2 < d0
+    d0 = d2
+  end
+end
+
+xmean /= p.observer.nBparticles[]
+ymean /= p.observer.nBparticles[]
+d0 = sqrt(d0)
+
+println( xmean, ", ", ymean, ", ", d0)
+
+end
+
 
 # plot field and receptor open state probability as a function of distance
 # use CairoMakie to allow the plot to be exported to .svg or .pdf file

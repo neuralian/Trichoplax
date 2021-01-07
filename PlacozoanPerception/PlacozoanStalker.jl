@@ -28,7 +28,7 @@ end
 
 # simulation parameters
 nReps = 64
-nFrames = 180       # number of animation frames
+nFrames = 200       # number of animation frames
 mat_radius = 400
 approach_Δ = 16.0         # predator closest approach distance
 dt = 1.00
@@ -163,11 +163,11 @@ for rep = 1:nReps
                         scene, layout = layoutscene(resolution=(3 * .75 * WorldSize, .75 * WorldSize + 40))
                         shim = layout[1, 1] = LAxis(scene)
                         left_panel = layout[1, 2] = 
-                            LAxis( scene,  title="Particles: " * string(n_likelihood_particles) * ":" *
+                            LAxis( scene,  title="Placozoan: " * string(n_likelihood_particles) * ":" *
                                 string(n_posterior_particles) * ":" * string(priorDensity),
                                 backgroundcolor=colour_background )
                         middle_panel = layout[1, 3] = LAxis(scene, title="Likelihood")
-                        right_panel = layout[1, 4] = LAxis(scene, title="Posterior")
+                        right_panel = layout[1, 4] = LAxis(scene, title="Bayesian Observer")
                         colsize!(layout, 1, Relative(0.04))
                         colsize!(layout, 2, Relative(0.32))
                         colsize!(layout, 3, Relative(0.32))
@@ -183,336 +183,267 @@ for rep = 1:nReps
                     end
                 
                 
-                # mat is a dark green disc in left panel (always present)
+                    # mat is a dark green disc in left panel (always present)
                     mat_plt = poly!(left_panel,
-                decompose(Point2f0, Circle(Point2f0(0., 0.), mat_radius)),
-                color=colour_mat, strokewidth=0, strokecolor=:black)
-                display(scene)
+                        decompose(Point2f0, Circle(Point2f0(0., 0.), mat_radius)),
+                        color=colour_mat, strokewidth=0, strokecolor=:black)
+                    display(scene)
                 end # DO_PLOTS
                 
                 if PLOT_ARRAYS
-                    mat_middle_plt = poly!(
-                middle_panel,
-                decompose(
-                Point2f0,
-                Circle(Point2f0(mat_radius, mat_radius), mat_radius),
-                ),
-                color=RGBA(0.0, 0.0, 0.0, 0.0),
-                strokewidth=0.5,
-                strokecolor=RGB(0.75, 0.75, 0.75),
-                )
-                    mat_right_plt = poly!(
-                right_panel,
-                decompose(
-                Point2f0,
-                Circle(Point2f0(mat_radius, mat_radius), mat_radius),
-                ),
-                color=RGBA(0.0, 0.0, 0.0, 0.0),
-                strokewidth=0.5,
-                strokecolor=RGB(0.75, 0.75, 0.75),
-                )
-                end
+                    mat_middle_plt = poly!(middle_panel,
+                        decompose(Point2f0, Circle(Point2f0(mat_radius, mat_radius), mat_radius)),
+                        color=RGBA(0.0, 0.0, 0.0, 0.0),
+                        strokewidth=0.5,
+                        strokecolor=RGB(0.75, 0.75, 0.75),
+                    )
+
+                    mat_right_plt = poly!(right_panel,
+                        decompose(Point2f0, Circle(Point2f0(mat_radius, mat_radius), mat_radius)),
+                        color=RGBA(0.0, 0.0, 0.0, 0.0),
+                        strokewidth=0.5,
+                        strokecolor=RGB(0.75, 0.75, 0.75),
+                    )
+                end  # PLOT_ARRAYS
                 
                 if DO_PLOTS
-                # display nominal time on background
-                clock_plt = LText(scene,
-                "                         t = 0.0s",
-                color=:white, textsize=18, halign=:left)
+                    # display nominal time on background
+                    clock_plt = LText(scene, "                         t = 0.0s",
+                        color=:white, textsize=18, halign=:left)
 
-
-# predator drawn using lift(..., node)
-# (predatorLocation does not depend explicitly on t, but this causes
-#  the plot to be updated when the node t changes)
+                # predator drawn using lift(..., node)
+                # (predatorLocation does not depend explicitly on t, but this causes
+                #  the plot to be updated when the node t changes)
                 predator_plt = poly!(left_panel,
-      lift(s -> decompose(Point2f0, Circle(Point2f0(predator.x[], predator.y[]),
-      predator.radius)), t),
-      color=predator.color, strokecolor=predator.edgecolor,
-      strokewidth=.5)
+                    lift(s -> decompose(Point2f0, Circle(Point2f0(predator.x[], predator.y[]),
+                        predator.radius)), t),
+                    color=predator.color, strokecolor=predator.edgecolor, strokewidth=.5)
 
                 end # DO_PLOTS
 
 
                 if PLOT_EXT_PARTICLES
 
-    # plot likelihood particles (samples from likelihood)
-                    Lparticle_plt = scatter!(
-        left_panel,
-        prey.observer.Lparticle[1:prey.observer.nLparticles[], 1],
-        prey.observer.Lparticle[1:prey.observer.nLparticles[], 2],
-        color=:yellow,
-        markersize=size_likelihood,
-        strokewidth=0.1,
-    )
+                    # plot likelihood particles (samples from likelihood)
+                    Lparticle_plt = scatter!(left_panel,
+                        prey.observer.Lparticle[1:prey.observer.nLparticles[], 1],
+                        prey.observer.Lparticle[1:prey.observer.nLparticles[], 2],
+                        color=:yellow, markersize=size_likelihood, strokewidth=0.1)
 
-    # plot posterior particles
-                    Bparticle_plt = scatter!(
-        left_panel,
-        prey.observer.Bparticle[1:prey.observer.nBparticles[], 1],
-        prey.observer.Bparticle[1:prey.observer.nBparticles[], 2],
-        color=colour_posterior,
-        markersize=size_posterior,
-        strokewidth=0.1,
-    )
+                    # plot posterior particles
+                    Bparticle_plt = scatter!(left_panel,
+                        prey.observer.Bparticle[1:prey.observer.nBparticles[], 1],
+                        prey.observer.Bparticle[1:prey.observer.nBparticles[], 2],
+                        color=colour_posterior, markersize=size_posterior, strokewidth=0.1)
 
                 end # plot external particles
 
 
                 if PLOT_INT_PARTICLES
 
-    # plot projection of likelihood particles into prey margin
-    # nb this is a dummy plot
-    # the correct particle locations are inserted before first plot
-                    observation_plt = scatter!(
-        left_panel,
-        zeros(prey.observer.nLparticles[]),
-        zeros(prey.observer.nLparticles[]),
-        color=:yellow,
-        strokewidth=0,
-        markersize=size_observation,
-    )
+                # plot projection of likelihood particles into prey margin
+                # nb this is a dummy plot
+                # the correct particle locations are inserted before first plot
+                observation_plt = scatter!(left_panel,
+                    zeros(prey.observer.nLparticles[]),
+                    zeros(prey.observer.nLparticles[]),
+                    color=:yellow, strokewidth=0, markersize=size_observation )
 
+                # plot projection of posterior particles into prey margin
+                # nb this is a dummy plot
+                # the correct particle locations are inserted before first plot
+                belief_plt = scatter!(left_panel,
+                    zeros(prey.observer.nBparticles[]),
+                    zeros(prey.observer.nBparticles[]),
+                    color=colour_posterior, strokewidth=0, markersize=size_belief)
 
-    # plot projection of posterior particles into prey margin
-    # nb this is a dummy plot
-    # the correct particle locations are inserted before first plot
-                    belief_plt = scatter!(
-        left_panel,
-        zeros(prey.observer.nBparticles[]),
-        zeros(prey.observer.nBparticles[]),
-        color=colour_posterior,
-        strokewidth=0,
-        markersize=size_belief,
-    )
                 end  # plot internal particles
 
                 if PLOT_ARRAYS
 
                     Likely_plt = plot!( middle_panel,
-                        OffsetArrays.no_offset_view(prey.observer.likelihood), colorrange = (0.0, 1.0))
+                        OffsetArrays.no_offset_view(prey.observer.likelihood), colorrange = (0.0, 1.0), colormap = :haline)
 
                     Posty_plt =  surface!(right_panel, 1:WorldSize, 1:WorldSize,
-                        OffsetArrays.no_offset_view(prey.observer.posterior), colorrange = (0.0, 1.0e-5))
+                        OffsetArrays.no_offset_view(prey.observer.posterior),  colormap = :plasma)
+
                     PostContour_plt = contour!(right_panel, 1:WorldSize, 1:WorldSize,
-                        lift(u->u, Posty_plt[3]), levels = [1.0e-6, 1.0e-4, 1.0e-3], color = :white)
+                        lift(u->u, Posty_plt[3]), levels = [1.0e-6, 1.0e-5, 1.0e-4], color = :white)
 
-                    predator_right_plt = poly!(
-        right_panel,
-        lift(
-            s -> decompose(
-                Point2f0,
-                Circle(
-                    Point2f0(
-                        mat_radius + predator.x[],
-                        mat_radius + predator.y[],
-                    ),
-                    predator.radius,
-                ),
-            ),
-            t,
-        ),
-        color=RGBA(0.0, 0.0, 0.0, 0.0),
-        strokecolor=predator.edgecolor,
-        strokewidth=1.0,
-    )
-                    predator_middle_plt = poly!(
-        middle_panel,
-        lift(
-            s -> decompose(
-                Point2f0,
-                Circle(
-                    Point2f0(
-                        mat_radius + predator.x[],
-                        mat_radius + predator.y[],
-                    ),
-                    predator.radius,
-                ),
-            ),
-            t,
-        ),
-        color=RGBA(0.0, 0.0, 0.0, 0.0),
-        strokecolor=predator.edgecolor,
-        strokewidth=1.0,
-    )
+                    predator_right_plt = poly!(right_panel,
+                        lift(s -> decompose(Point2f0, Circle(Point2f0(
+                            mat_radius + predator.x[], mat_radius + predator.y[]),
+                            predator.radius)), t ),
+                            color=RGBA(0.0, 0.0, 0.0, 0.0),
+                            strokecolor=predator.edgecolor,
+                            strokewidth=1.0,
+                        )
 
-                    prey_Lcopy_plt = poly!(
-        middle_panel,
-        decompose(
-            Point2f0,
-            Circle(Point2f0(mat_radius, mat_radius), prey.radius),
-        ),
-        color=prey.color,
-        strokewidth=1,
-        strokecolor=RGB(0.5, 0.75, 0.85),
-    )
-                    prey_Pcopy_plt = poly!(
-        right_panel,
-        decompose(
-            Point2f0,
-            Circle(Point2f0(mat_radius, mat_radius), prey.radius),
-        ),
-        color=prey.color,
-        strokewidth=1,
-        strokecolor=RGB(0.5, 0.75, 0.85),
-    )
-                end
+                    predator_middle_plt = poly!( middle_panel,
+                        lift(s -> decompose(Point2f0,
+                            Circle(Point2f0(mat_radius + predator.x[],mat_radius + predator.y[]),
+                            predator.radius) ), t),
+                            color=RGBA(0.0, 0.0, 0.0, 0.0),
+                            strokecolor=predator.edgecolor,
+                            strokewidth=1.0    
+                        )
+
+                    prey_Lcopy_plt = poly!(middle_panel,
+                        decompose(Point2f0, Circle(Point2f0(mat_radius, mat_radius), prey.radius)),
+                        color=prey.color, strokewidth=1, strokecolor=RGB(0.5, 0.75, 0.85))
+
+                    prey_Pcopy_plt = poly!(right_panel,
+                        decompose(Point2f0, Circle(Point2f0(mat_radius, mat_radius), prey.radius)),
+                        color=prey.color, strokewidth=1, strokecolor=RGB(0.5, 0.75, 0.85) )
+
+                end  # plot arrays
 
                 if DO_PLOTS
 
-# Prey
-                prey_plt = poly!(left_panel,
-       decompose(Point2f0, Circle(Point2f0(0., 0.), prey.radius)),
-       color=prey.color, strokewidth=1, strokecolor=RGB(.5, .75, .85))
-                preyGut_plt = poly!(left_panel,
-      decompose(Point2f0, Circle(Point2f0(0., 0.), prey.gutradius)),
-      color=prey.gutcolor, strokewidth=0.0)
+                    # Prey
+                    prey_plt = poly!(left_panel,
+                        decompose(Point2f0, Circle(Point2f0(0., 0.), prey.radius)),
+                        color=prey.color, strokewidth=1, strokecolor=RGB(.5, .75, .85))
+
+                    preyGut_plt = poly!(left_panel,
+                        decompose(Point2f0, Circle(Point2f0(0., 0.), prey.gutradius)),
+                        color=prey.gutcolor, strokewidth=0.0)
 
 
-                receptor_plt = scatter!(left_panel, prey.receptor.x, prey.receptor.y ,
-            markersize=prey.receptor.size,
-            color=[prey.receptor.openColor for i in 1:prey.receptor.N],
-            strokecolor=:black, strokewidth=0.25)
+                    receptor_plt = scatter!(left_panel, prey.receptor.x, prey.receptor.y ,
+                        markersize=prey.receptor.size,
+                        color=[prey.receptor.openColor for i in 1:prey.receptor.N],
+                        strokecolor=:black, strokewidth=0.25)
 
-                crystal_plt = scatter!(left_panel, prey.photoreceptor.x, prey.photoreceptor.y,
-            markersize=prey.photoreceptor.size, marker=:diamond,
-            color=[prey.photoreceptor.lightColor for i in 1:prey.photoreceptor.N],
-            strokecolor=:black, strokewidth=0.25)
-
-
-# reset axis limits (have been auto-adjusted by MakieLayout)
-                xlims!(left_panel, -mat_radius, mat_radius)
-                ylims!(left_panel, -mat_radius, mat_radius)
-                if PLOT_ARRAYS
-                    xlims!(middle_panel, 0, WorldSize)
-                    ylims!(middle_panel, 0, WorldSize)
-                    xlims!(right_panel, 0, WorldSize)
-                    ylims!(right_panel, 0, WorldSize)
-                end
-
-            end #DO_PLOTS
-
-                # println("Hello5")
+                    crystal_plt = scatter!(left_panel, prey.photoreceptor.x, prey.photoreceptor.y,
+                        markersize=prey.photoreceptor.size, marker=:diamond,
+                            color=[prey.photoreceptor.lightColor for i in 1:prey.photoreceptor.N],
+                            strokecolor=:black, strokewidth=0.25)
 
 
-               # initializeObserver(prey, n_likelihood_particles, n_posterior_particles, priorDensity)
+                    # reset axis limits (have been auto-adjusted by MakieLayout)
+                    xlims!(left_panel, -mat_radius, mat_radius)
+                    ylims!(left_panel, -mat_radius, mat_radius)
+                    if PLOT_ARRAYS
+                        xlims!(middle_panel, 0, WorldSize)
+                        ylims!(middle_panel, 0, WorldSize)
+                        xlims!(right_panel, 0, WorldSize)
+                        ylims!(right_panel, 0, WorldSize)
+                    end
 
-                # println("Hello6")
-                    # FileName = "PlacozoanStalker" * string(Int(ELECTRORECEPTION)) * string(Int(PHOTORECEPTION)) * "_" *
-                    # string(Nreceptors) * "_" * string(n_likelihood_particles) * "_" * string(n_posterior_particles) *
-                    # "_" * string(priorDensity) * "_" * string(rep)
+                end #DO_PLOTS
 
                 videoName = FileName * "_" * string(rep) * "_" * string(n_likelihood_particles) * "_" *
                            string(n_posterior_particles) * "_" * string(priorDensity) * ".mp4"
 
-
-            # VIDEO RECORDING
-            # comment out ONE of the following 2 lines to (not) generate video file
-             record(scene, videoName , framerate=12, 1:nFrames) do i     # generate video file
+                # VIDEO RECORDING
+                # comment out ONE of the following 2 lines to (not) generate video file
+                record(scene, videoName , framerate=12, 1:nFrames) do i     # generate video file
                # for i in 1:nFrames                                      # just compute
 
 
-    # predator random walk to within Δ of prey
+                    # predator random walk to within Δ of prey
                     stalk(predator, prey, approach_Δ)
 
-    # electroreception
+                    # electroreception
                     if ELECTRORECEPTION
                         electroreception(prey, predator)
 
                         if DO_PLOTS
-        # set color of each receptor, indicating open or closed state
-                        receptorColor = [prey.receptor.closedColor for j = 1:prey.receptor.N]
-                        receptorColor[findall(x -> x == 1, prey.receptor.state)] .=
-            prey.receptor.openColor
-                        receptor_plt.color[] = receptorColor
+                            # set color of each receptor, indicating open or closed state
+                            receptorColor = [prey.receptor.closedColor for j = 1:prey.receptor.N]
+                            receptorColor[findall(x -> x == 1, prey.receptor.state)] .= prey.receptor.openColor
+                            receptor_plt.color[] = receptorColor
                         end # DO_PLOTS
-                    end
+                    end  # electroreception
 
 
-    # photoreception
+                    # photoreception
                     if PHOTORECEPTION
                         photoreception(prey, predator)
-        # set color of each receptor, indicating open or closed state
-                        crystalColor = [prey.photoreceptor.lightColor  for j in 1:prey.photoreceptor.N]
-                        crystalColor[findall(x -> x == 1, prey.photoreceptor.state)] .=
-            prey.photoreceptor.darkColor
-                        crystal_plt.color[] = crystalColor
-                    end
+                        if DO_PLOTS
+                            # set color of each receptor, indicating open or closed state
+                            crystalColor = [prey.photoreceptor.lightColor  for j in 1:prey.photoreceptor.N]
+                            crystalColor[findall(x -> x == 1, prey.photoreceptor.state)] .= prey.photoreceptor.darkColor
+                            crystal_plt.color[] = crystalColor
+                        end # DO_PLOTS
+                    end # photoreception
 
 
-    # inference
-    # ELECTRORECEPTION & PHOTORECEPTION are bools 
-    #   specifying whether the respective receptor states are included in the inference
-    # print("7")
+                    # inference
+                    # ELECTRORECEPTION & PHOTORECEPTION are bools 
+                    #   specifying whether the respective receptor states are included in the inference
+
                     likelihood(prey, ELECTRORECEPTION, PHOTORECEPTION)  
-                    # print(" ", maximum(prey.observer.likelihood), " ", maximum(prey.receptor.pOpen[1]))
-                    # print("8")
+
                     sample_likelihood(prey)     # random sample from likelihood
-                    # print("9")
+    
                     bayesParticleUpdate(prey)   # Bayesian particle filter
+
+
                     (observation, belief) = reflect(prey) # reflect samples into margin
-                    # print("A")
+    
 
                     if PLOT_EXT_PARTICLES
-        # update likelihood particle plot
+                        # update likelihood particle plot
                         Lparticle_plt[1] = prey.observer.Lparticle[1:prey.observer.nLparticles[], 1]
                         Lparticle_plt[2] = prey.observer.Lparticle[1:prey.observer.nLparticles[], 2]
 
-        # update posterior particle plot
+                        # update posterior particle plot
                         Bparticle_plt[1] = prey.observer.Bparticle[1:prey.observer.nBparticles[], 1]
                         Bparticle_plt[2] = prey.observer.Bparticle[1:prey.observer.nBparticles[], 2]
-                    end
+                    end # PLOT_EXT_PARTICLES
 
                     if PLOT_INT_PARTICLES
 
-        # update observation particle plot
+                        # update observation particle plot
                         observation_plt[1] = observation[1:prey.observer.nLparticles[], 1]
                         observation_plt[2] = observation[1:prey.observer.nLparticles[], 2]
 
-        # update observation particle plot
+                        # update observation particle plot
                         belief_plt[1] = belief[1:prey.observer.nBparticles[], 1]
                         belief_plt[2] = belief[1:prey.observer.nBparticles[], 2]
 
-                    end
+                    end # PLOT_INT_PARTICLES
 
                     if PLOT_ARRAYS
+                        
                         bayesArrayUpdate(prey)
-                        Likely_plt[1] =
-            mask .* OffsetArrays.no_offset_view(prey.observer.likelihood)
+                        Likely_plt[1] = mask .* OffsetArrays.no_offset_view(prey.observer.likelihood)
                         Posty_plt[3] = mask .* OffsetArrays.no_offset_view(prey.observer.posterior)
-                    end
+                    end # PLOT_ARRAYS
 
-    # record posterior entropy (& display during simulation)
+                    # record posterior entropy (& display during simulation)
                     prey.observer.PosteriorEntropy[i] = entropyBits(prey.observer)
                     prey.observer.KLD[i] = KLDBits(prey.observer)
                     recordRange(prey.observer, predator, i)
                     recordKLDBits(prey.observer, i)
-    # println("t=", i, ", ", prey.observer.PosteriorEntropy[1] -
-    #         prey.observer.PosteriorEntropy[i], ", ", prey.observer.KLD[i])
 
+                    # clock display
+                    if DO_PLOTS
+                        clock_plt.text =  "                         t = " *   
+                                        string(Int(floor(t[]))) *  "s"
 
-    # clock display
-    if DO_PLOTS
-                    clock_plt.text =
-        "                         t = " *   string(Int(floor(t[]))) *
-        "s"
-
-    # Node update causes redraw
+                    # Node update causes redraw
                     t[] = dt * (i + 1)
-    end # DO_PLOTS
 
-        # MAP predator location            
+                    end # DO_PLOTS
+
+                    # MAP predator location            
                     iMAP = findmax(prey.observer.posterior)[2]
 
-# save data
+                    # save data
                     CSV.write(FileName * ".csv",
-    DataFrame(hcat(prey.observer.range[i], predator.x[], predator.y[], iMAP[1], iMAP[2],
-                   prey.observer.PosteriorEntropy[i], prey.observer.KLD[i], Nreceptors, 
-                   n_likelihood_particles, n_posterior_particles,  priorDensity)),
-                    header=false, append=true)
+                        DataFrame(hcat(prey.observer.range[i], predator.x[], predator.y[], iMAP[1], iMAP[2],
+                            prey.observer.PosteriorEntropy[i], prey.observer.KLD[i], Nreceptors, 
+                            n_likelihood_particles, n_posterior_particles,  priorDensity)),
+                            header=false, append=true)
 
-                    print(".")
-
+                    # print(".")
+                    particleStats(prey)
 
                 end # frame
+
                 println()
 
                 NTRIALS[] = NTRIALS[] + 1
@@ -524,9 +455,13 @@ for rep = 1:nReps
                 predator.x[] = (mat_radius + 0.5 * predator_radius) * cos(θ)
                 predator.y[] = (mat_radius + 0.5 * predator_radius) * sin(θ)
                 t[] = 0
+            
             end # n_prior_particles
+        
         end # n_likelihood_particles
+    
     end # priorDensity
+
 end # rep
 
 

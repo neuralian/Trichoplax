@@ -29,7 +29,7 @@ end
 # simulation parameters
 nReps = 1
 nFrames = 200       # number of animation frames
-burn_time = 8         # compute initial prior by burning in with predator at "infinity"
+burn_time = 4         # compute initial prior by burning in with predator at "infinity"
 mat_radius = 400
 approach_Δ = 16.0         # predator closest approach distance
 dt = 1.00
@@ -52,7 +52,7 @@ prey_fieldrange = 0   # no field
 # predator parameters
 predator_radius = 150
 predator_margin = 0
-predator_speed = 1.0
+predator_speed = 1.2
 predator_fieldrange = mat_radius
 
 
@@ -160,9 +160,9 @@ radialSmooth(dummy_prey.observer.prior, prey_radius:mat_radius)
 tick()
 
 for rep = 1:nReps
-    for n_likelihood_particles = [256 1024  4096 16384 ]
+    for n_likelihood_particles = [512 1024  4096 16384 ]
         for n_posterior_particles = n_likelihood_particles .÷ [1 2 4]
-            for priorDensity = [1/8 1/16 1/64 1/256]
+            for priorDensity = [.001 .01 .1]
 
                 # construct placozoans
                 global prey = Placozoan(prey_radius, prey_margin, prey_fieldrange,
@@ -177,11 +177,11 @@ for rep = 1:nReps
                 # println(maximum(prey.receptor.pOpen[1]), " ", maximum(dummy_prey.receptor.pOpen[1]))
                 # println("____")
                 # if NTRIALS[]==0
-                initialize_particles(prey) # draw initial sample from prior
                # initialize_prior(prey)     # initialize numerical Bayesian prior
                prey.observer.prior[:,:] = dummy_prey.observer.prior[:,:]
                prey.observer.posterior[:,:] = prey.observer.prior[:,:]
-                # end
+               initialize_particles(prey) # draw initial sample from prior
+               # end
                 
                 # initializeObserver(prey, n_likelihood_particles, n_posterior_particles, priorDensity)
 
@@ -319,7 +319,7 @@ for rep = 1:nReps
                         OffsetArrays.no_offset_view(prey.observer.posterior),  colormap = :plasma)
 
                     PostContour_plt = contour!(right_panel, 1:WorldSize, 1:WorldSize,
-                        lift(u->u, Posty_plt[3]), levels = [1.0e-6, 1.0e-5, 1.0e-4], color = RGB(.25,.25,.25))
+                        lift(u->u, Posty_plt[3]), levels = [1.0e-6, 1.0e-5, 1.0e-4], color = RGB(.35,.35,.35))
 
                     predator_right_plt = poly!(right_panel,
                         lift(s -> decompose(Point2f0, Circle(Point2f0(

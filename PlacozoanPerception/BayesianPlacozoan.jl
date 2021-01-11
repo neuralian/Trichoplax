@@ -718,16 +718,30 @@ function bayesParticleUpdate(p::Placozoan)
 end
 
 
-# draw n samples from prior
-# uniform on mat external to prey (annulus)
+# draw n samples from prior by rejection
 function samplePrior(n, p::Placozoan)
 
-  # uniform angles
-  ϕ = 2*π*rand(n)
-  # uniform across mat disc
-  r =  p.radius .+  (p.observer.maxRange - p.radius).*rand(n)
+  sample = zeros(n,2)
+  count = 0
+  top = maximum(p.observer.prior)
 
-  return (hcat(r.*cos.(ϕ), r.*sin.(ϕ)))
+  while count < n
+    
+    # pick a random point on mat external to the placozoan
+    r = p.radius +  (p.observer.maxRange - p.radius)*rand()
+    ϕ = 2*π*rand()
+    x = r*cos(ϕ)
+    y = r*sin(ϕ)
+   
+    # accept candidate with probability proportional to prior at that point
+    if top*rand() < p.observer.prior[Int(round(x)), Int(round(y))]
+      count = count + 1
+      sample[count,:] = [x,y]
+    end
+  
+  end
+
+  return (sample)
 
 end
 
@@ -785,6 +799,8 @@ function bayesArrayUpdate(p::Placozoan)
 
 # Utility functions
 
+# make offset array entries radially symmetric around (0,0)
+# i.e. make values depend only on distance from origin
 function radialSmooth(X::OffsetArray, r::UnitRange{Int64})
 
   d = abs(X.offsets[1])  # array index offset 

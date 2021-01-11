@@ -574,8 +574,6 @@ end
 end
 
 
-
-
 # rotate placozoan location through angle dψ around origin
 function orbit(dψ::Float64, p::Placozoan)
   p.x[] =  cos(dψ)*p.x[] + sin(dψ)*p.y[]
@@ -605,27 +603,9 @@ function stalk(predator::Placozoan, prey::Placozoan, Δ::Float64)
   # update predator coordinates
   predator.x[] += predator.step[1]
   predator.y[] += predator.step[2]
-  #orbit(π/w.nFrames, predator)
 
-  # d2 = sqrt.(prey.observer.Pparticle[:,1].^2 + prey.observer.Pparticle[:,2].^2)
-  # v2 = sign.( prey.radius  + Δ .- d2)
-  # prey.observer.Pparticle_step .= 0.8*prey.observer.Pparticle_step +
-  #               0.2*randn(prey.observer.nPparticles,2).*predator.speed[] .+
-  #             0.1*v2.*predator.speed[].*prey.observer.Pparticle ./ d2
-  # prey.observer.Pparticle .=  prey.observer.Pparticle +
-  #                             prey.observer.Pparticle_step
-  #orbit(π/w.nFrames, w.Pparticle)
-
-
-  
   d3 = sqrt.(prey.observer.Bparticle[1:prey.observer.nBparticles[],1].^2 + prey.observer.Bparticle[1:prey.observer.nBparticles[],2].^2)
-  # for i in 1:w.nBparticles
-  #    if d3[i] > w.radius
-  #     w.Bparticle[i,:] ./ d3[i]
-  #     d3[i] = w.radius
-  #     w.Bparticle_step[i,:] = [0.0, 0.0]
-  #   end
-  # end
+
   v3 = sign.( prey.radius  + Δ .- d3)
   prey.observer.Bparticle_step[1:prey.observer.nBparticles[],:].= 0.8*prey.observer.Bparticle_step[1:prey.observer.nBparticles[],:] +
           0.2*randn(prey.observer.nBparticles[],2).*predator.speed[]
@@ -731,18 +711,6 @@ function bayesParticleUpdate(p::Placozoan)
 
     p.observer.Bparticle[1:p.observer.nBparticles[],:] = newBelief[:,:]
 
-    # # mix the posterior with the initial prior
-    # # this prevents the particle filter from converging fully,
-    # # maintains "attention" over all possible locations of predator
-    # # even when the posterior indicates low uncertainty about predator location.
-    # # (This is a known problem with particle filters - they assign zero probability 
-    # # density to locations where the true density is nonzero)
-    # nscatter = Int(round(p.observer.priorDensity[]*p.observer.nBparticles[]))
-    # # select particles from posterior to scatter into prior
-    # iscatter = rand(1:p.observer.nBparticles[], nscatter )
-    # p.observer.Bparticle[iscatter, :] = samplePrior(nscatter, p)
-    # p.observer.Bparticle_step[iscatter,:] .= 0.0
-
   end
 
 end
@@ -779,22 +747,6 @@ function initialize_prior(p::Placozoan)
    p.observer.posterior[:,:] = p.observer.prior[:,:]  
 end
 
-#= function initialize_prior_array_Gaussian(p::Placozoan)
-
-  Gdist = Normal(p.observer.priormean, p.observer.priorsd)
-
-  priorsum = 0.0
-  for i = -p.observer.maxRange:p.observer.maxRange
-    for j = -p.observer.maxRange:p.observer.maxRange
-      d = sqrt(i^2 + j^2)
-      p.observer.prior[i, j] = pdf(Gdist, sqrt(i^2 + j^2))
-      priorsum += p.observer.prior[i, j]
-    end
-  end
-   p.observer.posterior[:,:] = p.observer.prior[:,:] ./ priorsum
-   p.observer.prior[:,:] = 0.01*p.observer.posterior[:,:]  # because we add 1%
-end =#
-
 function bayesArrayUpdate(p::Placozoan)
 
   posteriorSum = 0.0
@@ -811,28 +763,38 @@ function bayesArrayUpdate(p::Placozoan)
 
  end
 
-
 # Utility functions
-function particleStats(p::Placozoan)
 
+# 1-sided quantiles of range and bearing error for posterior particles 
+function particleStats(p::Placozoan, predatorBearing)
 
-xmean = 0.0
-ymean = 0.0
-d0 = p.observer.maxRange^2  # distance to closest particle
-for i in 1:p.observer.nBparticles[]
-  xmean += p.observer.Bparticle[i,1]
-  ymean += p.observer.Bparticle[i,2]  
-  d2 =    p.observer.Bparticle[i,1]^2 + p.observer.Bparticle[i,2]^2
-  if d2 < d0
-    d0 = d2
+  # index active particles
+  N = p.observer.nBparticles[]
+
+  # sorted squared distance from edge of prey to posterior particles
+  D2 = sort(sum(p.observer.Bparticle[1:N,:].^2, dims=2), dims=1)
+  # quantiles of particle distance to predator, toward prey from 1/2 (median) to 1/128 
+  QD = [sqrt(D2[Int(round(N/q))]).-p.radius for q in  [2 4 20 100]]
+
+  # bearing error for each particle
+  θ = atan.(p.observer.Bparticle[1:N,2],p.observer.Bparticle[1:N,1]) .- predatorBearing
+
+  # unwrap
+  for i in 1:N
+    if θ[i] > π
+      θ[i] = θ[i] - 2π
+    elseif    θ[i] < -π
+      θ[i] = θ[i] + 2π
+    end
   end
-end
 
-xmean /= p.observer.nBparticles[]
-ymean /= p.observer.nBparticles[]
-d0 = sqrt(d0)
+  # quantiles of particle bearing angle from predator
+  θ = sort(θ)
+  Qθ = hcat( [θ[N - Int(round(N/q))]*180/π for q in  [100 20 4]], [θ[Int(round(N/q))]*180/π for q in  [2 4 20 100]])
 
-println( xmean, ", ", ymean, ", ", d0)
+  # return quantiles + minimum distance as tuple
+  #return (Q, sqrt(D2[1]).-p.radius )
+  return (QD, sqrt(D2[1]).-p.radius, Qθ, θ[1]*180/π, θ[end]*180/π )
 
 end
 

@@ -27,7 +27,7 @@ end
 
 
 # simulation parameters
-nReps = 64
+nReps = 1
 nFrames = 200       # number of animation frames
 mat_radius = 400
 approach_Δ = 16.0         # predator closest approach distance
@@ -93,8 +93,14 @@ FileName = "PlacozoanStalker" * string(Int(ELECTRORECEPTION)) * string(Int(PHOTO
 
 CSV.write(FileName * ".csv",
     DataFrame(Range=Float64[], predatorx=Float64[], predatory=Float64[], xMAP=Int64[], yMAP=Int64[], 
-                   PosteriorEntropy=Float64[], KLD=Float64[], Nreceptors=Int[], 
-                   n_likelihood_particles=Int64[], n_posterior_particles=Int64[],  priorDensity=Float64[]))
+                   PosteriorEntropy=Float64[], KLD=Float64[], 
+                   Dmed = Float64[], Dquart = Float64[], D5pc = Float64[], D1pc = Float64[],
+                   Dmin = Float64[], 
+                   Θ1pc = Float64[], Θ5pc = Float64[], Θquart = Float64[], Θmed = Float64[],
+                   Θquarta = Float64[], Θ5pca = Float64[], Θ1pca = Float64[],     
+                   Θmin = Float64[], Θmax = Float64[],           
+                   Nreceptors=Int[], n_likelihood_particles=Int64[], n_posterior_particles=Int64[],  
+                   priorDensity=Float64[]))
 
 # use dummy predator and prey to precompute fields and receptive fields
 dummy_prey = Placozoan(prey_radius, prey_margin, prey_fieldrange,
@@ -114,9 +120,9 @@ Vreceptor_RF(dummy_prey)
 
 
 for rep = 1:nReps
-    for n_likelihood_particles = [512]
-        for n_posterior_particles = n_likelihood_particles .÷ [1 2 4 8]
-            for priorDensity = [0.01 .05 .1 .25 ]
+    for n_likelihood_particles = [256 1024  4096 16384 ]
+        for n_posterior_particles = n_likelihood_particles .÷ [1 2 4]
+            for priorDensity = [1/8 1/16 1/64 1/256]
 
                 # construct placozoans
                 prey = Placozoan(prey_radius, prey_margin, prey_fieldrange,
@@ -432,15 +438,21 @@ for rep = 1:nReps
                     # MAP predator location            
                     iMAP = findmax(prey.observer.posterior)[2]
 
+                    (QD, Dmin, Qθ, θmin, θmax) = particleStats(prey, atan(predator.y[],predator.x[]) )
+                    # println(QD, ", ", Dmin, ", ", Qθ, ", ", θmin, ", ", θmax)
+                    # sleep(2)
+
                     # save data
                     CSV.write(FileName * ".csv",
                         DataFrame(hcat(prey.observer.range[i], predator.x[], predator.y[], iMAP[1], iMAP[2],
-                            prey.observer.PosteriorEntropy[i], prey.observer.KLD[i], Nreceptors, 
+                            prey.observer.PosteriorEntropy[i], prey.observer.KLD[i], 
+                            QD..., Dmin, Qθ..., θmin,  θmax, 
+                            Nreceptors, 
                             n_likelihood_particles, n_posterior_particles,  priorDensity)),
                             header=false, append=true)
 
                     # print(".")
-                    particleStats(prey)
+
 
                 end # frame
 

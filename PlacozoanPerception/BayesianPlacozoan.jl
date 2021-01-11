@@ -102,6 +102,7 @@ struct Observer
   Bparticle::Array{Float64,2}   # belief (posterior) particles
   Bparticle_step::Array{Float64,2}  # particle prediction steps
   priorDensity::Array{Float64,1}
+  burnIn::Float64
   # priormean::Float64
   # priorsd::Float64  # std. dev. of prior
   PosteriorEntropy::Array{Float64,1} # in bits, 1 per time step
@@ -122,6 +123,7 @@ function Observer(maxRange, nLparticles::Int64, nBparticles::Int64,
                zeros(max_nBparticles,2),
                zeros(max_nBparticles,2),
                [priorDensity],
+               100,
                zeros(nFrames), zeros(nFrames), zeros(nFrames))
 end
 
@@ -130,7 +132,7 @@ function Observer()
   z1 = zeros(1)
   z2 = zeros(1,1)
   zOff = OffsetArray(z2, 0:0, 0:0)
-  Observer(1, zOff, zOff, zOff, [1], [1], z2, z2, z2, [1.0], z1, z1, z1)
+  Observer(1, zOff, zOff, zOff, [1], [1], z2, z2, z2, [1.0],0, z1, z1, z1)
 end
 
 
@@ -747,6 +749,23 @@ function initialize_prior(p::Placozoan)
    p.observer.posterior[:,:] = p.observer.prior[:,:]  
 end
 
+
+
+# # compute initial prior as average of posteriors after burn-in
+# function burnPrior(prey::Placozoan, predator::Placozoan)
+
+#   # move predator to "infinity"
+#   x_pred = predator.x[]
+#   y_pred = predator.y[]
+#   predator
+
+
+
+
+# end
+
+
+
 function bayesArrayUpdate(p::Placozoan)
 
   posteriorSum = 0.0
@@ -757,9 +776,10 @@ function bayesArrayUpdate(p::Placozoan)
        posteriorSum += p.observer.posterior[i,j]
      end
    end
-   p.observer.posterior[:,:] = 
-       (1.0-p.observer.priorDensity[])*imfilter(p.observer.posterior, Kernel.gaussian(5))./posteriorSum
-   p.observer.posterior[:,:] += p.observer.priorDensity.*p.observer.prior[:,:]
+   # smooth and mix with initial prior
+   p.observer.posterior[:,:] = (1.0-p.observer.priorDensity[])*
+                                imfilter(p.observer.posterior, Kernel.gaussian(5))./posteriorSum +
+                                p.observer.priorDensity.*p.observer.prior[:,:]
 
  end
 

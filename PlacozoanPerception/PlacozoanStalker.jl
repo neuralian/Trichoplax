@@ -85,7 +85,7 @@ ELECTRORECEPTION = true
 PHOTORECEPTION = false
 
 NTRIALS = [0]
-tick()
+
 
 
 FileName = "PlacozoanStalker" * string(Int(ELECTRORECEPTION)) * string(Int(PHOTORECEPTION)) * "_" *
@@ -102,22 +102,50 @@ CSV.write(FileName * ".csv",
                    Nreceptors=Int[], n_likelihood_particles=Int64[], n_posterior_particles=Int64[],  
                    priorDensity=Float64[]))
 
-# use dummy predator and prey to precompute fields and receptive fields
+# use dummy predator and prey to precompute fields, receptive fields and prior
+# these are common to all Placozoans with the same number of receptors
+# so only need to be computed once
 dummy_prey = Placozoan(prey_radius, prey_margin, prey_fieldrange,
-Nreceptors, sizeof_receptor, mat_radius,
-Ncrystals, sizeof_crystal, mat_radius,
-1, 1, .1, 1)
+    Nreceptors, sizeof_receptor, mat_radius,
+    Ncrystals, sizeof_crystal, mat_radius,
+    1, 1, .1, 1)
+
 
 
 dummy_predator = Placozoan(predator_radius, predator_margin, predator_fieldrange,
 RGBA(.25, 0.1, 0.1, 1.0),
 RGBA(.45, 0.1, 0.1, 0.25),
 RGB(.95, 0.1, 0.1) )
+dummy_predator.x[] = 0
+dummy_predator.y[] = mat_radius + 2.0*predator_radius
+dummy_predator.speed[] = predator_speed
 
 placozoanFieldstrength!(dummy_predator)
 Ereceptor_RF(dummy_prey, dummy_predator)
 Vreceptor_RF(dummy_prey)
+initialize_prior(dummy_prey)
 
+println(dummy_prey.observer.prior[200,200])
+
+
+# burn in
+for i in 1:dummy_prey.observer.burnIn
+    if ELECTRORECEPTION
+        electroreception(dummy_prey, dummy_predator)
+    end
+    if PHOTORECEPTION
+        photoreception(dummy_prey, dummy_predator)
+    end
+    likelihood(dummy_prey, ELECTRORECEPTION, PHOTORECEPTION)  
+    bayesArrayUpdate(dummy_prey)
+    dummy_prey.observer.prior[:,:] = dummy_prey.observer.posterior[:,:] 
+end
+
+
+
+
+
+tick()
 
 for rep = 1:nReps
     for n_likelihood_particles = [256 1024  4096 16384 ]
@@ -125,7 +153,7 @@ for rep = 1:nReps
             for priorDensity = [1/8 1/16 1/64 1/256]
 
                 # construct placozoans
-                prey = Placozoan(prey_radius, prey_margin, prey_fieldrange,
+                global prey = Placozoan(prey_radius, prey_margin, prey_fieldrange,
                     Nreceptors, sizeof_receptor, mat_radius,
                     Ncrystals, sizeof_crystal, mat_radius,
                     n_likelihood_particles, n_posterior_particles,
@@ -138,13 +166,15 @@ for rep = 1:nReps
                 # println("____")
                 # if NTRIALS[]==0
                 initialize_particles(prey) # draw initial sample from prior
-                initialize_prior(prey)     # initialize numerical Bayesian prior
+               # initialize_prior(prey)     # initialize numerical Bayesian prior
+               prey.observer.prior[:,:] = dummy_prey.observer.prior[:,:]
+               prey.observer.posterior[:,:] = prey.observer.prior[:,:]
                 # end
                 
                 # initializeObserver(prey, n_likelihood_particles, n_posterior_particles, priorDensity)
 
 
-                predator = Placozoan(predator_radius, predator_margin, predator_fieldrange,
+                global predator = Placozoan(predator_radius, predator_margin, predator_fieldrange,
                      RGBA(.25, 0.1, 0.1, 1.0),
                      RGBA(.45, 0.1, 0.1, 0.25),
                      RGB(.95, 0.1, 0.1) )
@@ -154,6 +184,9 @@ for rep = 1:nReps
                 predator.y[] = (mat_radius + 0.5 * predator_radius) * sin(θ)
                 predator.field[:] = dummy_predator.field[:]
                 predator.potential[:] = dummy_predator.potential[:]
+
+
+
 
                 if DO_PLOTS
                 

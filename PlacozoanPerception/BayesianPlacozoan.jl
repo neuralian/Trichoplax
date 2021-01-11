@@ -123,7 +123,7 @@ function Observer(maxRange, nLparticles::Int64, nBparticles::Int64,
                zeros(max_nBparticles,2),
                zeros(max_nBparticles,2),
                [priorDensity],
-               100,
+               32,
                zeros(nFrames), zeros(nFrames), zeros(nFrames))
 end
 
@@ -598,8 +598,8 @@ function stalk(predator::Placozoan, prey::Placozoan, Δ::Float64)
   d = sqrt(predator.x[]^2 + predator.y[]^2)  # distance from origin
   v = sign(prey.radius + predator.radius + Δ - d)#(distance between edges)-Δ.
   # pink noise motion in mat frame
-  predator.step[:] = 0.8*predator.step +
-                    0.2*randn(2).*predator.speed[]  .+
+  predator.step[:] = 0.9*predator.step +
+                    0.1*randn(2).*predator.speed[]  .+
                     0.1*v*predator.speed[].*([predator.x[], predator.y[]]) ./ d
 
   # update predator coordinates
@@ -778,12 +778,44 @@ function bayesArrayUpdate(p::Placozoan)
    end
    # smooth and mix with initial prior
    p.observer.posterior[:,:] = (1.0-p.observer.priorDensity[])*
-                                imfilter(p.observer.posterior, Kernel.gaussian(5))./posteriorSum +
+                                imfilter(p.observer.posterior, Kernel.gaussian(2))./posteriorSum +
                                 p.observer.priorDensity.*p.observer.prior[:,:]
 
  end
 
 # Utility functions
+
+function radialSmooth(X::OffsetArray, r::UnitRange{Int64})
+
+  d = abs(X.offsets[1])  # array index offset 
+  n = length(r)
+  s = zeros(n)
+  # compute average at each radius
+  for i = 1:n
+    count = 0   # count number of elements at radius r[i]
+    for j in -d:d
+      for k in -d:d
+        if abs(sqrt(j^2 + k^2) - r[i])<1
+          count = count + 1
+          s[i] = ((count-1)*s[i] + X[j,k])/count  # recursive mean
+        end
+      end
+    end
+  end
+
+  # overwrite X with radial smoothed values
+  for i = 1:n
+    for j in -d:d
+      for k in -d:d
+        if abs(sqrt(j^2 + k^2) - r[i])<1
+          X[j,k] = s[i]
+        end
+      end
+    end
+  end
+
+end
+
 
 # 1-sided quantiles of range and bearing error for posterior particles 
 function particleStats(p::Placozoan, predatorBearing)
@@ -895,4 +927,4 @@ function recordKLDBits(I::Observer, frame::Int64)
    end
    Q  = Q./sumQ   # normalize posterior at sample points
    I.KLD[frame] = sum(Q.*log2.(Q)) + log2(I.nBparticles[])
-end
+  end

@@ -29,6 +29,7 @@ end
 # simulation parameters
 nReps = 1
 nFrames = 200       # number of animation frames
+burn_time = 8         # compute initial prior by burning in with predator at "infinity"
 mat_radius = 400
 approach_Δ = 16.0         # predator closest approach distance
 dt = 1.00
@@ -51,7 +52,7 @@ prey_fieldrange = 0   # no field
 # predator parameters
 predator_radius = 150
 predator_margin = 0
-predator_speed = 2.0
+predator_speed = 1.0
 predator_fieldrange = mat_radius
 
 
@@ -125,11 +126,9 @@ Ereceptor_RF(dummy_prey, dummy_predator)
 Vreceptor_RF(dummy_prey)
 initialize_prior(dummy_prey)
 
-println(dummy_prey.observer.prior[200,200])
-
 
 # burn in
-for i in 1:dummy_prey.observer.burnIn
+for i in 1:burn_time
     if ELECTRORECEPTION
         electroreception(dummy_prey, dummy_predator)
     end
@@ -138,9 +137,22 @@ for i in 1:dummy_prey.observer.burnIn
     end
     likelihood(dummy_prey, ELECTRORECEPTION, PHOTORECEPTION)  
     bayesArrayUpdate(dummy_prey)
-    dummy_prey.observer.prior[:,:] = dummy_prey.observer.posterior[:,:] 
+    dummy_prey.observer.prior[:,:] = dummy_prey.observer.posterior[:,:]
 end
 
+radialSmooth(dummy_prey.observer.prior, prey_radius:mat_radius)
+# # burn in
+# for i in 1:dummy_prey.observer.burnIn
+#     if ELECTRORECEPTION
+#         electroreception(dummy_prey, dummy_predator)
+#     end
+#     if PHOTORECEPTION
+#         photoreception(dummy_prey, dummy_predator)
+#     end
+#     likelihood(dummy_prey, ELECTRORECEPTION, PHOTORECEPTION)  
+#     bayesArrayUpdate(dummy_prey)
+#     dummy_prey.observer.prior[:,:] = (1.0 - 1/i)*dummy_prey.observer.prior[:,:] + dummy_prey.observer.posterior[:,:]/i
+# end
 
 
 
@@ -307,7 +319,7 @@ for rep = 1:nReps
                         OffsetArrays.no_offset_view(prey.observer.posterior),  colormap = :plasma)
 
                     PostContour_plt = contour!(right_panel, 1:WorldSize, 1:WorldSize,
-                        lift(u->u, Posty_plt[3]), levels = [1.0e-6, 1.0e-5, 1.0e-4], color = :white)
+                        lift(u->u, Posty_plt[3]), levels = [1.0e-6, 1.0e-5, 1.0e-4], color = RGB(.25,.25,.25))
 
                     predator_right_plt = poly!(right_panel,
                         lift(s -> decompose(Point2f0, Circle(Point2f0(

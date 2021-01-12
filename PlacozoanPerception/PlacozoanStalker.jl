@@ -18,7 +18,7 @@ PLOT_ARRAYS = true
 # DO_PLOTS switches plotting ON/OFF, for running multiple simulations
 # to collect data without plotting. DO_PLOTS must be true for the 
 # settings above to take effect
-DO_PLOTS = true
+DO_PLOTS = false
 if DO_PLOTS == false
     PLOT_EXT_PARTICLES = false
     PLOT_INT_PARTICLES = false
@@ -28,7 +28,7 @@ end
 
 # simulation parameters
 nReps = 1
-nFrames = 200       # number of animation frames
+nFrames = 180       # number of animation frames
 burn_time = 4         # compute initial prior by burning in with predator at "infinity"
 mat_radius = 400
 approach_Δ = 16.0         # predator closest approach distance
@@ -52,7 +52,7 @@ prey_fieldrange = 0   # no field
 # predator parameters
 predator_radius = 150
 predator_margin = 0
-predator_speed = 1.2
+predator_speed = 1.25
 predator_fieldrange = mat_radius
 
 
@@ -160,15 +160,17 @@ radialSmooth(dummy_prey.observer.prior, prey_radius:mat_radius)
 tick()
 
 for rep = 1:nReps
-    for n_likelihood_particles = [512 1024  4096 16384 ]
-        for n_posterior_particles = n_likelihood_particles .÷ [1 2 4]
+    for n_likelihood_particles = [512 1024  2048 4096 8192 ]
+        for n_posterior_particles = Int.(n_likelihood_particles .÷ [.5 1 2 4])
             for priorDensity = [.001 .01 .1]
 
                 # construct placozoans
+                # HINT: These are local variables but if they are declared global 
+                # then they appear in the REPL workspace if the program is interrupted (Ctrl-C)
                 global prey = Placozoan(prey_radius, prey_margin, prey_fieldrange,
                     Nreceptors, sizeof_receptor, mat_radius,
                     Ncrystals, sizeof_crystal, mat_radius,
-                    n_likelihood_particles, n_posterior_particles,
+                    n_likelihood_particles, Int(n_posterior_particles),
                     priorDensity, nFrames)
 
                 prey.receptor.pOpen[:] = dummy_prey.receptor.pOpen[:] 
@@ -214,8 +216,8 @@ for rep = 1:nReps
                         scene, layout = layoutscene(resolution=(3 * .75 * WorldSize, .75 * WorldSize + 40))
                         shim = layout[1, 1] = LAxis(scene)
                         left_panel = layout[1, 2] = 
-                            LAxis( scene,  title="Placozoan: " * string(n_likelihood_particles) * ":" *
-                                string(n_posterior_particles) * ":" * string(priorDensity),
+                            LAxis( scene,  title="Placozoan: ( " * string(n_likelihood_particles) * ", " *
+                                string(n_posterior_particles) * ", " * string(priorDensity) * " )",
                                 backgroundcolor=colour_background )
                         middle_panel = layout[1, 3] = LAxis(scene, title="Likelihood")
                         right_panel = layout[1, 4] = LAxis(scene, title="Bayesian Observer")
@@ -341,11 +343,11 @@ for rep = 1:nReps
 
                     prey_Lcopy_plt = poly!(middle_panel,
                         decompose(Point2f0, Circle(Point2f0(mat_radius, mat_radius), prey.radius)),
-                        color=prey.color, strokewidth=1, strokecolor=RGB(0.5, 0.75, 0.85))
+                        color=:black, strokewidth=1, strokecolor=RGB(0.0, 0.0, 0.0))
 
                     prey_Pcopy_plt = poly!(right_panel,
                         decompose(Point2f0, Circle(Point2f0(mat_radius, mat_radius), prey.radius)),
-                        color=prey.color, strokewidth=1, strokecolor=RGB(0.5, 0.75, 0.85) )
+                        color=:black, strokewidth=1, strokecolor=RGB(0.0, 0.0, 0.0))
 
                 end  # plot arrays
 
@@ -366,10 +368,24 @@ for rep = 1:nReps
                         color=[prey.receptor.openColor for i in 1:prey.receptor.N],
                         strokecolor=:black, strokewidth=0.25)
 
+                    L_receptor_plt = scatter!(middle_panel, 
+                        mat_radius .+1 .+prey.receptor.x, mat_radius .+1 .+prey.receptor.y ,
+                        markersize=prey.receptor.size,
+                        color=[prey.receptor.openColor for i in 1:prey.receptor.N],
+                        strokecolor=:black, strokewidth=0.25)
+
+                    R_receptor_plt = scatter!(right_panel, 
+                        mat_radius .+1 .+prey.receptor.x, mat_radius .+1 .+prey.receptor.y ,
+                        markersize=prey.receptor.size,
+                        color=[prey.receptor.openColor for i in 1:prey.receptor.N],
+                        strokecolor=:black, strokewidth=0.25)
+                        
+                    if PHOTORECEPTION
                     crystal_plt = scatter!(left_panel, prey.photoreceptor.x, prey.photoreceptor.y,
                         markersize=prey.photoreceptor.size, marker=:diamond,
                             color=[prey.photoreceptor.lightColor for i in 1:prey.photoreceptor.N],
                             strokecolor=:black, strokewidth=0.25)
+                    end
 
 
                     # reset axis limits (have been auto-adjusted by MakieLayout)
@@ -389,8 +405,8 @@ for rep = 1:nReps
 
                 # VIDEO RECORDING
                 # comment out ONE of the following 2 lines to (not) generate video file
-                record(scene, videoName , framerate=12, 1:nFrames) do i     # generate video file
-               # for i in 1:nFrames                                      # just compute
+               # record(scene, videoName , framerate=9, 1:nFrames) do i     # generate video file
+                for i in 1:nFrames                                      # just compute
 
 
                     # predator random walk to within Δ of prey
@@ -404,7 +420,7 @@ for rep = 1:nReps
                             # set color of each receptor, indicating open or closed state
                             receptorColor = [prey.receptor.closedColor for j = 1:prey.receptor.N]
                             receptorColor[findall(x -> x == 1, prey.receptor.state)] .= prey.receptor.openColor
-                            receptor_plt.color[] = receptorColor
+                            receptor_plt.color[] = L_receptor_plt.color[] = R_receptor_plt.color[] = receptorColor
                         end # DO_PLOTS
                     end  # electroreception
 
@@ -473,7 +489,7 @@ for rep = 1:nReps
                     # clock display
                     if DO_PLOTS
                         clock_plt.text =  "                         t = " *   
-                                        string(Int(floor(t[]))) *  "s"
+                                        string(Int(floor(t[]+1))) *  "s"
 
                     # Node update causes redraw
                     t[] = dt * (i + 1)

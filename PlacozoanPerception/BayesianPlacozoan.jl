@@ -813,10 +813,12 @@ function radialSmooth(X::OffsetArray, r::UnitRange{Int64})
       for k in -d:d
         if abs(sqrt(j^2 + k^2) - r[i])<1
           count = count + 1
-          s[i] = ((count-1)*s[i] + X[j,k])/count  # recursive mean
+          #s[i] = ((count-1)*s[i] + X[j,k])/count  # recursive mean
+          s[i] += X[j,k]
         end
       end
     end
+    s[i] = s[i]/count
   end
 
   # overwrite X with radial smoothed values

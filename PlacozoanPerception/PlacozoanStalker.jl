@@ -405,7 +405,7 @@ for rep = 1:nReps
 
                 # VIDEO RECORDING
                 # comment out ONE of the following 2 lines to (not) generate video file
-               # record(scene, videoName , framerate=9, 1:nFrames) do i     # generate video file
+                #record(scene, videoName , framerate=9, 1:nFrames) do i     # generate video file
                 for i in 1:nFrames                                      # just compute
 
 
@@ -447,6 +447,7 @@ for rep = 1:nReps
     
                     bayesParticleUpdate(prey)   # Bayesian particle filter
 
+                    bayesArrayUpdate(prey)  # numerical sequential Bayes (benchmark)
 
                     (observation, belief) = reflect(prey) # reflect samples into margin
     
@@ -475,7 +476,7 @@ for rep = 1:nReps
 
                     if PLOT_ARRAYS
                         
-                        bayesArrayUpdate(prey)
+
                         Likely_plt[1] = mask .* OffsetArrays.no_offset_view(prey.observer.likelihood)
                         Posty_plt[3] = mask .* OffsetArrays.no_offset_view(prey.observer.posterior)
                     end # PLOT_ARRAYS
@@ -491,13 +492,14 @@ for rep = 1:nReps
                         clock_plt.text =  "                         t = " *   
                                         string(Int(floor(t[]+1))) *  "s"
 
-                    # Node update causes redraw
-                    t[] = dt * (i + 1)
+                        # Node update causes redraw
+                        t[] = dt * (i + 1)
 
                     end # DO_PLOTS
 
                     # MAP predator location            
                     iMAP = findmax(prey.observer.posterior)[2]
+                   # println(iMAP[1], ", ", iMAP[2])
 
                     (QD, Dmin, Qθ, θmin, θmax) = particleStats(prey, atan(predator.y[],predator.x[]) )
                     # println(QD, ", ", Dmin, ", ", Qθ, ", ", θmin, ", ", θmax)

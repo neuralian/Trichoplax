@@ -642,76 +642,139 @@ function initialize_particles(p::Placozoan)
 
 end
 
+# function bayesParticleUpdate(p::Placozoan)
+
+#   δ2 = 1.0   # squared collision maxRange
+#   sδ = 2.0  # scatter maxRange
+#   nCollision = 0
+#   collision = fill(0, p.observer.nBparticles[])
+
+#     # mix the posterior with the initial prior
+#     # this prevents the particle filter from converging fully,
+#     # maintains "attention" over all possible locations of predator
+#     # even when the posterior indicates low uncertainty about predator location.
+#     # (This is a known problem with particle filters - they assign zero probability 
+#     # density to locations where the true density is nonzero)
+#     nscatter = Int(round(p.observer.priorDensity[]*p.observer.nBparticles[]))
+#     # select particles from posterior to scatter into prior
+#     iscatter = rand(1:p.observer.nBparticles[], nscatter )
+#     p.observer.Bparticle[iscatter, :] = samplePrior(nscatter, p)
+#     p.observer.Bparticle_step[iscatter,:] .= 0.0
+
+
+
+#   # list Bparticles that have collided with Lparticles
+
+#      for j = 1:p.observer.nBparticles[]  # check for collisions with belief
+#       collided = false
+#       for k = 1:nCollision
+#         if collision[k]==j
+#           collided = true
+#         end
+#       end
+#       if !collided
+#         for i = 1:p.observer.nLparticles[]
+#         if ((p.observer.Bparticle[j, 1] - p.observer.Lparticle[i, 1])^2 +
+#             (p.observer.Bparticle[j, 2] - p.observer.Lparticle[i, 2])^2 < δ2)  # new collision
+#           nCollision = nCollision + 1
+#           collision[nCollision] = j
+#           break
+#         end
+#       end
+#     end
+#   end
+#   if nCollision > 0
+#     # each collision produces a Poisson-distributed number of new particles
+#     # such that expected number of new particles is p.observer.nBparticles
+#     newBelief = fill(0.0, p.observer.nBparticles[], 2)
+
+#     n_newparticles =
+#       rand(Poisson(p.observer.nBparticles[] / nCollision), nCollision)
+#     count = 0
+#      for i = 1:nCollision
+#        for j = 1:n_newparticles[i]
+#         count = count + 1
+#         if count <= p.observer.nBparticles[]
+#           R = Inf
+#           while R > p.observer.maxRange  # no beliefs beyond edge of world
+#           newBelief[count, :] =
+#             p.observer.Bparticle[collision[i], :] + sδ * randn(2)
+#             R = sqrt(newBelief[count,1]^2 + newBelief[count,2]^2)
+#           end
+#         end
+#       end
+#     end
+
+#     # kluge number of particles (normalize the discrete distribution)
+#     # by random particle duplication
+#     for i in 1:(p.observer.nBparticles[]-count)
+#       newBelief[count+i,:] = newBelief[rand(1:count),:]
+#     end
+
+#     p.observer.Bparticle[1:p.observer.nBparticles[],:] = newBelief[:,:]
+
+#   end
+
+# end
+
 function bayesParticleUpdate(p::Placozoan)
 
-  δ2 = 4.0   # squared collision maxRange
-  sδ = 9.0  # scatter maxRange
+  δ2 = 5.0    # squared collision maxRange
+  sδ = 4.0   # posterior particle diffusion rate (SD of Gaussian per step)
+  nSpawn = 4  # average number of new posterior particles per collision
   nCollision = 0
+  nCollider = 0
   collision = fill(0, p.observer.nBparticles[])
+  collider = fill(0, p.observer.nBparticles[])
 
-    # mix the posterior with the initial prior
-    # this prevents the particle filter from converging fully,
-    # maintains "attention" over all possible locations of predator
-    # even when the posterior indicates low uncertainty about predator location.
-    # (This is a known problem with particle filters - they assign zero probability 
-    # density to locations where the true density is nonzero)
-    nscatter = Int(round(p.observer.priorDensity[]*p.observer.nBparticles[]))
-    # select particles from posterior to scatter into prior
-    iscatter = rand(1:p.observer.nBparticles[], nscatter )
-    p.observer.Bparticle[iscatter, :] = samplePrior(nscatter, p)
-    p.observer.Bparticle_step[iscatter,:] .= 0.0
-
-
-
-  # list Bparticles that have collided with Lparticles
-
-     for j = 1:p.observer.nBparticles[]  # check for collisions with belief
-      collided = false
-      for k = 1:nCollision
-        if collision[k]==j
-          collided = true
-        end
-      end
-      if !collided
-        for i = 1:p.observer.nLparticles[]
-        if ((p.observer.Bparticle[j, 1] - p.observer.Lparticle[i, 1])^2 +
-            (p.observer.Bparticle[j, 2] - p.observer.Lparticle[i, 2])^2 < δ2)  # new collision
-          nCollision = nCollision + 1
-          collision[nCollision] = j
-          break
-        end
+    # randomly jitter posterior particles (diffusion/uncertainty per timestep)
+    p.observer.Bparticle[1:p.observer.nBparticles[],:] += sδ.*randn(p.observer.nBparticles[],2)
+    # # replace particles that have diffused off the edge of the mat by samples from initial prior
+    for i in 1:p.observer.nBparticles[]
+      r2 = sqrt(p.observer.Bparticle[i,1]^2 + p.observer.Bparticle[i,2]^2)
+      if (r2>p.observer.maxRange) | (r2 < p.radius)
+        p.observer.Bparticle[i,:] = samplePrior(1,p)
       end
     end
-  end
-  if nCollision > 0
-    # each collision produces a Poisson-distributed number of new particles
-    # such that expected number of new particles is p.observer.nBparticles
-    newBelief = fill(0.0, p.observer.nBparticles[], 2)
 
-    n_newparticles =
-      rand(Poisson(p.observer.nBparticles[] / nCollision), nCollision)
-    count = 0
-     for i = 1:nCollision
-       for j = 1:n_newparticles[i]
-        count = count + 1
-        if count <= p.observer.nBparticles[]
-          R = Inf
-          while R > p.observer.maxRange  # no beliefs beyond edge of world
-          newBelief[count, :] =
-            p.observer.Bparticle[collision[i], :] + sδ * randn(2)
-            R = sqrt(newBelief[count,1]^2 + newBelief[count,2]^2)
+    # On each update, each posterior particle has probability 
+    # 'priorDensity' of dying and being reincarnated as (replaced by)
+    #  a sample from the initial prior.
+    # (stops posterior particles prematurely condensing into local clouds, 
+    #  maintains 360 deg attention )
+    nscatter = Int(round(p.observer.priorDensity[]*p.observer.nBparticles[]))
+    iscatter = rand(1:p.observer.nBparticles[], nscatter )
+    p.observer.Bparticle[iscatter, :] = samplePrior(nscatter, p)
+    #p.observer.Bparticle_step[iscatter,:] .= 0.0
+
+  # list Bparticles that have collided with Lparticles
+     for i = 1:p.observer.nBparticles[]  # find collisions between posterior and likelihood particles
+        for j = 1:p.observer.nLparticles[]
+        #  if !any(x->x==j, collider) & 
+
+          if ((p.observer.Bparticle[i, 1] - p.observer.Lparticle[j, 1])^2 +
+                (p.observer.Bparticle[i, 2] - p.observer.Lparticle[j, 2])^2 < δ2)  #  collision
+              nCollision = nCollision + 1
+              collision[nCollision] = i     # ith posterior particle has collided with a likelihood particle
+              collider[nCollision] = j
+            break
           end
         end
       end
-    end
 
-    # kluge number of particles (normalize the discrete distribution)
-    # by random particle duplication
-    for i in 1:(p.observer.nBparticles[]-count)
-      newBelief[count+i,:] = newBelief[rand(1:count),:]
-    end
+   #  print(nCollision)
 
-    p.observer.Bparticle[1:p.observer.nBparticles[],:] = newBelief[:,:]
+  if nCollision > 0
+
+    # each collision spawns a Poisson-distributed number of new particles
+    #newBelief = fill(0.0, p.observer.nBparticles[], 2)
+    n_newparticles = rand(Poisson(nSpawn), nCollision)
+    for i = 1:nCollision
+       particle = p.observer.Bparticle[collision[i], :]  # save the parent in case the original gets replaced
+       for j = 1:n_newparticles[i]   # replace randomly chosen posterior particles with offspring of collision
+          p.observer.Bparticle[rand(1:p.observer.nBparticles[]), :]  = particle 
+        end
+    end
 
   end
 
@@ -883,7 +946,7 @@ end
 
 # Entropy of "true" posterior in bits
 function entropyBits(I::Observer)
-  support = findall(x->x>1.0e-6, I.posterior)
+  support = findall(x->x>eps(), I.posterior)
   return -sum(I.posterior[support].*log2.(I.posterior[support]))
 end
 
@@ -917,32 +980,94 @@ function KLDBits_rev(I::Observer)
 end
 
 
+# function KLDBits(I::Observer)
+#    KLD = 0.0
+#    Q = zeros(I.nBparticles[])
+#    sumQ = 0.0
+#    for k in 1:I.nBparticles[]
+#      i = max(-I.maxRange, min(I.maxRange, Int64(round(I.Bparticle[k,1]))))
+#      j = max(-I.maxRange, min(I.maxRange, Int64(round(I.Bparticle[k,2]))))
+#      Q[k] = max(I.posterior[i,j], 1.0e-6)
+#      sumQ += Q[k]
+#    end
+#    Q  = Q./sumQ   # normalize posterior at sample points
+#    KLD = sum(Q.*log2.(Q)) + log2(I.nBparticles[])
+# end
+
+
 function KLDBits(I::Observer)
-   KLD = 0.0
-   Q = zeros(I.nBparticles[])
-   sumQ = 0.0
-   for k in 1:I.nBparticles[]
-     i = max(-I.maxRange, min(I.maxRange, Int64(round(I.Bparticle[k,1]))))
-     j = max(-I.maxRange, min(I.maxRange, Int64(round(I.Bparticle[k,2]))))
-     Q[k] = max(I.posterior[i,j], 1.0e-6)
-     sumQ += Q[k]
-   end
-   Q  = Q./sumQ   # normalize posterior at sample points
-   KLD = sum(Q.*log2.(Q)) + log2(I.nBparticles[])
+  KLD = 0.0
+  Q = zeros(I.nBparticles[])
+  sumQ = 0.0
+  nB = 0
+  for k in 1:I.nBparticles[]
+    i = Int64(round(I.Bparticle[k,1]))
+    j = Int64(round(I.Bparticle[k,2]))
+    if abs(i)<I.maxRange & abs(j)<I.maxRange 
+      if I.posterior[i,j] > eps()
+        nB = nB+1
+        Q[nB] = I.posterior[i,j]
+        sumQ = sumQ + Q[nB]
+      end
+    end
+  end
+  KLD = sum(Q[1:nB].*log2.(Q[1:nB])) + log2(nB)*sumQ
 end
 
 
+# function recordKLDBits(I::Observer, frame::Int64)
+
+#    Q = zeros(I.nBparticles[])
+#    sumQ = 0.0
+#    for k in 1:I.nBparticles[]
+#     i = max(-I.maxRange, min(I.maxRange, Int64(round(I.Bparticle[k,1]))))
+#     j = max(-I.maxRange, min(I.maxRange, Int64(round(I.Bparticle[k,2]))))
+#      Q[k] = max(I.posterior[i,j], 1.0e-6)
+#      sumQ += Q[k]
+#    end
+#    Q  = Q./sumQ   # normalize posterior at sample points
+#    I.KLD[frame] = sum(Q.*log2.(Q)) + log2(I.nBparticles[])
+#   end
+
+# function recordKLDBits(I::Observer, frame::Int64)
+#   KLD = 0.0
+#   Q = zeros(I.nBparticles[])
+#   sumQ = 0.0
+#   nB = 0
+#   for k in 1:I.nBparticles[]
+#     i = Int64(round(I.Bparticle[k,1]))
+#     j = Int64(round(I.Bparticle[k,2]))
+#     if abs(i)<I.maxRange & abs(j)<I.maxRange 
+#       if I.posterior[i,j] > 1.0e-12
+#         nB = nB+1
+#         Q[nB] = I.posterior[i,j]
+#         sumQ = sumQ + Q[nB]
+#       end
+#     end
+#   end
+#   Q = Q/sumQ
+#   I.KLD[frame] = sum(Q[1:nB].*log2.(Q[1:nB])) + log2(nB)
+# end
 
 function recordKLDBits(I::Observer, frame::Int64)
 
-   Q = zeros(I.nBparticles[])
-   sumQ = 0.0
-   for k in 1:I.nBparticles[]
-    i = max(-I.maxRange, min(I.maxRange, Int64(round(I.Bparticle[k,1]))))
-    j = max(-I.maxRange, min(I.maxRange, Int64(round(I.Bparticle[k,2]))))
-     Q[k] = max(I.posterior[i,j], 1.0e-6)
-     sumQ += Q[k]
-   end
-   Q  = Q./sumQ   # normalize posterior at sample points
-   I.KLD[frame] = sum(Q.*log2.(Q)) + log2(I.nBparticles[])
+  # KLD = -sum(log(s_k)) - log(n)
+  # where s_k is sequential Bayesian estimate at kth particle location
+  # i.e. the "true" posterior, and n is number of particles.
+  # we ignore particles outside the support of s.
+  # KLD is the amount of information lost by using p_k instead of s
+  S = 0.0  
+  nB = 0
+  for k in 1:I.nBparticles[]
+    i = Int64(round(I.Bparticle[k,1]))
+    j = Int64(round(I.Bparticle[k,2]))
+    if abs(i)<I.maxRange & abs(j)<I.maxRange 
+      if I.posterior[i,j] > 1.0e-12
+        nB = nB+1
+        S -= log2(I.posterior[i,j])
+      end
+    end
   end
+
+  I.KLD[frame] = S - log2(nB)
+end

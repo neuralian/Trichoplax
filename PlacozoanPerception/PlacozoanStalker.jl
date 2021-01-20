@@ -18,7 +18,7 @@ PLOT_ARRAYS = true
 # DO_PLOTS switches plotting ON/OFF, for running multiple simulations
 # to collect data without plotting. DO_PLOTS must be true for the 
 # settings above to take effect
-DO_PLOTS = false
+DO_PLOTS = true
 if DO_PLOTS == false
     PLOT_EXT_PARTICLES = false
     PLOT_INT_PARTICLES = false
@@ -27,7 +27,7 @@ end
 
 
 # simulation parameters
-nReps = 1
+nReps = 16
 nFrames = 180       # number of animation frames
 burn_time = 4         # compute initial prior by burning in with predator at "infinity"
 mat_radius = 400
@@ -159,10 +159,10 @@ radialSmooth(dummy_prey.observer.prior, prey_radius:mat_radius)
 
 tick()
 
-for rep = 1:nReps
-    for n_likelihood_particles = [512 1024  2048 4096 8192 ]
-        for n_posterior_particles = Int.(n_likelihood_particles .÷ [.5 1 2 4])
-            for priorDensity = [.001 .01 .1]
+for rep = 1 # 1:nReps
+    for n_likelihood_particles = [4096] # [512 1024  2048 4096 8192 ]
+        for n_posterior_particles = [1024] # Int.(n_likelihood_particles .÷ [.5 1 2 4])
+            for priorDensity = [.1] # [.001 .01 .1]
 
                 # construct placozoans
                 # HINT: These are local variables but if they are declared global 
@@ -213,7 +213,7 @@ for rep = 1:nReps
                         hidespines!(left_panel)
                         hidedecorations!(left_panel)
                     else
-                        scene, layout = layoutscene(resolution=(3 * .75 * WorldSize, .75 * WorldSize + 40))
+                        scene, layout = layoutscene(resolution = ( Int(round(3 * .75 * WorldSize)), Int(round(.75 * WorldSize + 40)) ) )
                         shim = layout[1, 1] = LAxis(scene)
                         left_panel = layout[1, 2] = 
                             LAxis( scene,  title="Placozoan: ( " * string(n_likelihood_particles) * ", " *
@@ -405,9 +405,10 @@ for rep = 1:nReps
 
                 # VIDEO RECORDING
                 # comment out ONE of the following 2 lines to (not) generate video file
-                #record(scene, videoName , framerate=9, 1:nFrames) do i     # generate video file
-                for i in 1:nFrames                                      # just compute
+                record(scene, videoName , framerate=9, 1:nFrames) do i     # generate video file
+                #for i in 1:nFrames                                      # just compute
 
+                   #println(i)
 
                     # predator random walk to within Δ of prey
                     stalk(predator, prey, approach_Δ)
@@ -514,7 +515,7 @@ for rep = 1:nReps
                             n_likelihood_particles, n_posterior_particles,  priorDensity)),
                             header=false, append=true)
 
-                    # print(".")
+                    print(".")
 
 
                 end # frame

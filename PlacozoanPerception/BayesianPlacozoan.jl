@@ -101,7 +101,7 @@ struct Observer
   Lparticle::Array{Float64,2}    # likelihood particles (samples)
   Bparticle::Array{Float64,2}   # belief (posterior) particles
   Bparticle_step::Array{Float64,2}  # particle prediction steps
-  priorDensity::Array{Float64,1}
+  posteriorDeaths::Array{Int64,1}   # number of posterior particles that die (and are replaced) per frame
   burnIn::Float64
   # priormean::Float64
   # priorsd::Float64  # std. dev. of prior
@@ -112,7 +112,7 @@ end
 
 # Observer constructor
 function Observer(maxRange, nLparticles::Int64, nBparticles::Int64,
-                 priorDensity::Float64, nFrames::Int64)
+                  posteriorDeaths::Int64, nFrames::Int64)
 
   return Observer(maxRange,
                zeros(-maxRange:maxRange, -maxRange:maxRange),
@@ -122,7 +122,7 @@ function Observer(maxRange, nLparticles::Int64, nBparticles::Int64,
                zeros(max_nLparticles,2),
                zeros(max_nBparticles,2),
                zeros(max_nBparticles,2),
-               [priorDensity],
+               [posteriorDeaths],
                32,
                zeros(nFrames), zeros(nFrames), zeros(nFrames))
 end
@@ -132,7 +132,7 @@ function Observer()
   z1 = zeros(1)
   z2 = zeros(1,1)
   zOff = OffsetArray(z2, 0:0, 0:0)
-  Observer(1, zOff, zOff, zOff, [1], [1], z2, z2, z2, [1.0],0, z1, z1, z1)
+  Observer(1, zOff, zOff, zOff, [1], [1], z2, z2, z2, [1],0, z1, z1, z1)
 end
 
 
@@ -267,14 +267,14 @@ function Placozoan(
   crystalRange::Int64,
   nLparticles,
   nBparticles,
-  priorDensity::Float64,
+  posteriorDeaths::Int64,
   nFrames::Int64,
   bodycolor = RGBA(0.9, 0.75, 0.65, 0.5),
   gutcolor = RGBA(1.0, 0.65, 0.8, 0.25),
   edgecolor = RGB(0.0, 0.0, 0.0),
   )
 
-  observer =  Observer(eRange, nLparticles, nBparticles, priorDensity, nFrames)
+  observer =  Observer(eRange, nLparticles, nBparticles, posteriorDeaths, nFrames)
   
     receptor = Ereceptor( eRange, radius, nEreceptors, receptorSize,  
                           colour_receptor_OPEN, colour_receptor_CLOSED)
@@ -719,8 +719,8 @@ end
 
 function bayesParticleUpdate(p::Placozoan)
 
-  δ2 = 5.0    # squared collision maxRange
-  sδ = 4.0   # posterior particle diffusion rate (SD of Gaussian per step)
+  δ2 = 1.0    # squared collision maxRange
+  sδ = 2.0   # posterior particle diffusion rate (SD of Gaussian per step)
   nSpawn = 4  # average number of new posterior particles per collision
   nCollision = 0
   nCollider = 0
@@ -737,26 +737,28 @@ function bayesParticleUpdate(p::Placozoan)
       end
     end
 
-    # On each update, each posterior particle has probability 
-    # 'priorDensity' of dying and being reincarnated as (replaced by)
-    #  a sample from the initial prior.
+    # On each update a fixed number (proportion) of posterior particles 
+    # die at random and are reincarnated as (replaced by)
+    #  a random sample from the initial prior.
     # (stops posterior particles prematurely condensing into local clouds, 
-    #  maintains 360 deg attention )
-    nscatter = Int(round(p.observer.priorDensity[]*p.observer.nBparticles[]))
-    iscatter = rand(1:p.observer.nBparticles[], nscatter )
-    p.observer.Bparticle[iscatter, :] = samplePrior(nscatter, p)
+    #  maintains 360 deg attention; biophysically interpreted as equilibrium 
+    #  between production and decay of posterior particles)
+    #nscatter = Int(round(p.observer.priorDensity[]*p.observer.nBparticles[]))
+    iscatter = rand(1:p.observer.nBparticles[], p.observer.posteriorDeaths[] )
+    p.observer.Bparticle[iscatter, :] = samplePrior(p.observer.posteriorDeaths[], p)
     #p.observer.Bparticle_step[iscatter,:] .= 0.0
 
   # list Bparticles that have collided with Lparticles
+     nL = p.observer.nLparticles[]
+     L = p.observer.Lparticle[:,:]
      for i = 1:p.observer.nBparticles[]  # find collisions between posterior and likelihood particles
-        for j = 1:p.observer.nLparticles[]
-        #  if !any(x->x==j, collider) & 
-
-          if ((p.observer.Bparticle[i, 1] - p.observer.Lparticle[j, 1])^2 +
-                (p.observer.Bparticle[i, 2] - p.observer.Lparticle[j, 2])^2 < δ2)  #  collision
+        for j = 1:nL
+          if ((p.observer.Bparticle[i, 1] - L[j, 1])^2 +
+                (p.observer.Bparticle[i, 2] - L[j, 2])^2) < δ2  #  collision
               nCollision = nCollision + 1
               collision[nCollision] = i     # ith posterior particle has collided with a likelihood particle
-              collider[nCollision] = j
+              L[j:(nL-1)] = L[(j+1):nL]     # remove the Lparticle from list of available colliders
+              nL = nL - 1
             break
           end
         end
@@ -854,9 +856,9 @@ function bayesArrayUpdate(p::Placozoan)
      end
    end
    # smooth and mix with initial prior
-   p.observer.posterior[:,:] = (1.0-p.observer.priorDensity[])*
-                                imfilter(p.observer.posterior, Kernel.gaussian(2))./posteriorSum +
-                                p.observer.priorDensity.*p.observer.prior[:,:]
+   density = p.observer.posteriorDeaths[]/p.observer.nBparticles[]
+   p.observer.posterior[:,:] = (1.0-density)*
+      imfilter(p.observer.posterior, Kernel.gaussian(2))./posteriorSum + density.*p.observer.prior[:,:]
 
  end
 
@@ -1029,10 +1031,34 @@ end
 #    I.KLD[frame] = sum(Q.*log2.(Q)) + log2(I.nBparticles[])
 #   end
 
+function recordKLDBits(I::Observer, frame::Int64)
+  KLD = 0.0
+  S = zeros(I.nBparticles[])
+  sumS = 0.0
+  nB = 0
+  for k in 1:I.nBparticles[]
+    i = Int64(round(I.Bparticle[k,1]))
+    j = Int64(round(I.Bparticle[k,2]))
+    if abs(i)<I.maxRange & abs(j)<I.maxRange 
+      if I.posterior[i,j] > 1.0e-14
+        nB = nB+1
+        S[nB] = I.posterior[i,j]
+        sumS = sumS + S[nB]
+      end
+    end
+  end
+  #S = S/sumS
+  I.KLD[frame] = sum(S[1:nB].*log2.(S[1:nB])) + log2(nB)
+end
+
 # function recordKLDBits(I::Observer, frame::Int64)
-#   KLD = 0.0
-#   Q = zeros(I.nBparticles[])
-#   sumQ = 0.0
+
+#   # KLD = -sum(log(s_k)) - log(n)
+#   # where s_k is sequential Bayesian estimate at kth particle location
+#   # i.e. the "true" posterior, and n is number of particles.
+#   # we ignore particles outside the support of s.
+#   # KLD is the amount of information lost by using p_k instead of s
+#   S = 0.0  
 #   nB = 0
 #   for k in 1:I.nBparticles[]
 #     i = Int64(round(I.Bparticle[k,1]))
@@ -1040,34 +1066,14 @@ end
 #     if abs(i)<I.maxRange & abs(j)<I.maxRange 
 #       if I.posterior[i,j] > 1.0e-12
 #         nB = nB+1
-#         Q[nB] = I.posterior[i,j]
-#         sumQ = sumQ + Q[nB]
+#         S -= log2(I.posterior[i,j])
 #       end
 #     end
 #   end
-#   Q = Q/sumQ
-#   I.KLD[frame] = sum(Q[1:nB].*log2.(Q[1:nB])) + log2(nB)
+  
+#   I.KLD[frame] = S - log2(nB)
+#   if I.KLD[frame]==Inf
+#     println(' ')
+#     println(S, ", ", nB)
+#   end
 # end
-
-function recordKLDBits(I::Observer, frame::Int64)
-
-  # KLD = -sum(log(s_k)) - log(n)
-  # where s_k is sequential Bayesian estimate at kth particle location
-  # i.e. the "true" posterior, and n is number of particles.
-  # we ignore particles outside the support of s.
-  # KLD is the amount of information lost by using p_k instead of s
-  S = 0.0  
-  nB = 0
-  for k in 1:I.nBparticles[]
-    i = Int64(round(I.Bparticle[k,1]))
-    j = Int64(round(I.Bparticle[k,2]))
-    if abs(i)<I.maxRange & abs(j)<I.maxRange 
-      if I.posterior[i,j] > 1.0e-12
-        nB = nB+1
-        S -= log2(I.posterior[i,j])
-      end
-    end
-  end
-
-  I.KLD[frame] = S - log2(nB)
-end

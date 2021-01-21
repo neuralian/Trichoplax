@@ -31,7 +31,7 @@ nReps = 16
 nFrames = 180       # number of animation frames
 burn_time = 4         # compute initial prior by burning in with predator at "infinity"
 mat_radius = 400
-approach_Δ = 16.0         # predator closest approach distance
+approach_Δ = 32.0         # predator closest approach distance
 dt = 1.00
 
 # # prey 
@@ -52,7 +52,7 @@ prey_fieldrange = 0   # no field
 # predator parameters
 predator_radius = 150
 predator_margin = 0
-predator_speed = 1.25
+predator_speed = 1.0
 predator_fieldrange = mat_radius
 
 
@@ -109,7 +109,7 @@ CSV.write(FileName * ".csv",
 dummy_prey = Placozoan(prey_radius, prey_margin, prey_fieldrange,
     Nreceptors, sizeof_receptor, mat_radius,
     Ncrystals, sizeof_crystal, mat_radius,
-    1, 1, .1, 1)
+    1, 1, 1, 1)
 
 
 
@@ -160,9 +160,9 @@ radialSmooth(dummy_prey.observer.prior, prey_radius:mat_radius)
 tick()
 
 for rep = 1 # 1:nReps
-    for n_likelihood_particles = [4096] # [512 1024  2048 4096 8192 ]
+    for n_likelihood_particles = [2048] # [512 1024  2048 4096 8192 ]
         for n_posterior_particles = [1024] # Int.(n_likelihood_particles .÷ [.5 1 2 4])
-            for priorDensity = [.1] # [.001 .01 .1]
+            for posteriorDeaths = [32] # [.001 .01 .1]
 
                 # construct placozoans
                 # HINT: These are local variables but if they are declared global 
@@ -171,7 +171,7 @@ for rep = 1 # 1:nReps
                     Nreceptors, sizeof_receptor, mat_radius,
                     Ncrystals, sizeof_crystal, mat_radius,
                     n_likelihood_particles, Int(n_posterior_particles),
-                    priorDensity, nFrames)
+                    posteriorDeaths, nFrames)
 
                 prey.receptor.pOpen[:] = dummy_prey.receptor.pOpen[:] 
                 prey.photoreceptor.pOpenV[:] = dummy_prey.photoreceptor.pOpenV[:] 
@@ -187,7 +187,7 @@ for rep = 1 # 1:nReps
                 
                 # initializeObserver(prey, n_likelihood_particles, n_posterior_particles, priorDensity)
 
-
+                # predator constructed without observer
                 global predator = Placozoan(predator_radius, predator_margin, predator_fieldrange,
                      RGBA(.25, 0.1, 0.1, 1.0),
                      RGBA(.45, 0.1, 0.1, 0.25),
@@ -217,7 +217,7 @@ for rep = 1 # 1:nReps
                         shim = layout[1, 1] = LAxis(scene)
                         left_panel = layout[1, 2] = 
                             LAxis( scene,  title="Placozoan: ( " * string(n_likelihood_particles) * ", " *
-                                string(n_posterior_particles) * ", " * string(priorDensity) * " )",
+                                string(n_posterior_particles) * ", " * string(posteriorDeaths) * " )",
                                 backgroundcolor=colour_background )
                         middle_panel = layout[1, 3] = LAxis(scene, title="Likelihood")
                         right_panel = layout[1, 4] = LAxis(scene, title="Bayesian Observer")
@@ -401,7 +401,7 @@ for rep = 1 # 1:nReps
                 end #DO_PLOTS
 
                 videoName = FileName * "_" * string(rep) * "_" * string(n_likelihood_particles) * "_" *
-                           string(n_posterior_particles) * "_" * string(priorDensity) * ".mp4"
+                           string(n_posterior_particles) * "_" * string(posteriorDeaths) * ".mp4"
 
                 # VIDEO RECORDING
                 # comment out ONE of the following 2 lines to (not) generate video file
@@ -512,7 +512,7 @@ for rep = 1 # 1:nReps
                             prey.observer.PosteriorEntropy[i], prey.observer.KLD[i], 
                             QD..., Dmin, Qθ..., θmin,  θmax, 
                             Nreceptors, 
-                            n_likelihood_particles, n_posterior_particles,  priorDensity)),
+                            n_likelihood_particles, n_posterior_particles,  posteriorDeaths)),
                             header=false, append=true)
 
                     print(".")
@@ -524,7 +524,7 @@ for rep = 1 # 1:nReps
 
                 NTRIALS[] = NTRIALS[] + 1
                 laptimer()
-                println(NTRIALS[], ", ", n_likelihood_particles, ", ", n_posterior_particles, ", ", priorDensity, ", ",  rep)
+                println(NTRIALS[], ", ", n_likelihood_particles, ", ", n_posterior_particles, ", ", posteriorDeaths, ", ",  rep)
                 initialize_particles(prey) # draw initial sample from prior
                 initialize_prior(prey)     # initialize numerical Bayesian prior
                 θ = π * rand()[] # Random initial heading (from above)

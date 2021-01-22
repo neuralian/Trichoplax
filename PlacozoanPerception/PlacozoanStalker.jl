@@ -52,7 +52,7 @@ prey_fieldrange = 0   # no field
 # predator parameters
 predator_radius = 150
 predator_margin = 0
-predator_speed = 1.0
+predator_speed = 0.75
 predator_fieldrange = mat_radius
 
 
@@ -194,8 +194,8 @@ for rep = 1 # 1:nReps
                      RGB(.95, 0.1, 0.1) )
                 predator.speed[] = predator_speed
                 θ = π * rand()[] # Random initial heading (from above)
-                predator.x[] = (mat_radius + 0.5 * predator_radius) * cos(θ)
-                predator.y[] = (mat_radius + 0.5 * predator_radius) * sin(θ)
+                predator.x[] = (mat_radius + 0.0 * predator_radius) * cos(θ)
+                predator.y[] = (mat_radius + 0.0 * predator_radius) * sin(θ)
                 predator.field[:] = dummy_predator.field[:]
                 predator.potential[:] = dummy_predator.potential[:]
 
@@ -484,7 +484,7 @@ for rep = 1 # 1:nReps
 
                     # record posterior entropy (& display during simulation)
                     prey.observer.PosteriorEntropy[i] = entropyBits(prey.observer)
-                    prey.observer.KLD[i] = KLDBits(prey.observer)
+                    #Sprey.observer.KLD[i] = KLDBits(prey.observer)
                     recordRange(prey.observer, predator, i)
                     recordKLDBits(prey.observer, i)
 

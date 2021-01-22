@@ -719,16 +719,18 @@ end
 
 function bayesParticleUpdate(p::Placozoan)
 
-  δ2 = 1.0    # squared collision maxRange
-  sδ = 2.0   # posterior particle diffusion rate (SD of Gaussian per step)
-  nSpawn = 4  # average number of new posterior particles per collision
+  δ2 = 1.6    # squared collision maxRange
+  diffuseCoef = 4.0   # posterior particle diffusion rate (SD of Gaussian per step)
+  # NB diffusion coef here should match diffusion coef in sequential Bayes upsdate (bayesArrayUpdate())
+  nSpawn = 16  # average number of new posterior particles per collision
   nCollision = 0
   nCollider = 0
   collision = fill(0, p.observer.nBparticles[])
   collider = fill(0, p.observer.nBparticles[])
 
     # randomly jitter posterior particles (diffusion/uncertainty per timestep)
-    p.observer.Bparticle[1:p.observer.nBparticles[],:] += sδ.*randn(p.observer.nBparticles[],2)
+    p.observer.Bparticle[1:p.observer.nBparticles[],:] += diffuseCoef*randn(p.observer.nBparticles[],2)
+
     # # replace particles that have diffused off the edge of the mat by samples from initial prior
     for i in 1:p.observer.nBparticles[]
       r2 = sqrt(p.observer.Bparticle[i,1]^2 + p.observer.Bparticle[i,2]^2)
@@ -850,17 +852,22 @@ function bayesArrayUpdate(p::Placozoan)
   posteriorSum = 0.0
    for i in -p.observer.maxRange:p.observer.maxRange
      for j in -p.observer.maxRange:p.observer.maxRange
-       # posterior is dynamic prior
-       p.observer.posterior[i,j] *= p.observer.likelihood[i,j]
-       posteriorSum += p.observer.posterior[i,j]
-     end
-   end
-   # smooth and mix with initial prior
+        # d = sqrt(i^2 + j^2)
+        # if (d>p.radius) & (d<p.observer.maxRange)
+          # posterior is dynamic prior
+          p.observer.posterior[i,j] *= p.observer.likelihood[i,j]
+          posteriorSum += p.observer.posterior[i,j]
+        # end
+      end
+    end
+   # diffuse and mix with initial prior
+   # NB diffusion coef here should match diffusion coef in particle filter
    density = p.observer.posteriorDeaths[]/p.observer.nBparticles[]
-   p.observer.posterior[:,:] = (1.0-density)*
-      imfilter(p.observer.posterior, Kernel.gaussian(2))./posteriorSum + density.*p.observer.prior[:,:]
+   diffuseCoef = 4.0
+   p.observer.posterior[:,:]  = (1.0-density)*
+      imfilter(p.observer.posterior, Kernel.gaussian(diffuseCoef))./posteriorSum + density.*p.observer.prior[:,:]
 
- end
+    end
 
 # Utility functions
 
@@ -982,56 +989,13 @@ function KLDBits_rev(I::Observer)
 end
 
 
-# function KLDBits(I::Observer)
-#    KLD = 0.0
-#    Q = zeros(I.nBparticles[])
-#    sumQ = 0.0
-#    for k in 1:I.nBparticles[]
-#      i = max(-I.maxRange, min(I.maxRange, Int64(round(I.Bparticle[k,1]))))
-#      j = max(-I.maxRange, min(I.maxRange, Int64(round(I.Bparticle[k,2]))))
-#      Q[k] = max(I.posterior[i,j], 1.0e-6)
-#      sumQ += Q[k]
-#    end
-#    Q  = Q./sumQ   # normalize posterior at sample points
-#    KLD = sum(Q.*log2.(Q)) + log2(I.nBparticles[])
-# end
-
-
-function KLDBits(I::Observer)
-  KLD = 0.0
-  Q = zeros(I.nBparticles[])
-  sumQ = 0.0
-  nB = 0
-  for k in 1:I.nBparticles[]
-    i = Int64(round(I.Bparticle[k,1]))
-    j = Int64(round(I.Bparticle[k,2]))
-    if abs(i)<I.maxRange & abs(j)<I.maxRange 
-      if I.posterior[i,j] > eps()
-        nB = nB+1
-        Q[nB] = I.posterior[i,j]
-        sumQ = sumQ + Q[nB]
-      end
-    end
-  end
-  KLD = sum(Q[1:nB].*log2.(Q[1:nB])) + log2(nB)*sumQ
-end
-
-
-# function recordKLDBits(I::Observer, frame::Int64)
-
-#    Q = zeros(I.nBparticles[])
-#    sumQ = 0.0
-#    for k in 1:I.nBparticles[]
-#     i = max(-I.maxRange, min(I.maxRange, Int64(round(I.Bparticle[k,1]))))
-#     j = max(-I.maxRange, min(I.maxRange, Int64(round(I.Bparticle[k,2]))))
-#      Q[k] = max(I.posterior[i,j], 1.0e-6)
-#      sumQ += Q[k]
-#    end
-#    Q  = Q./sumQ   # normalize posterior at sample points
-#    I.KLD[frame] = sum(Q.*log2.(Q)) + log2(I.nBparticles[])
-#   end
 
 function recordKLDBits(I::Observer, frame::Int64)
+  # computes Kullback-Liebler divergence, saves in KLD field of observer.
+  # NB If the particles are regarded as a random sample from a distribution P*
+  # then the expected value of "KLD" computed here is the KL-divergence 
+  # of P* from the true posterior P.   In particular, the expected value of "KLD"
+  # is zero if particles are drawn randomly from P.  
   KLD = 0.0
   S = zeros(I.nBparticles[])
   sumS = 0.0
@@ -1039,41 +1003,32 @@ function recordKLDBits(I::Observer, frame::Int64)
   for k in 1:I.nBparticles[]
     i = Int64(round(I.Bparticle[k,1]))
     j = Int64(round(I.Bparticle[k,2]))
-    if abs(i)<I.maxRange & abs(j)<I.maxRange 
-      if I.posterior[i,j] > 1.0e-14
+    if (abs(i)<I.maxRange) & (abs(j)<I.maxRange) # exclude particles not in the observable world
+     if I.posterior[i,j] > 1.0e-15
         nB = nB+1
         S[nB] = I.posterior[i,j]
         sumS = sumS + S[nB]
-      end
+     end
     end
   end
-  #S = S/sumS
-  I.KLD[frame] = sum(S[1:nB].*log2.(S[1:nB])) + log2(nB)
+  I.KLD[frame] = -sum(S[1:nB].*log2.(S[1:nB])) -  log2(I.nBparticles[])
 end
 
-# function recordKLDBits(I::Observer, frame::Int64)
-
-#   # KLD = -sum(log(s_k)) - log(n)
-#   # where s_k is sequential Bayesian estimate at kth particle location
-#   # i.e. the "true" posterior, and n is number of particles.
-#   # we ignore particles outside the support of s.
-#   # KLD is the amount of information lost by using p_k instead of s
-#   S = 0.0  
-#   nB = 0
-#   for k in 1:I.nBparticles[]
-#     i = Int64(round(I.Bparticle[k,1]))
-#     j = Int64(round(I.Bparticle[k,2]))
-#     if abs(i)<I.maxRange & abs(j)<I.maxRange 
-#       if I.posterior[i,j] > 1.0e-12
-#         nB = nB+1
-#         S -= log2(I.posterior[i,j])
-#       end
-#     end
-#   end
-  
-#   I.KLD[frame] = S - log2(nB)
-#   if I.KLD[frame]==Inf
-#     println(' ')
-#     println(S, ", ", nB)
-#   end
-# end
+function KLDBits(I::Observer, frame::Int64)
+  KLD = 0.0
+  S = zeros(I.nBparticles[])
+  sumS = 0.0
+  nB = 0
+  for k in 1:I.nBparticles[]
+    i = Int64(round(I.Bparticle[k,1]))
+    j = Int64(round(I.Bparticle[k,2]))
+    if (abs(i)<I.maxRange) & (abs(j)<I.maxRange) # exclude particles not in the observable world
+     if I.posterior[i,j] > 1.0e-15
+        nB = nB+1
+        S[nB] = I.posterior[i,j]
+        sumS = sumS + S[nB]
+     end
+    end
+  end
+  KLD = -sum(S[1:nB].*log2.(S[1:nB])) -  log2(I.nBparticles[])
+end

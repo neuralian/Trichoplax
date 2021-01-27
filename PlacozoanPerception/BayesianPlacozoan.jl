@@ -92,7 +92,10 @@ physics = Physics()
 
 struct Observer
 
-  maxRange::Int64 # world radius = maxRange of indices for arrays
+  minRange::Int64  # placozoan radius (distance/index to proximal edge of mat)
+  maxRange::Int64  # mat radius (distance/index to edge of mat/world)
+  N::Int64         # number of sample points on mat
+  log2N::Float64   # log2 of N
   likelihood::OffsetArray     # likelihood given all receptor states
   prior::OffsetArray
   posterior::OffsetArray
@@ -102,19 +105,35 @@ struct Observer
   Bparticle::Array{Float64,2}   # belief (posterior) particles
   Bparticle_step::Array{Float64,2}  # particle prediction steps
   posteriorDeaths::Array{Int64,1}   # number of posterior particles that die (and are replaced) per frame
-  burnIn::Float64
+  burnIn::Int64
   # priormean::Float64
   # priorsd::Float64  # std. dev. of prior
   PosteriorEntropy::Array{Float64,1} # in bits, 1 per time step
-  KLD::Array{Float64,1} # K-L divergence from particles to posterior
+  KLD::Array{Float64,1}   # K-L divergence from particles to posterior
+  KLD0::Array{Float64,1}  # K-L divergence from uniform sample to posterior
+  KLDI::Array{Float64,1}  # K-L divergence of random sample from posterior
   range::Array{Float64,1} # track distance between predator & prey edges
 end
 
 # Observer constructor
-function Observer(maxRange, nLparticles::Int64, nBparticles::Int64,
+function Observer(minRange, maxRange, nLparticles::Int64, nBparticles::Int64,
                   posteriorDeaths::Int64, nFrames::Int64)
 
-  return Observer(maxRange,
+
+  # count sample points on mat
+  N = 0
+  for i in -maxRange:maxRange
+    for j in -maxRange:maxRange
+      d = sqrt(i^2 + j^2)
+      if (d >= minRange) & (d <= maxRange)
+        N = N+1
+      end
+    end
+  end
+
+
+
+  return Observer(minRange, maxRange, N, log2(N),
                zeros(-maxRange:maxRange, -maxRange:maxRange),
                zeros(-maxRange:maxRange, -maxRange:maxRange),
                zeros(-maxRange:maxRange, -maxRange:maxRange),
@@ -124,7 +143,8 @@ function Observer(maxRange, nLparticles::Int64, nBparticles::Int64,
                zeros(max_nBparticles,2),
                [posteriorDeaths],
                32,
-               zeros(nFrames), zeros(nFrames), zeros(nFrames))
+               zeros(nFrames), zeros(nFrames), zeros(nFrames),
+               zeros(nFrames), zeros(nFrames))
 end
 
 # dummy observer constructor (for constructing placozoans without observers)
@@ -132,7 +152,8 @@ function Observer()
   z1 = zeros(1)
   z2 = zeros(1,1)
   zOff = OffsetArray(z2, 0:0, 0:0)
-  Observer(1, zOff, zOff, zOff, [1], [1], z2, z2, z2, [1],0, z1, z1, z1)
+  Observer(1, 1, 1, 1.0, zOff, zOff, zOff, [1], [1], z2, z2, z2, [1],0, 
+          z1, z1, z1, z1, z1)
 end
 
 
@@ -274,7 +295,7 @@ function Placozoan(
   edgecolor = RGB(0.0, 0.0, 0.0),
   )
 
-  observer =  Observer(eRange, nLparticles, nBparticles, posteriorDeaths, nFrames)
+  observer =  Observer(radius, eRange, nLparticles, nBparticles, posteriorDeaths, nFrames)
   
     receptor = Ereceptor( eRange, radius, nEreceptors, receptorSize,  
                           colour_receptor_OPEN, colour_receptor_CLOSED)
@@ -953,10 +974,16 @@ function plot_sensor(p::Placozoan)
  return(plt)
 end
 
-# Entropy of "true" posterior in bits
-function entropyBits(I::Observer)
-  support = findall(x->x>eps(), I.posterior)
-  return -sum(I.posterior[support].*log2.(I.posterior[support]))
+# Entropy of empirical pdf in bits
+# NB assumes sum(pdf)=1
+function entropy(pdf)
+  S = 0.0
+  for p in pdf
+    if p>1.0e-14  # prevent NaN error
+      S = S - p*log2(p)
+    end
+  end
+  S
 end
 
 #= # Entropy recorder (saves entropy on ith timestep)
@@ -970,65 +997,173 @@ function recordRange(I::Observer, predator::Placozoan, i)
     I.range[i] = sqrt(predator.x[]^2 + predator.y[]^2)
 end
 
-function KLDBits_rev(I::Observer)
-   KLD = 0.0
-   Q = zeros(I.nBparticles[])
-   sumQ = 0.0
-   for k in 1:I.nBparticles[]
-     i = Int64(round(I.Bparticle[k,1]))
-     j = Int64(round(I.Bparticle[k,2]))
-     Q[k] = I.posterior[i,j]
-     sumQ += Q[k]
-   end
-   Q  = Q./sumQ   # normalize posterior at sample points
-   for k in 1:I.nBparticles[]
-     KLD = KLD - log(2,Q[k])
-   end
-   KLD = KLD/I.nBparticles[] - log(2,I.nBparticles[])
-   return KLD
-end
+# function KLDBits_rev(I::Observer)
+#    KLD = 0.0
+#    Q = zeros(I.nBparticles[])
+#    sumQ = 0.0
+#    for k in 1:I.nBparticles[]
+#      i = Int64(round(I.Bparticle[k,1]))
+#      j = Int64(round(I.Bparticle[k,2]))
+#      Q[k] = I.posterior[i,j]
+#      sumQ += Q[k]
+#    end
+#    Q  = Q./sumQ   # normalize posterior at sample points
+#    for k in 1:I.nBparticles[]
+#      KLD = KLD - log(2,Q[k])
+#    end
+#    KLD = KLD/I.nBparticles[] - log(2,I.nBparticles[])
+#    return KLD
+# end
 
 
 
-function recordKLDBits(I::Observer, frame::Int64)
+function KLD!(I::Observer, frame::Int64)
   # computes Kullback-Liebler divergence, saves in KLD field of observer.
   # NB If the particles are regarded as a random sample from a distribution P*
   # then the expected value of "KLD" computed here is the KL-divergence 
   # of P* from the true posterior P.   In particular, the expected value of "KLD"
   # is zero if particles are drawn randomly from P.  
-  KLD = 0.0
-  S = zeros(I.nBparticles[])
-  sumS = 0.0
-  nB = 0
+  # also computes null KLD = KLD of uniform random sample of same size
+
+  # KLD of particle estimate
+  S = 0.0
   for k in 1:I.nBparticles[]
     i = Int64(round(I.Bparticle[k,1]))
     j = Int64(round(I.Bparticle[k,2]))
-    if (abs(i)<I.maxRange) & (abs(j)<I.maxRange) # exclude particles not in the observable world
-     if I.posterior[i,j] > 1.0e-15
-        nB = nB+1
-        S[nB] = I.posterior[i,j]
-        sumS = sumS + S[nB]
+    #if (i^2 + j^2)<I.maxRange^2 # exclude particles not in the observable world
+     if I.posterior[i,j] > 1.0e-14
+      # S = S + I.posterior[i,j]*log2(I.posterior[i,j] )
+      S = S + log2(I.posterior[i,j])
+    # end
+    end
+  end
+  I.KLD[frame] = S/I.nBparticles[] +  log2(I.nBparticles[])
+
+  # KLD of random uniform sample
+  S0 = 0.0
+  nSamples = 0
+  while nSamples < I.nBparticles[]
+    i = rand(-I.maxRange:I.maxRange,1)[]
+    j = rand(-I.maxRange:I.maxRange,1)[]
+    d = sqrt(i^2+j^2)
+    if (d>=I.minRange) & (d<=I.maxRange) # exclude particles not in the observable world
+     if I.posterior[i,j] > 1.0e-14
+       #S0 = S0 + I.posterior[i,j]*log2(I.posterior[i,j] )
+       S0 = S0 + log2(I.posterior[i,j] )
+       nSamples = nSamples + 1
+    # end
      end
     end
   end
-  I.KLD[frame] = -sum(S[1:nB].*log2.(S[1:nB])) -  log2(I.nBparticles[])
+  I.KLD0[frame] = S0/I.nBparticles[] +  log2(I.nBparticles[])
+
+
+   # KLD of sample from posterior
+   SI = 0.0
+   s = sample(I.posterior, I.nBparticles[])
+   for i in 1:I.nBparticles[]
+       #SI = SI + I.posterior[s[i,1],s[i,2]]*log2(I.posterior[s[i,1],s[i,2]])
+       SI = SI + log2(I.posterior[s[i,1],s[i,2]])
+   end
+
+   I.KLDI[frame] = SI/I.nBparticles[] +  log2(I.nBparticles[])
+ 
+ end
+
+
+# function gaussianProposal!(Proposal::AbstractArray, x0::Float64, y0::Float64, σ::Float64, peak::Float64)
+#   # empirical proposal distribution for rejection sampling from Gaussian-like 2D target density (unimodal, localized)
+#   # Diagonal covariance diag(σ^2,σ^2), peak is the maximum value of the target density
+#   # also NB sum(P) == sum(target) = 1 i.e. area elements == 1
+#   # The result is returned in P
+#   # NB This is just for developing and testing code for rejection sampling,
+#   # the actual sampling will be done by calling randn()
+
+#   gausspdf = MvNormal([x0,y0], σ)
+
+#   S = 0.0   # sum for normalizing
+
+#   for i in axes(Proposal,1)
+#     for j in axes(Proposal,2)
+#       Proposal[i,j] = pdf(gausspdf, [i , j])
+#       S = S + Proposal[i,j] 
+#     end
+#   end
+
+#   # normalize 
+#   Proposal[:,:] = Proposal/S
+# end
+
+
+function sample!(s::Array{Int64, 2}, D::AbstractArray)
+  # draw sample s (nx2) from 2D empirical distribution D by rejection
+  # sum(D)==1.
+  # samples are returned as Int64 nx2 indices of D
+  # Uses rectangular uniform proposal distribution whose 1/2-width shrinks
+  # to 3x the standard deviation of the posterior as it converges. 
+
+  (peak, ipeak) = findmax(D)  # maximum probability and its location
+  σ = 2^((entropy(D)-4.0942)/2)  # standard deviation of target distribution
+
+  N = size(s,1)      # required sample size
+  i = 0              # sample size counter
+  X = axes(D,1)
+  Y = axes(D,2)
+
+  # sample region is 3 sd each side of peak
+  Δ = Int64(round(4*σ))
+  x0 = max( X[1],   ipeak[1] - Δ)
+  x1 = min( X[end], ipeak[1] + Δ)
+  y0 = max( Y[1],   ipeak[2] - Δ)
+  y1 = min( Y[end], ipeak[2] + Δ) 
+
+  while i<N
+    x = rand(x0:x1,1)[]    # uniform random point
+    y = rand(y0:y1,1)[]
+    if peak*rand()[] < D[x,y]  # accept/reject
+      i = i + 1
+      s[i,1] = x
+      s[i,2] = y
+    end
+  end
+
+  s
 end
 
-function KLDBits(I::Observer, frame::Int64)
-  KLD = 0.0
-  S = zeros(I.nBparticles[])
-  sumS = 0.0
-  nB = 0
-  for k in 1:I.nBparticles[]
-    i = Int64(round(I.Bparticle[k,1]))
-    j = Int64(round(I.Bparticle[k,2]))
-    if (abs(i)<I.maxRange) & (abs(j)<I.maxRange) # exclude particles not in the observable world
-     if I.posterior[i,j] > 1.0e-15
-        nB = nB+1
-        S[nB] = I.posterior[i,j]
-        sumS = sumS + S[nB]
-     end
+function sample(D::AbstractArray, N::Int64)
+  # draw sample s of size n from 2D empirical distribution D by rejection
+  # sum(D)==1.
+  # samples are returned as Int64 nx2 indices of D
+  # samples are returned as Int64 nx2 indices of D
+  # Uses rectangular uniform proposal distribution whose 1/2-width shrinks
+  # to 3x the standard deviation of the posterior as it converges. 
+
+  s = fill(0, N, 2)   # for samples
+
+  (peak, ipeak) = findmax(D)  # maximum probability and its location
+  σ = 2^((entropy(D)-4.0942)/2)  # standard deviation of target distribution
+
+
+  i = 0              # sample size counter
+  X = axes(D,1)
+  Y = axes(D,2)
+
+  # sample region is 3 sd each side of peak
+  Δ = Int64(round(3*σ))
+  x0 = max(minimum(X), ipeak[1] - Δ)
+  x1 = min(maximum(X), ipeak[1] + Δ)
+  y0 = max(minimum(Y), ipeak[2] - Δ)
+  y1 = min(maximum(Y), ipeak[2] + Δ) 
+
+  while i<N
+    x = rand(x0:x1,1)[]    # uniform random point
+    y = rand(y0:y1,1)[]
+    if peak*rand()[] < D[x,y]  # accept/reject
+      i = i + 1
+      s[i,1] = x
+      s[i,2] = y
     end
   end
-  KLD = -sum(S[1:nB].*log2.(S[1:nB])) -  log2(I.nBparticles[])
+
+  s
 end

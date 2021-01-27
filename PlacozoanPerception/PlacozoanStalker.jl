@@ -161,7 +161,7 @@ tick()
 
 for rep = 1 # 1:nReps
     for n_likelihood_particles = [2048] # [512 1024  2048 4096 8192 ]
-        for n_posterior_particles = [1024] # Int.(n_likelihood_particles .÷ [.5 1 2 4])
+        for n_posterior_particles = [16384] # Int.(n_likelihood_particles .÷ [.5 1 2 4])
             for posteriorDeaths = [32] # [.001 .01 .1]
 
                 # construct placozoans
@@ -483,10 +483,10 @@ for rep = 1 # 1:nReps
                     end # PLOT_ARRAYS
 
                     # record posterior entropy (& display during simulation)
-                    prey.observer.PosteriorEntropy[i] = entropyBits(prey.observer)
+                    prey.observer.PosteriorEntropy[i] = entropy(prey.observer.posterior)
                     #Sprey.observer.KLD[i] = KLDBits(prey.observer)
                     recordRange(prey.observer, predator, i)
-                    recordKLDBits(prey.observer, i)
+                    KLD!(prey.observer, i)
 
                     # clock display
                     if DO_PLOTS

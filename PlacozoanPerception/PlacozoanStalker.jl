@@ -5,8 +5,8 @@ using TickTock
 # import BayesianPlacozoan
 # function main()
 
-# to create a video file, find the line starting "record(scene ..."
-# and comment it out (about line 400)
+# to [not] create a video file, uncomment the line starting "record(scene ..."
+# (about line 400) and comment out the for i = ... (next line)
     
 # choose what gets plotted (for demo/explanatory videos)
 # the default is to plot 3 panels showing all particles + likelihood and posterior
@@ -18,7 +18,7 @@ PLOT_ARRAYS = true
 # DO_PLOTS switches plotting ON/OFF, for running multiple simulations
 # to collect data without plotting. DO_PLOTS must be true for the 
 # settings above to take effect
-DO_PLOTS = true
+DO_PLOTS = false
 if DO_PLOTS == false
     PLOT_EXT_PARTICLES = false
     PLOT_INT_PARTICLES = false
@@ -28,7 +28,7 @@ end
 
 # simulation parameters
 nReps = 16
-nFrames = 180       # number of animation frames
+nFrames = 600       # number of animation frames
 burn_time = 4         # compute initial prior by burning in with predator at "infinity"
 mat_radius = 400
 approach_Δ = 32.0         # predator closest approach distance
@@ -52,7 +52,7 @@ prey_fieldrange = 0   # no field
 # predator parameters
 predator_radius = 150
 predator_margin = 0
-predator_speed = 0.75
+predator_speed = 0.2
 predator_fieldrange = mat_radius
 
 
@@ -93,8 +93,8 @@ FileName = "PlacozoanStalker" * string(Int(ELECTRORECEPTION)) * string(Int(PHOTO
     string(Nreceptors) 
 
 CSV.write(FileName * ".csv",
-    DataFrame(Range=Float64[], predatorx=Float64[], predatory=Float64[], xMAP=Int64[], yMAP=Int64[], 
-                   PosteriorEntropy=Float64[], KLD=Float64[], 
+    DataFrame(rep=Int64[],Range=Float64[], predatorx=Float64[], predatory=Float64[], xMAP=Int64[], yMAP=Int64[], 
+                   PosteriorEntropy=Float64[], KLD=Float64[], KLD0=Float64[], KLDI=Float64[],
                    Dmed = Float64[], Dquart = Float64[], D5pc = Float64[], D1pc = Float64[],
                    Dmin = Float64[], 
                    Θ1pc = Float64[], Θ5pc = Float64[], Θquart = Float64[], Θmed = Float64[],
@@ -159,9 +159,9 @@ radialSmooth(dummy_prey.observer.prior, prey_radius:mat_radius)
 
 tick()
 
-for rep = 1 # 1:nReps
+for rep = 1:nReps
     for n_likelihood_particles = [2048] # [512 1024  2048 4096 8192 ]
-        for n_posterior_particles = [16384] # Int.(n_likelihood_particles .÷ [.5 1 2 4])
+        for n_posterior_particles = [1024] # Int.(n_likelihood_particles .÷ [.5 1 2 4])
             for posteriorDeaths = [32] # [.001 .01 .1]
 
                 # construct placozoans
@@ -400,13 +400,13 @@ for rep = 1 # 1:nReps
 
                 end #DO_PLOTS
 
-                videoName = FileName * "_" * string(rep) * "_" * string(n_likelihood_particles) * "_" *
-                           string(n_posterior_particles) * "_" * string(posteriorDeaths) * ".mp4"
+                videoName = FileName * "_" * string(n_likelihood_particles) * "_" *
+                           string(n_posterior_particles) * "_" * string(posteriorDeaths) * "_" * string(rep) * ".mp4"
 
                 # VIDEO RECORDING
                 # comment out ONE of the following 2 lines to (not) generate video file
-                record(scene, videoName , framerate=9, 1:nFrames) do i     # generate video file
-                #for i in 1:nFrames                                      # just compute
+                #record(scene, videoName , framerate=24, 1:nFrames) do i     # generate video file
+                for i in 1:nFrames                                      # just compute
 
                    #println(i)
 
@@ -502,14 +502,14 @@ for rep = 1 # 1:nReps
                     iMAP = findmax(prey.observer.posterior)[2]
                    # println(iMAP[1], ", ", iMAP[2])
 
-                    (QD, Dmin, Qθ, θmin, θmax) = particleStats(prey, atan(predator.y[],predator.x[]) )
+                    (QD, Dmin, Qθ, θmin, θmax) = particleStats(prey, predator) 
                     # println(QD, ", ", Dmin, ", ", Qθ, ", ", θmin, ", ", θmax)
                     # sleep(2)
 
                     # save data
                     CSV.write(FileName * ".csv",
-                        DataFrame(hcat(prey.observer.range[i], predator.x[], predator.y[], iMAP[1], iMAP[2],
-                            prey.observer.PosteriorEntropy[i], prey.observer.KLD[i], 
+                        DataFrame(hcat(rep, prey.observer.range[i], predator.x[], predator.y[], iMAP[1], iMAP[2],
+                            prey.observer.PosteriorEntropy[i], prey.observer.KLD[i], prey.observer.KLD0[i], prey.observer.KLDI[i], 
                             QD..., Dmin, Qθ..., θmin,  θmax, 
                             Nreceptors, 
                             n_likelihood_particles, n_posterior_particles,  posteriorDeaths)),

@@ -1,6 +1,6 @@
 # BayesianPlacozoan module
 
-using Makie
+using GLMakie
 using AbstractPlotting.MakieLayout
 using AbstractPlotting
 using Colors
@@ -743,7 +743,7 @@ function bayesParticleUpdate(p::Placozoan)
   δ2 = 1.6    # squared collision maxRange
   diffuseCoef = 4.0   # posterior particle diffusion rate (SD of Gaussian per step)
   # NB diffusion coef here should match diffusion coef in sequential Bayes upsdate (bayesArrayUpdate())
-  nSpawn = 16  # average number of new posterior particles per collision
+  nSpawn = 8  # average number of new posterior particles per collision
   nCollision = 0
   nCollider = 0
   collision = fill(0, p.observer.nBparticles[])
@@ -929,18 +929,58 @@ end
 
 
 # 1-sided quantiles of range and bearing error for posterior particles 
-function particleStats(p::Placozoan, predatorBearing)
+# function particleStats(p::Placozoan, predatorBearing)
+
+#   # index active particles
+#   N = p.observer.nBparticles[]
+
+#   # sorted squared distance from edge of prey to posterior particles
+#   D2 = sort(sum(p.observer.Bparticle[1:N,:].^2, dims=2), dims=1)
+#   # quantiles of particle distance to predator, toward prey from 1/2 (median) to 1/128 
+#   QD = [sqrt(D2[Int(round(N/q))]).-p.radius for q in  [2 4 20 100]]
+
+#   # bearing error for each particle
+#   θ = atan.(p.observer.Bparticle[1:N,2],p.observer.Bparticle[1:N,1]) .- predatorBearing
+
+#   # unwrap
+#   for i in 1:N
+#     if θ[i] > π
+#       θ[i] = θ[i] - 2π
+#     elseif    θ[i] < -π
+#       θ[i] = θ[i] + 2π
+#     end
+#   end
+
+#   # quantiles of particle bearing angle from predator
+#   θ = sort(θ)
+#   Qθ = hcat( [θ[N - Int(round(N/q))]*180/π for q in  [100 20 4]], [θ[Int(round(N/q))]*180/π for q in  [2 4 20 100]])
+
+#   # return quantiles + minimum distance as tuple
+#   #return (Q, sqrt(D2[1]).-p.radius )
+#   return (QD, sqrt(D2[1]).-p.radius, Qθ, θ[1]*180/π, θ[end]*180/π )
+
+# end
+
+function particleStats(prey::Placozoan, predator::Placozoan)
+
+  bearing2predator = atan(predator.y[], predator.x[])    # bearing to centre of predator
+  
+  x_edge = predator.x[] - predator.radius*cos(bearing2predator) # x-coord of closest edge point
+  y_edge = predator.y[] - predator.radius*sin(bearing2predator)
+
+  bearing = atan(y_edge, x_edge)   # bearing to closest edge of predator
+ 
 
   # index active particles
-  N = p.observer.nBparticles[]
+  N = prey.observer.nBparticles[]
 
   # sorted squared distance from edge of prey to posterior particles
-  D2 = sort(sum(p.observer.Bparticle[1:N,:].^2, dims=2), dims=1)
+  D2 = sort(sum(prey.observer.Bparticle[1:N,:].^2, dims=2), dims=1)
   # quantiles of particle distance to predator, toward prey from 1/2 (median) to 1/128 
-  QD = [sqrt(D2[Int(round(N/q))]).-p.radius for q in  [2 4 20 100]]
+  QD = [sqrt(D2[Int(round(N/q))]).-prey.radius for q in  [2 4 20 100]]
 
   # bearing error for each particle
-  θ = atan.(p.observer.Bparticle[1:N,2],p.observer.Bparticle[1:N,1]) .- predatorBearing
+  θ = atan.(prey.observer.Bparticle[1:N,2],prey.observer.Bparticle[1:N,1]) .- bearing
 
   # unwrap
   for i in 1:N
@@ -957,10 +997,9 @@ function particleStats(p::Placozoan, predatorBearing)
 
   # return quantiles + minimum distance as tuple
   #return (Q, sqrt(D2[1]).-p.radius )
-  return (QD, sqrt(D2[1]).-p.radius, Qθ, θ[1]*180/π, θ[end]*180/π )
+  return (QD, sqrt(D2[1]).-prey.radius, Qθ, θ[1]*180/π, θ[end]*180/π )
 
 end
-
 
 # plot field and receptor open state probability as a function of distance
 # use CairoMakie to allow the plot to be exported to .svg or .pdf file
@@ -1067,7 +1106,7 @@ function KLD!(I::Observer, frame::Int64)
    end
 
    I.KLDI[frame] = SI/I.nBparticles[] +  log2(I.nBparticles[])
- 
+
  end
 
 
@@ -1102,7 +1141,7 @@ function sample!(s::Array{Int64, 2}, D::AbstractArray)
   # Uses rectangular uniform proposal distribution whose 1/2-width shrinks
   # to 3x the standard deviation of the posterior as it converges. 
 
-  (peak, ipeak) = findmax(D)  # maximum probability and its location
+ (peak, ipeak) = findmax(D)   # maximum probability and its location
   σ = 2^((entropy(D)-4.0942)/2)  # standard deviation of target distribution
 
   N = size(s,1)      # required sample size
@@ -1112,10 +1151,10 @@ function sample!(s::Array{Int64, 2}, D::AbstractArray)
 
   # sample region is 3 sd each side of peak
   Δ = Int64(round(4*σ))
-  x0 = max( X[1],   ipeak[1] - Δ)
-  x1 = min( X[end], ipeak[1] + Δ)
-  y0 = max( Y[1],   ipeak[2] - Δ)
-  y1 = min( Y[end], ipeak[2] + Δ) 
+  x0 = max( minimum(X),   ipeak[1] - Δ)
+  x1 = min( maximum(X), ipeak[1] + Δ)
+  y0 = max( minimum(Y),   ipeak[2] - Δ)
+  y1 = min( maximum(Y), ipeak[2] + Δ) 
 
   while i<N
     x = rand(x0:x1,1)[]    # uniform random point

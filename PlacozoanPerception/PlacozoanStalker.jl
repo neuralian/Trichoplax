@@ -18,7 +18,7 @@ PLOT_ARRAYS = true
 # DO_PLOTS switches plotting ON/OFF, for running multiple simulations
 # to collect data without plotting. DO_PLOTS must be true for the 
 # settings above to take effect
-DO_PLOTS = false
+DO_PLOTS = true
 if DO_PLOTS == false
     PLOT_EXT_PARTICLES = false
     PLOT_INT_PARTICLES = false
@@ -27,7 +27,7 @@ end
 
 
 # simulation parameters
-nReps = 16
+nReps = 128
 nFrames = 600       # number of animation frames
 burn_time = 4         # compute initial prior by burning in with predator at "infinity"
 mat_radius = 400
@@ -52,7 +52,7 @@ prey_fieldrange = 0   # no field
 # predator parameters
 predator_radius = 150
 predator_margin = 0
-predator_speed = 0.2
+predator_speed = 0.3
 predator_fieldrange = mat_radius
 
 
@@ -194,8 +194,8 @@ for rep = 1:nReps
                      RGB(.95, 0.1, 0.1) )
                 predator.speed[] = predator_speed
                 θ = π * rand()[] # Random initial heading (from above)
-                predator.x[] = (mat_radius + 0.0 * predator_radius) * cos(θ)
-                predator.y[] = (mat_radius + 0.0 * predator_radius) * sin(θ)
+                predator.x[] = (mat_radius + 0.5* predator_radius) * cos(θ)
+                predator.y[] = (mat_radius + 0.5 * predator_radius) * sin(θ)
                 predator.field[:] = dummy_predator.field[:]
                 predator.potential[:] = dummy_predator.potential[:]
 
@@ -213,20 +213,27 @@ for rep = 1:nReps
                         hidespines!(left_panel)
                         hidedecorations!(left_panel)
                     else
-                        scene, layout = layoutscene(resolution = ( Int(round(3 * .75 * WorldSize)), Int(round(.75 * WorldSize + 40)) ) )
-                        shim = layout[1, 1] = LAxis(scene)
-                        left_panel = layout[1, 2] = 
-                            LAxis( scene,  title="Placozoan: ( " * string(n_likelihood_particles) * ", " *
-                                string(n_posterior_particles) * ", " * string(posteriorDeaths) * " )",
-                                backgroundcolor=colour_background )
-                        middle_panel = layout[1, 3] = LAxis(scene, title="Likelihood")
-                        right_panel = layout[1, 4] = LAxis(scene, title="Bayesian Observer")
-                        colsize!(layout, 1, Relative(0.04))
-                        colsize!(layout, 2, Relative(0.32))
-                        colsize!(layout, 3, Relative(0.32))
-                        colsize!(layout, 4, Relative(0.32))
-                        hidespines!(shim)
-                        hidedecorations!(shim)
+                        #scene, layout = layoutscene(resolution = ( Int(round(3 * .75 * WorldSize)), Int(round(.75 * WorldSize + 40)) ) )
+                        scene = Figure(resolution = ( Int(round(3 * .75 * WorldSize)), Int(round(.75 * WorldSize + 40)) ))
+                        left_panel = scene[1,1] = Axis(scene, title="Placozoan: ( " * string(n_likelihood_particles) * ", " *
+                            string(n_posterior_particles) * ", " * string(posteriorDeaths) * " )",
+                            backgroundcolor=colour_background )
+                        middle_panel = scene[1, 2] = Axis(scene, title="Likelihood")
+                        right_panel = scene[1, 3] = Axis(scene, title="Bayesian Observer")
+
+                            display(scene)
+                        #shim = layout[1, 1] = LAxis(scene)
+                            # LAxis( scene,  title="Placozoan: ( " * string(n_likelihood_particles) * ", " *
+                            #     string(n_posterior_particles) * ", " * string(posteriorDeaths) * " )",
+                            #     backgroundcolor=colour_background )
+
+                        
+                        # colsize!(scene, 1, Relative(0.04))
+                        # colsize!(scene, 2, Relative(0.32))
+                        # colsize!(scene, 3, Relative(0.32))
+                        # colsize!(scene, 4, Relative(0.32))
+                       #hidespines!(shim)
+                       # hidedecorations!(shim)
                         hidespines!(left_panel)
                         hidedecorations!(left_panel)
                         hidespines!(middle_panel)
@@ -261,7 +268,7 @@ for rep = 1:nReps
                 
                 if DO_PLOTS
                     # display nominal time on background
-                    clock_plt = LText(scene, "                         t = 0.0s",
+                    clock_plt = Label(scene, "                 t = 0.0s",
                         color=:white, textsize=18, halign=:left)
 
                 # predator drawn using lift(..., node)
@@ -405,8 +412,8 @@ for rep = 1:nReps
 
                 # VIDEO RECORDING
                 # comment out ONE of the following 2 lines to (not) generate video file
-                #record(scene, videoName , framerate=24, 1:nFrames) do i     # generate video file
-                for i in 1:nFrames                                      # just compute
+                record(scene, videoName , framerate=24, 1:nFrames) do i     # generate video file
+                #for i in 1:nFrames                                      # just compute
 
                    #println(i)
 
@@ -490,7 +497,7 @@ for rep = 1:nReps
 
                     # clock display
                     if DO_PLOTS
-                        clock_plt.text =  "                         t = " *   
+                        clock_plt.text =  "                 t = " *   
                                         string(Int(floor(t[]+1))) *  "s"
 
                         # Node update causes redraw
@@ -528,8 +535,8 @@ for rep = 1:nReps
                 initialize_particles(prey) # draw initial sample from prior
                 initialize_prior(prey)     # initialize numerical Bayesian prior
                 θ = π * rand()[] # Random initial heading (from above)
-                predator.x[] = (mat_radius + 0.5 * predator_radius) * cos(θ)
-                predator.y[] = (mat_radius + 0.5 * predator_radius) * sin(θ)
+                predator.x[] = (mat_radius + 0.75 * predator_radius) * cos(θ)
+                predator.y[] = (mat_radius + 0.75 * predator_radius) * sin(θ)
                 t[] = 0
             
             end # n_prior_particles

@@ -52,7 +52,7 @@ prey_fieldrange = 0   # no field
 # predator parameters
 predator_radius = 150
 predator_margin = 0
-predator_speed = 0.3
+predator_speed = 0.25
 predator_fieldrange = mat_radius
 
 
@@ -103,46 +103,35 @@ CSV.write(FileName * ".csv",
                    Nreceptors=Int[], n_likelihood_particles=Int64[], n_posterior_particles=Int64[],  
                    priorDensity=Float64[]))
 
-# use dummy predator and prey to precompute fields, receptive fields and prior
-# these are common to all Placozoans with the same number of receptors
-# so only need to be computed once
-dummy_prey = Placozoan(prey_radius, prey_margin, prey_fieldrange,
-    Nreceptors, sizeof_receptor, mat_radius,
-    Ncrystals, sizeof_crystal, mat_radius,
-    1, 1, 1, 1)
+# # use dummy predator and prey to precompute fields, receptive fields and prior
+# # these are common to all Placozoans with the same number of receptors
+# # so only need to be computed once
+# dummy_prey = Placozoan(prey_radius, prey_margin, prey_fieldrange,
+#     Nreceptors, sizeof_receptor, mat_radius,
+#     Ncrystals, sizeof_crystal, mat_radius,
+#     n_likelihood_particles, Int(n_posterior_particles),
+#     posteriorDeaths, nFrames)
 
 
 
-dummy_predator = Placozoan(predator_radius, predator_margin, predator_fieldrange,
-RGBA(.25, 0.1, 0.1, 1.0),
-RGBA(.45, 0.1, 0.1, 0.25),
-RGB(.95, 0.1, 0.1) )
-dummy_predator.x[] = 0
-dummy_predator.y[] = mat_radius + 2.0*predator_radius
-dummy_predator.speed[] = predator_speed
+# dummy_predator = Placozoan(predator_radius, predator_margin, predator_fieldrange,
+# RGBA(.25, 0.1, 0.1, 1.0),
+# RGBA(.45, 0.1, 0.1, 0.25),
+# RGB(.95, 0.1, 0.1) )
+# dummy_predator.x[] = (mat_radius + 0.25* predator_radius) 
+# dummy_predator.y[] = 0.0
+# # dummy_predator.x[] = 0
+# # dummy_predator.y[] = mat_radius + 2.0*predator_radius
+# dummy_predator.speed[] = predator_speed
 
-placozoanFieldstrength!(dummy_predator)
-Ereceptor_RF(dummy_prey, dummy_predator)
-Vreceptor_RF(dummy_prey)
-initialize_prior(dummy_prey)
+# placozoanFieldstrength!(dummy_predator)
+# Ereceptor_RF(dummy_prey, dummy_predator)
+# Vreceptor_RF(dummy_prey)
+# initialize_prior(dummy_prey)
 
 
-# burn in
-for i in 1:burn_time
-    if ELECTRORECEPTION
-        electroreception(dummy_prey, dummy_predator)
-    end
-    if PHOTORECEPTION
-        photoreception(dummy_prey, dummy_predator)
-    end
-    likelihood(dummy_prey, ELECTRORECEPTION, PHOTORECEPTION)  
-    bayesArrayUpdate(dummy_prey)
-    dummy_prey.observer.prior[:,:] = dummy_prey.observer.posterior[:,:]
-end
-
-radialSmooth(dummy_prey.observer.prior, prey_radius:mat_radius)
 # # burn in
-# for i in 1:dummy_prey.observer.burnIn
+# for i in 1:burn_time
 #     if ELECTRORECEPTION
 #         electroreception(dummy_prey, dummy_predator)
 #     end
@@ -151,18 +140,17 @@ radialSmooth(dummy_prey.observer.prior, prey_radius:mat_radius)
 #     end
 #     likelihood(dummy_prey, ELECTRORECEPTION, PHOTORECEPTION)  
 #     bayesArrayUpdate(dummy_prey)
-#     dummy_prey.observer.prior[:,:] = (1.0 - 1/i)*dummy_prey.observer.prior[:,:] + dummy_prey.observer.posterior[:,:]/i
+#     dummy_prey.observer.prior[:,:] = dummy_prey.observer.posterior[:,:]
 # end
 
-
-
+# radialSmooth(dummy_prey.observer.prior, prey_radius:mat_radius)
 
 tick()
 
 for rep = 1:nReps
     for n_likelihood_particles = [2048] # [512 1024  2048 4096 8192 ]
         for n_posterior_particles = [1024] # Int.(n_likelihood_particles .÷ [.5 1 2 4])
-            for posteriorDeaths = [32] # [.001 .01 .1]
+            for posteriorDeaths = [16] # [.001 .01 .1]
 
                 # construct placozoans
                 # HINT: These are local variables but if they are declared global 
@@ -173,16 +161,17 @@ for rep = 1:nReps
                     n_likelihood_particles, Int(n_posterior_particles),
                     posteriorDeaths, nFrames)
 
-                prey.receptor.pOpen[:] = dummy_prey.receptor.pOpen[:] 
-                prey.photoreceptor.pOpenV[:] = dummy_prey.photoreceptor.pOpenV[:] 
+
+                # prey.receptor.pOpen[:] = dummy_prey.receptor.pOpen[:] 
+                # prey.photoreceptor.pOpenV[:] = dummy_prey.photoreceptor.pOpenV[:] 
                 # println("____")
                 # println(maximum(prey.receptor.pOpen[1]), " ", maximum(dummy_prey.receptor.pOpen[1]))
                 # println("____")
                 # if NTRIALS[]==0
                # initialize_prior(prey)     # initialize numerical Bayesian prior
-               prey.observer.prior[:,:] = dummy_prey.observer.prior[:,:]
-               prey.observer.posterior[:,:] = prey.observer.prior[:,:]
-               initialize_particles(prey) # draw initial sample from prior
+            #    prey.observer.prior[:,:] = dummy_prey.observer.prior[:,:]
+            #    prey.observer.posterior[:,:] = prey.observer.prior[:,:]
+            #    initialize_particles(prey) # draw initial sample from prior
                # end
                 
                 # initializeObserver(prey, n_likelihood_particles, n_posterior_particles, priorDensity)
@@ -194,13 +183,37 @@ for rep = 1:nReps
                      RGB(.95, 0.1, 0.1) )
                 predator.speed[] = predator_speed
                 θ = π * rand()[] # Random initial heading (from above)
-                predator.x[] = (mat_radius + 0.5* predator_radius) * cos(θ)
-                predator.y[] = (mat_radius + 0.5 * predator_radius) * sin(θ)
-                predator.field[:] = dummy_predator.field[:]
-                predator.potential[:] = dummy_predator.potential[:]
+                predator.x[] = (mat_radius + 0.25* predator_radius) * cos(θ)
+                predator.y[] = (mat_radius + 0.25 * predator_radius) * sin(θ)
+                # predator.field[:] = dummy_predator.field[:]
+                # predator.potential[:] = dummy_predator.potential[:]
 
 
+            
+            placozoanFieldstrength!(predator)
+            Ereceptor_RF(prey, predator)
+            Vreceptor_RF(prey)
+            initialize_prior(prey)
+            prey.observer.posterior[:,:] = prey.observer.prior[:,:]
 
+            # burn in
+            for i in 1:burn_time
+                if ELECTRORECEPTION
+                    electroreception(prey, predator)
+                end
+                if PHOTORECEPTION
+                    photoreception(prey, predator)
+                end
+                likelihood(prey, ELECTRORECEPTION, PHOTORECEPTION)  
+                bayesArrayUpdate(prey)
+
+            end
+            # reset prior to burned-in posterior and smooth to make independent of (predator approach) direction
+            prey.observer.prior[:,:] = prey.observer.posterior[:,:]
+            radialSmooth(prey.observer.prior, prey_radius:mat_radius)
+
+            # initialize particle filter
+            initialize_particles(prey) # draw initial sample from prior
 
                 if DO_PLOTS
                 
@@ -208,32 +221,23 @@ for rep = 1:nReps
                         scene, layout = layoutscene(resolution=(WorldSize, WorldSize))
                         left_panel =    layout[1, 1] = LAxis(scene, title="Placozoan", 
                                                          backgroundcolor=colour_background )
-                # clock_panel = LAxis(scene,
-                #      bbox = BBox(100 , 100, 100, 100) )
+
                         hidespines!(left_panel)
                         hidedecorations!(left_panel)
                     else
-                        #scene, layout = layoutscene(resolution = ( Int(round(3 * .75 * WorldSize)), Int(round(.75 * WorldSize + 40)) ) )
                         scene = Figure(resolution = ( Int(round(3 * .75 * WorldSize)), Int(round(.75 * WorldSize + 40)) ))
-                        left_panel = scene[1,1] = Axis(scene, title="Placozoan: ( " * string(n_likelihood_particles) * ", " *
-                            string(n_posterior_particles) * ", " * string(posteriorDeaths) * " )",
+                        left_panel = scene[1,1] = Axis(scene, title="Plocozoan Model (Bayesian Particle Filter)",
                             backgroundcolor=colour_background )
                         middle_panel = scene[1, 2] = Axis(scene, title="Likelihood")
                         right_panel = scene[1, 3] = Axis(scene, title="Bayesian Observer")
 
-                            display(scene)
-                        #shim = layout[1, 1] = LAxis(scene)
-                            # LAxis( scene,  title="Placozoan: ( " * string(n_likelihood_particles) * ", " *
-                            #     string(n_posterior_particles) * ", " * string(posteriorDeaths) * " )",
-                            #     backgroundcolor=colour_background )
 
                         
                         # colsize!(scene, 1, Relative(0.04))
                         # colsize!(scene, 2, Relative(0.32))
                         # colsize!(scene, 3, Relative(0.32))
                         # colsize!(scene, 4, Relative(0.32))
-                       #hidespines!(shim)
-                       # hidedecorations!(shim)
+
                         hidespines!(left_panel)
                         hidedecorations!(left_panel)
                         hidespines!(middle_panel)
@@ -497,11 +501,10 @@ for rep = 1:nReps
 
                     # clock display
                     if DO_PLOTS
-                        clock_plt.text =  "                 t = " *   
-                                        string(Int(floor(t[]+1))) *  "s"
+                        clock_plt.text =  "                 t = " *  string(i+1) *  "s"
 
                         # Node update causes redraw
-                        t[] = dt * (i + 1)
+                        t[] = dt * i
 
                     end # DO_PLOTS
 

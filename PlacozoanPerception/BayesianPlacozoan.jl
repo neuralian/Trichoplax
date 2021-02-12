@@ -48,7 +48,7 @@ size_posterior = 2.5
 
 size_observation = 0.5
 #size_prediction = 2
-size_belief = 1.0
+size_belief = 2.0
 
 # Physics structure
 # contains physical parameters
@@ -639,22 +639,22 @@ function stalk(predator::Placozoan, prey::Placozoan, Δ::Float64)
 
 end
 
-function initialize_posterior_particles_Gaussian(p::Placozoan)
+# function initialize_posterior_particles_Gaussian(p::Placozoan)
 
-  nB = 0
-  while nB < p.observer.nBparticles[]
+#   nB = 0
+#   while nB < p.observer.nBparticles[]
 
-    # uniform random angle + Gaussian maxRange (truncated at edge of body and mat)
-    ϕ = 2.0*π*rand(1)[]
-    β = 0.0
-    while (β > p.observer.maxRange) | (β < p.radius)
-      β = p.observer.priormean + p.observer.priorsd*randn(1)[]
-    end
+#     # uniform random angle + Gaussian maxRange (truncated at edge of body and mat)
+#     ϕ = 2.0*π*rand(1)[]
+#     β = 0.0
+#     while (β > p.observer.maxRange) | (β < p.radius)
+#       β = p.observer.priormean + p.observer.priorsd*randn(1)[]
+#     end
 
-    nB = nB+1
-    p.observer.Bparticle[nB,:] =  β.*[cos(ϕ), sin(ϕ)]
-  end
-end
+#     nB = nB+1
+#     p.observer.Bparticle[nB,:] =  β.*[cos(ϕ), sin(ϕ)]
+#   end
+# end
 
 function initialize_particles(p::Placozoan)
 
@@ -663,80 +663,6 @@ function initialize_particles(p::Placozoan)
 
 end
 
-# function bayesParticleUpdate(p::Placozoan)
-
-#   δ2 = 1.0   # squared collision maxRange
-#   sδ = 2.0  # scatter maxRange
-#   nCollision = 0
-#   collision = fill(0, p.observer.nBparticles[])
-
-#     # mix the posterior with the initial prior
-#     # this prevents the particle filter from converging fully,
-#     # maintains "attention" over all possible locations of predator
-#     # even when the posterior indicates low uncertainty about predator location.
-#     # (This is a known problem with particle filters - they assign zero probability 
-#     # density to locations where the true density is nonzero)
-#     nscatter = Int(round(p.observer.priorDensity[]*p.observer.nBparticles[]))
-#     # select particles from posterior to scatter into prior
-#     iscatter = rand(1:p.observer.nBparticles[], nscatter )
-#     p.observer.Bparticle[iscatter, :] = samplePrior(nscatter, p)
-#     p.observer.Bparticle_step[iscatter,:] .= 0.0
-
-
-
-#   # list Bparticles that have collided with Lparticles
-
-#      for j = 1:p.observer.nBparticles[]  # check for collisions with belief
-#       collided = false
-#       for k = 1:nCollision
-#         if collision[k]==j
-#           collided = true
-#         end
-#       end
-#       if !collided
-#         for i = 1:p.observer.nLparticles[]
-#         if ((p.observer.Bparticle[j, 1] - p.observer.Lparticle[i, 1])^2 +
-#             (p.observer.Bparticle[j, 2] - p.observer.Lparticle[i, 2])^2 < δ2)  # new collision
-#           nCollision = nCollision + 1
-#           collision[nCollision] = j
-#           break
-#         end
-#       end
-#     end
-#   end
-#   if nCollision > 0
-#     # each collision produces a Poisson-distributed number of new particles
-#     # such that expected number of new particles is p.observer.nBparticles
-#     newBelief = fill(0.0, p.observer.nBparticles[], 2)
-
-#     n_newparticles =
-#       rand(Poisson(p.observer.nBparticles[] / nCollision), nCollision)
-#     count = 0
-#      for i = 1:nCollision
-#        for j = 1:n_newparticles[i]
-#         count = count + 1
-#         if count <= p.observer.nBparticles[]
-#           R = Inf
-#           while R > p.observer.maxRange  # no beliefs beyond edge of world
-#           newBelief[count, :] =
-#             p.observer.Bparticle[collision[i], :] + sδ * randn(2)
-#             R = sqrt(newBelief[count,1]^2 + newBelief[count,2]^2)
-#           end
-#         end
-#       end
-#     end
-
-#     # kluge number of particles (normalize the discrete distribution)
-#     # by random particle duplication
-#     for i in 1:(p.observer.nBparticles[]-count)
-#       newBelief[count+i,:] = newBelief[rand(1:count),:]
-#     end
-
-#     p.observer.Bparticle[1:p.observer.nBparticles[],:] = newBelief[:,:]
-
-#   end
-
-# end
 
 function bayesParticleUpdate(p::Placozoan)
 
@@ -852,22 +778,6 @@ function initialize_prior(p::Placozoan)
 end
 
 
-
-# # compute initial prior as average of posteriors after burn-in
-# function burnPrior(prey::Placozoan, predator::Placozoan)
-
-#   # move predator to "infinity"
-#   x_pred = predator.x[]
-#   y_pred = predator.y[]
-#   predator
-
-
-
-
-# end
-
-
-
 function bayesArrayUpdate(p::Placozoan)
 
   posteriorSum = 0.0
@@ -927,39 +837,6 @@ function radialSmooth(X::OffsetArray, r::UnitRange{Int64})
 
 end
 
-
-# 1-sided quantiles of range and bearing error for posterior particles 
-# function particleStats(p::Placozoan, predatorBearing)
-
-#   # index active particles
-#   N = p.observer.nBparticles[]
-
-#   # sorted squared distance from edge of prey to posterior particles
-#   D2 = sort(sum(p.observer.Bparticle[1:N,:].^2, dims=2), dims=1)
-#   # quantiles of particle distance to predator, toward prey from 1/2 (median) to 1/128 
-#   QD = [sqrt(D2[Int(round(N/q))]).-p.radius for q in  [2 4 20 100]]
-
-#   # bearing error for each particle
-#   θ = atan.(p.observer.Bparticle[1:N,2],p.observer.Bparticle[1:N,1]) .- predatorBearing
-
-#   # unwrap
-#   for i in 1:N
-#     if θ[i] > π
-#       θ[i] = θ[i] - 2π
-#     elseif    θ[i] < -π
-#       θ[i] = θ[i] + 2π
-#     end
-#   end
-
-#   # quantiles of particle bearing angle from predator
-#   θ = sort(θ)
-#   Qθ = hcat( [θ[N - Int(round(N/q))]*180/π for q in  [100 20 4]], [θ[Int(round(N/q))]*180/π for q in  [2 4 20 100]])
-
-#   # return quantiles + minimum distance as tuple
-#   #return (Q, sqrt(D2[1]).-p.radius )
-#   return (QD, sqrt(D2[1]).-p.radius, Qθ, θ[1]*180/π, θ[end]*180/π )
-
-# end
 
 function particleStats(prey::Placozoan, predator::Placozoan)
 
@@ -1025,36 +902,11 @@ function entropy(pdf)
   S
 end
 
-#= # Entropy recorder (saves entropy on ith timestep)
-function recordEntropyBits(I::Observer, i::Int64)
-  I.PosteriorEntropy[i] = -sum(I.posterior.*log2.(I.posterior))
-end =#
-
 # range recorder (saves distance to predator on ith timestep)
 # nb this is centre of predator from centre of prey
 function recordRange(I::Observer, predator::Placozoan, i)
     I.range[i] = sqrt(predator.x[]^2 + predator.y[]^2)
 end
-
-# function KLDBits_rev(I::Observer)
-#    KLD = 0.0
-#    Q = zeros(I.nBparticles[])
-#    sumQ = 0.0
-#    for k in 1:I.nBparticles[]
-#      i = Int64(round(I.Bparticle[k,1]))
-#      j = Int64(round(I.Bparticle[k,2]))
-#      Q[k] = I.posterior[i,j]
-#      sumQ += Q[k]
-#    end
-#    Q  = Q./sumQ   # normalize posterior at sample points
-#    for k in 1:I.nBparticles[]
-#      KLD = KLD - log(2,Q[k])
-#    end
-#    KLD = KLD/I.nBparticles[] - log(2,I.nBparticles[])
-#    return KLD
-# end
-
-
 
 function KLD!(I::Observer, frame::Int64)
   # computes Kullback-Liebler divergence, saves in KLD field of observer.
@@ -1070,11 +922,11 @@ function KLD!(I::Observer, frame::Int64)
     i = Int64(round(I.Bparticle[k,1]))
     j = Int64(round(I.Bparticle[k,2]))
     #if (i^2 + j^2)<I.maxRange^2 # exclude particles not in the observable world
-     if I.posterior[i,j] > 1.0e-14
+    # if I.posterior[i,j] > 1.0e-14
       # S = S + I.posterior[i,j]*log2(I.posterior[i,j] )
       S = S + log2(I.posterior[i,j])
     # end
-    end
+    #end
   end
   I.KLD[frame] = S/I.nBparticles[] +  log2(I.nBparticles[])
 
@@ -1086,12 +938,12 @@ function KLD!(I::Observer, frame::Int64)
     j = rand(-I.maxRange:I.maxRange,1)[]
     d = sqrt(i^2+j^2)
     if (d>=I.minRange) & (d<=I.maxRange) # exclude particles not in the observable world
-     if I.posterior[i,j] > 1.0e-14
+    # if I.posterior[i,j] > 1.0e-14
        #S0 = S0 + I.posterior[i,j]*log2(I.posterior[i,j] )
        S0 = S0 + log2(I.posterior[i,j] )
        nSamples = nSamples + 1
     # end
-     end
+    # end
     end
   end
   I.KLD0[frame] = S0/I.nBparticles[] +  log2(I.nBparticles[])
@@ -1108,30 +960,6 @@ function KLD!(I::Observer, frame::Int64)
    I.KLDI[frame] = SI/I.nBparticles[] +  log2(I.nBparticles[])
 
  end
-
-
-# function gaussianProposal!(Proposal::AbstractArray, x0::Float64, y0::Float64, σ::Float64, peak::Float64)
-#   # empirical proposal distribution for rejection sampling from Gaussian-like 2D target density (unimodal, localized)
-#   # Diagonal covariance diag(σ^2,σ^2), peak is the maximum value of the target density
-#   # also NB sum(P) == sum(target) = 1 i.e. area elements == 1
-#   # The result is returned in P
-#   # NB This is just for developing and testing code for rejection sampling,
-#   # the actual sampling will be done by calling randn()
-
-#   gausspdf = MvNormal([x0,y0], σ)
-
-#   S = 0.0   # sum for normalizing
-
-#   for i in axes(Proposal,1)
-#     for j in axes(Proposal,2)
-#       Proposal[i,j] = pdf(gausspdf, [i , j])
-#       S = S + Proposal[i,j] 
-#     end
-#   end
-
-#   # normalize 
-#   Proposal[:,:] = Proposal/S
-# end
 
 
 function sample!(s::Array{Int64, 2}, D::AbstractArray)

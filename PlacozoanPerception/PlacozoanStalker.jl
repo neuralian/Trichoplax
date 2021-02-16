@@ -28,8 +28,8 @@ end
 
 # simulation parameters
 nReps = 128
-nFrames = 600       # number of animation frames
-burn_time = 4         # compute initial prior by burning in with predator at "infinity"
+nFrames = 480       # number of animation frames
+burn_time = 30      # burn in posterior initially for 30 sec with predator outside observable world
 mat_radius = 400
 approach_Δ = 32.0         # predator closest approach distance
 dt = 1.00
@@ -148,43 +148,30 @@ CSV.write(FileName * ".csv",
 tick()
 
 for rep = 1:nReps
-    for n_likelihood_particles = [2048] # [512 1024  2048 4096 8192 ]
+    for n_likelihood_particles = [1024] # [512 1024  2048 4096 8192 ]
         for n_posterior_particles = [1024] # Int.(n_likelihood_particles .÷ [.5 1 2 4])
-            for posteriorDeaths = [16] # [.001 .01 .1]
+            for posteriorDeaths = [8] # [.001 .01 .1]
 
                 # construct placozoans
                 # HINT: These are local variables but if they are declared global 
                 # then they appear in the REPL workspace if the program is interrupted (Ctrl-C)
-                global prey = Placozoan(prey_radius, prey_margin, prey_fieldrange,
+                global
+                prey = Placozoan(prey_radius, prey_margin, prey_fieldrange,
                     Nreceptors, sizeof_receptor, mat_radius,
                     Ncrystals, sizeof_crystal, mat_radius,
                     n_likelihood_particles, Int(n_posterior_particles),
                     posteriorDeaths, nFrames)
 
-
-                # prey.receptor.pOpen[:] = dummy_prey.receptor.pOpen[:] 
-                # prey.photoreceptor.pOpenV[:] = dummy_prey.photoreceptor.pOpenV[:] 
-                # println("____")
-                # println(maximum(prey.receptor.pOpen[1]), " ", maximum(dummy_prey.receptor.pOpen[1]))
-                # println("____")
-                # if NTRIALS[]==0
-               # initialize_prior(prey)     # initialize numerical Bayesian prior
-            #    prey.observer.prior[:,:] = dummy_prey.observer.prior[:,:]
-            #    prey.observer.posterior[:,:] = prey.observer.prior[:,:]
-            #    initialize_particles(prey) # draw initial sample from prior
-               # end
-                
-                # initializeObserver(prey, n_likelihood_particles, n_posterior_particles, priorDensity)
-
                 # predator constructed without observer
-                global predator = Placozoan(predator_radius, predator_margin, predator_fieldrange,
+                global
+                predator = Placozoan(predator_radius, predator_margin, predator_fieldrange,
                      RGBA(.25, 0.1, 0.1, 1.0),
                      RGBA(.45, 0.1, 0.1, 0.25),
                      RGB(.95, 0.1, 0.1) )
                 predator.speed[] = predator_speed
                 θ = π * rand()[] # Random initial heading (from above)
-                predator.x[] = (mat_radius + 0.25* predator_radius) * cos(θ)
-                predator.y[] = (mat_radius + 0.25 * predator_radius) * sin(θ)
+                predator.x[] = (mat_radius + predator_radius) * cos(θ)
+                predator.y[] = (mat_radius + predator_radius) * sin(θ)
                 # predator.field[:] = dummy_predator.field[:]
                 # predator.potential[:] = dummy_predator.potential[:]
 
@@ -196,7 +183,8 @@ for rep = 1:nReps
             initialize_prior(prey)
             prey.observer.posterior[:,:] = prey.observer.prior[:,:]
 
-            # burn in
+            # burn in posterior
+            # from uniform to posterior given no predator in the observable world for burn-in time
             for i in 1:burn_time
                 if ELECTRORECEPTION
                     electroreception(prey, predator)
@@ -206,11 +194,14 @@ for rep = 1:nReps
                 end
                 likelihood(prey, ELECTRORECEPTION, PHOTORECEPTION)  
                 bayesArrayUpdate(prey)
-
+                prey.observer.prior[:,:] = prey.observer.posterior[:,:]
+                radialSmooth(prey.observer.prior, prey_radius:mat_radius)           
             end
-            # reset prior to burned-in posterior and smooth to make independent of (predator approach) direction
-            prey.observer.prior[:,:] = prey.observer.posterior[:,:]
-            radialSmooth(prey.observer.prior, prey_radius:mat_radius)
+      
+            predator.x[] = (mat_radius + 0.0* predator_radius) * cos(θ)
+            predator.y[] = (mat_radius + 0.0 * predator_radius) * sin(θ)                
+
+
 
             # initialize particle filter
             initialize_particles(prey) # draw initial sample from prior
@@ -225,11 +216,11 @@ for rep = 1:nReps
                         hidespines!(left_panel)
                         hidedecorations!(left_panel)
                     else
-                        scene = Figure(resolution = ( Int(round(3 * .75 * WorldSize)), Int(round(.75 * WorldSize + 40)) ))
-                        left_panel = scene[1,1] = Axis(scene, title="Plocozoan Model (Bayesian Particle Filter)",
-                            backgroundcolor=colour_background )
-                        middle_panel = scene[1, 2] = Axis(scene, title="Likelihood")
-                        right_panel = scene[1, 3] = Axis(scene, title="Bayesian Observer")
+                        scene = Figure(resolution = ( Int(round(3 * .75 * WorldSize)), Int(round(.75 * WorldSize + 40)) ), backgroundcolor = :black)
+                        left_panel = scene[1,1] = Axis(scene, title="Placozoan Model (Bayesian Particle Filter)",
+                            titlecolor = title_color, backgroundcolor=:black )
+                        middle_panel = scene[1, 2] = Axis(scene, title="Likelihood", titlecolor = title_color, backgroundcolor=colour_background)
+                        right_panel = scene[1, 3] = Axis(scene, title="Bayesian Observer", titlecolor = title_color, backgroundcolor=colour_background)
 
 
                         
@@ -273,7 +264,7 @@ for rep = 1:nReps
                 if DO_PLOTS
                     # display nominal time on background
                     clock_plt = Label(scene, "                 t = 0.0s",
-                        color=:white, textsize=18, halign=:left)
+                        color=RGB(.7,.7, .7), textsize=18, halign=:left)
 
                 # predator drawn using lift(..., node)
                 # (predatorLocation does not depend explicitly on t, but this causes
@@ -292,7 +283,7 @@ for rep = 1:nReps
                     Lparticle_plt = scatter!(left_panel,
                         prey.observer.Lparticle[1:prey.observer.nLparticles[], 1],
                         prey.observer.Lparticle[1:prey.observer.nLparticles[], 2],
-                        color=:yellow, markersize=size_likelihood, strokewidth=0.1)
+                        color=colour_likelihood, markersize=size_likelihood, strokewidth=0.1)
 
                     # plot posterior particles
                     Bparticle_plt = scatter!(left_panel,
@@ -326,13 +317,13 @@ for rep = 1:nReps
                 if PLOT_ARRAYS
 
                     Likely_plt = plot!( middle_panel,
-                        OffsetArrays.no_offset_view(prey.observer.likelihood), colorrange = (0.0, 1.0), colormap = :haline)
+                        OffsetArrays.no_offset_view(prey.observer.likelihood), colorrange = (0.0, 1.25), colormap = :copper)  # :turku
 
                     Posty_plt =  surface!(right_panel, 1:WorldSize, 1:WorldSize,
-                        OffsetArrays.no_offset_view(prey.observer.posterior),  colormap = :plasma)
+                        OffsetArrays.no_offset_view(prey.observer.posterior),  colormap = :magma)
 
-                    PostContour_plt = contour!(right_panel, 1:WorldSize, 1:WorldSize,
-                        lift(u->u, Posty_plt[3]), levels = [1.0e-6, 1.0e-5, 1.0e-4], color = RGB(.35,.35,.35))
+                    # PostContour_plt = contour!(right_panel, 1:WorldSize, 1:WorldSize,
+                    #     lift(u->u, Posty_plt[3]), levels = [1.0e-6, 1.0e-5, 1.0e-4], color = RGB(.35,.35,.35))
 
                     predator_right_plt = poly!(right_panel,
                         lift(s -> decompose(Point2f0, Circle(Point2f0(
@@ -354,11 +345,20 @@ for rep = 1:nReps
 
                     prey_Lcopy_plt = poly!(middle_panel,
                         decompose(Point2f0, Circle(Point2f0(mat_radius, mat_radius), prey.radius)),
-                        color=:black, strokewidth=1, strokecolor=RGB(0.0, 0.0, 0.0))
+                        color=RGBA(0.0, 0.0, 0.0, 0.0), strokewidth=1.5, strokecolor=prey.gutcolor)
+
+                    preygut_Lcopy_plt = poly!(middle_panel,
+                        decompose(Point2f0, Circle(Point2f0(mat_radius, mat_radius), prey.radius - prey.marginwidth + 1)),
+                        color=prey.gutcolor, strokewidth=0.5, strokecolor=prey.gutcolor*.75)
 
                     prey_Pcopy_plt = poly!(right_panel,
                         decompose(Point2f0, Circle(Point2f0(mat_radius, mat_radius), prey.radius)),
-                        color=:black, strokewidth=1, strokecolor=RGB(0.0, 0.0, 0.0))
+                        color=RGBA(0.0, 0.0, 0.0, 0.0), strokewidth=1.5, strokecolor=prey.gutcolor)
+
+                    preygut_Pcopy_plt = poly!(right_panel,
+                        decompose(Point2f0, Circle(Point2f0(mat_radius, mat_radius), prey.radius - prey.marginwidth + 1)),
+                        color=prey.gutcolor, strokewidth=0.5, strokecolor=prey.gutcolor*.75)
+
 
                 end  # plot arrays
 
@@ -367,11 +367,11 @@ for rep = 1:nReps
                     # Prey
                     prey_plt = poly!(left_panel,
                         decompose(Point2f0, Circle(Point2f0(0., 0.), prey.radius)),
-                        color=prey.color, strokewidth=1, strokecolor=RGB(.5, .75, .85))
+                        color=prey.color, strokewidth=1, strokecolor=prey.gutcolor)
 
                     preyGut_plt = poly!(left_panel,
                         decompose(Point2f0, Circle(Point2f0(0., 0.), prey.gutradius)),
-                        color=prey.gutcolor, strokewidth=0.0)
+                        color=prey.gutcolor, strokewidth=0.5, strokecolor=prey.gutcolor*.75)
 
 
                     receptor_plt = scatter!(left_panel, prey.receptor.x, prey.receptor.y ,
@@ -416,7 +416,7 @@ for rep = 1:nReps
 
                 # VIDEO RECORDING
                 # comment out ONE of the following 2 lines to (not) generate video file
-                record(scene, videoName , framerate=24, 1:nFrames) do i     # generate video file
+                record(scene, videoName , framerate=16, 1:nFrames) do i     # generate video file
                 #for i in 1:nFrames                                      # just compute
 
                    #println(i)
@@ -461,7 +461,7 @@ for rep = 1:nReps
 
                     bayesArrayUpdate(prey)  # numerical sequential Bayes (benchmark)
 
-                    (observation, belief) = reflect(prey) # reflect samples into margin
+                    (observation, belief) = reflect!(prey) # reflect samples into margin
     
 
                     if PLOT_EXT_PARTICLES
@@ -543,6 +543,7 @@ for rep = 1:nReps
                 t[] = 0
             
             end # n_prior_particles
+
         
         end # n_likelihood_particles
     

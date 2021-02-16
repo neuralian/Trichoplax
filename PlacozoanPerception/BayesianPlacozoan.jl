@@ -16,23 +16,27 @@ const max_nBparticles = 2^14
 
 # colors
 # scene
-colour_mat = RGBA(.05, .35, .35, 1.0)
-colour_background = RGBA(68/255, 1/255, 84/255, 1.0)
+colour_mat =  RGB(.05, .2, .1)*.75
+colour_background = RGB(0.1, 0.1, 0.1)
+title_color = RGB(.4, .4, .6)
 
 # external/world particles
-colour_likelihood = RGB(1.0, 0.55, 0.25)
+colour_likelihood = RGB(1.0,.85, 0.65)
 #colour_prior = RGB(0.75, 0.45, 0.45)
 #colour_posterior = RGB(0.85, 0.25, 0.25)
-colour_posterior = RGB(1.00,.75,.75)
+colour_posterior = RGB(.85,.15, 0.3)
 
 # internal/spike particles
 colour_observation = :yellow
+
+# placozoans
+gutcolor = RGB(0.25, 0.25, 0.25)
 
 
 
 # receptors
 colour_receptor_OPEN  = RGB(1.0, 1.0, 1.0)
-colour_receptor_CLOSED  = RGB(0.25, 0.35, 0.25)
+colour_receptor_CLOSED  = RGB(0.25, 0.25, 0.25)
 sizeof_receptor = 6.0
 
 #crystal cells
@@ -42,9 +46,9 @@ sizeof_crystal = 5.0
 vision_SD = 0.8
 
 # Particle sizes  
-size_likelihood = 1.5
+size_likelihood = 2
 #size_prior = 4
-size_posterior = 2.5
+size_posterior = 3
 
 size_observation = 0.5
 #size_prediction = 2
@@ -291,7 +295,7 @@ function Placozoan(
   posteriorDeaths::Int64,
   nFrames::Int64,
   bodycolor = RGBA(0.9, 0.75, 0.65, 0.5),
-  gutcolor = RGBA(1.0, 0.65, 0.8, 0.25),
+  gutcolor = gutcolor,
   edgecolor = RGB(0.0, 0.0, 0.0),
   )
 
@@ -514,9 +518,30 @@ function likelihood(p::Placozoan, Electroreception::Bool = true, Photoreception:
  end
 
 
-function reflect(p::Placozoan)
+function reflect!(p::Placozoan)
 
-  # likelihood
+  # Likelihood
+  for i in -p.radius:p.radius
+    for j in -p.radius:p.radius
+      r = sqrt(i^2+j^2)
+      if (r<p.radius) & (r > (p.radius-p.marginwidth))  # in marginal zone
+        # project map location to real-world location
+       # R = p.radius + (p.radius - r*(p.observer.maxRange - p.radius))/p.marginwidth 
+
+        R = (p.radius - r)*(p.observer.maxRange-p.radius)/ p.marginwidth + p.radius
+                
+        #println(i, ", ", j, ", ", r, ", ", R, ", ", R/r)
+        iproj = Int64(round(i*R/r))   
+        jproj = Int64(round(j*R/r))
+        # copy likelihood from world to map
+        p.observer.likelihood[Int64(i),Int64(j)] = p.observer.likelihood[iproj,jproj]
+        p.observer.posterior[Int64(i),Int64(j)] = p.observer.posterior[iproj,jproj]
+      end
+    end
+  end
+
+
+  # likelihood particles
   R = sqrt.(p.observer.Lparticle[1:p.observer.nLparticles[],1].^2 + p.observer.Lparticle[1:p.observer.nLparticles[],2].^2)
   r = (p.radius .- p.marginwidth*(R.-p.radius)./
       (p.observer.maxRange-p.radius))::Array{Float64,1}
@@ -526,7 +551,7 @@ function reflect(p::Placozoan)
 
   observation = r.*p.observer.Lparticle[1:p.observer.nLparticles[], :]./R
 
-  # posterior
+  # posterior particles
   Rp = sqrt.(p.observer.Bparticle[1:p.observer.nBparticles[],1].^2 + p.observer.Bparticle[1:p.observer.nBparticles[],2].^2)
   rp = (p.radius .- p.marginwidth*(Rp.-p.radius)./
       (p.observer.maxRange-p.radius))::Array{Float64,1}
@@ -639,22 +664,6 @@ function stalk(predator::Placozoan, prey::Placozoan, Δ::Float64)
 
 end
 
-# function initialize_posterior_particles_Gaussian(p::Placozoan)
-
-#   nB = 0
-#   while nB < p.observer.nBparticles[]
-
-#     # uniform random angle + Gaussian maxRange (truncated at edge of body and mat)
-#     ϕ = 2.0*π*rand(1)[]
-#     β = 0.0
-#     while (β > p.observer.maxRange) | (β < p.radius)
-#       β = p.observer.priormean + p.observer.priorsd*randn(1)[]
-#     end
-
-#     nB = nB+1
-#     p.observer.Bparticle[nB,:] =  β.*[cos(ϕ), sin(ϕ)]
-#   end
-# end
 
 function initialize_particles(p::Placozoan)
 
@@ -667,24 +676,38 @@ end
 function bayesParticleUpdate(p::Placozoan)
 
   δ2 = 1.6    # squared collision maxRange
-  diffuseCoef = 4.0   # posterior particle diffusion rate (SD of Gaussian per step)
+  diffuseCoef = 3.0   # posterior particle diffusion rate (SD of Gaussian per step)
   # NB diffusion coef here should match diffusion coef in sequential Bayes upsdate (bayesArrayUpdate())
-  nSpawn = 8  # average number of new posterior particles per collision
+  nSpawn = 32  # average number of new posterior particles per collision
   nCollision = 0
   nCollider = 0
   collision = fill(0, p.observer.nBparticles[])
   collider = fill(0, p.observer.nBparticles[])
 
-    # randomly jitter posterior particles (diffusion/uncertainty per timestep)
-    p.observer.Bparticle[1:p.observer.nBparticles[],:] += diffuseCoef*randn(p.observer.nBparticles[],2)
+    # # randomly jitter posterior particles (diffusion/uncertainty per timestep)
+    # p.observer.Bparticle[1:p.observer.nBparticles[],:] += diffuseCoef*randn(p.observer.nBparticles[],2)
 
-    # # replace particles that have diffused off the edge of the mat by samples from initial prior
-    for i in 1:p.observer.nBparticles[]
-      r2 = sqrt(p.observer.Bparticle[i,1]^2 + p.observer.Bparticle[i,2]^2)
-      if (r2>p.observer.maxRange) | (r2 < p.radius)
-        p.observer.Bparticle[i,:] = samplePrior(1,p)
+    # # # replace particles that have diffused off the edge of the mat by samples from initial prior
+    # for i in 1:p.observer.nBparticles[]
+    #   r2 = sqrt(p.observer.Bparticle[i,1]^2 + p.observer.Bparticle[i,2]^2)
+    #   if (r2>p.observer.maxRange) | (r2 < p.radius)
+    #     p.observer.Bparticle[i,:] = samplePrior(1,p)
+    #   end
+    # end
+
+  # diffuse (random gaussian jitter) posterior particles
+  # prevent movement out of bounds (off the mat)
+  for i in 1:p.observer.nBparticles[]
+    inbounds = false
+    while !inbounds
+      candidate = p.observer.Bparticle[i,:] + diffuseCoef*randn(2)
+      r = sqrt(candidate[1]^2 + candidate[2]^2)
+      if (r > p.radius) & (r < p.observer.maxRange) 
+        p.observer.Bparticle[i,:] = candidate
+        inbounds = true
       end
-    end
+    end  
+  end
 
     # On each update a fixed number (proportion) of posterior particles 
     # die at random and are reincarnated as (replaced by)

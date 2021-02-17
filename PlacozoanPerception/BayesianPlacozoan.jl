@@ -10,6 +10,7 @@ using ImageFiltering
 using CSV
 using DataFrames
 
+
 const max_nLparticles = 2^14
 const max_nBparticles = 2^14
 
@@ -521,8 +522,8 @@ function likelihood(p::Placozoan, Electroreception::Bool = true, Photoreception:
 function reflect!(p::Placozoan)
 
   # Likelihood
-  for i in -p.radius:p.radius
-    for j in -p.radius:p.radius
+  @inbounds for i in -p.radius:p.radius
+    @inbounds for j in -p.radius:p.radius
       r = sqrt(i^2+j^2)
       if (r<p.radius) & (r > (p.radius-p.marginwidth))  # in marginal zone
         # project map location to real-world location
@@ -675,29 +676,19 @@ end
 
 function bayesParticleUpdate(p::Placozoan)
 
-  δ2 = 1.6    # squared collision maxRange
-  diffuseCoef = 3.0   # posterior particle diffusion rate (SD of Gaussian per step)
+  δ2 = 1.5  # squared collision maxRange
+  diffuseCoef = 4.0   # posterior particle diffusion rate (SD of Gaussian per step)
   # NB diffusion coef here should match diffusion coef in sequential Bayes upsdate (bayesArrayUpdate())
-  nSpawn = 32  # average number of new posterior particles per collision
+  nSpawn = 4  # average number of new posterior particles per collision
   nCollision = 0
   nCollider = 0
   collision = fill(0, p.observer.nBparticles[])
   collider = fill(0, p.observer.nBparticles[])
 
-    # # randomly jitter posterior particles (diffusion/uncertainty per timestep)
-    # p.observer.Bparticle[1:p.observer.nBparticles[],:] += diffuseCoef*randn(p.observer.nBparticles[],2)
-
-    # # # replace particles that have diffused off the edge of the mat by samples from initial prior
-    # for i in 1:p.observer.nBparticles[]
-    #   r2 = sqrt(p.observer.Bparticle[i,1]^2 + p.observer.Bparticle[i,2]^2)
-    #   if (r2>p.observer.maxRange) | (r2 < p.radius)
-    #     p.observer.Bparticle[i,:] = samplePrior(1,p)
-    #   end
-    # end
 
   # diffuse (random gaussian jitter) posterior particles
   # prevent movement out of bounds (off the mat)
-  for i in 1:p.observer.nBparticles[]
+  @inbounds for i in 1:p.observer.nBparticles[]
     inbounds = false
     while !inbounds
       candidate = p.observer.Bparticle[i,:] + diffuseCoef*randn(2)
@@ -723,8 +714,8 @@ function bayesParticleUpdate(p::Placozoan)
   # list Bparticles that have collided with Lparticles
      nL = p.observer.nLparticles[]
      L = p.observer.Lparticle[:,:]
-     for i = 1:p.observer.nBparticles[]  # find collisions between posterior and likelihood particles
-        for j = 1:nL
+     @inbounds for i = 1:p.observer.nBparticles[]  # find collisions between posterior and likelihood particles
+      @inbounds for j = 1:nL
           if ((p.observer.Bparticle[i, 1] - L[j, 1])^2 +
                 (p.observer.Bparticle[i, 2] - L[j, 2])^2) < δ2  #  collision
               nCollision = nCollision + 1
@@ -743,9 +734,9 @@ function bayesParticleUpdate(p::Placozoan)
     # each collision spawns a Poisson-distributed number of new particles
     #newBelief = fill(0.0, p.observer.nBparticles[], 2)
     n_newparticles = rand(Poisson(nSpawn), nCollision)
-    for i = 1:nCollision
+    @inbounds for i = 1:nCollision
        particle = p.observer.Bparticle[collision[i], :]  # save the parent in case the original gets replaced
-       for j = 1:n_newparticles[i]   # replace randomly chosen posterior particles with offspring of collision
+       @inbounds for j = 1:n_newparticles[i]   # replace randomly chosen posterior particles with offspring of collision
           p.observer.Bparticle[rand(1:p.observer.nBparticles[]), :]  = particle 
         end
     end
@@ -804,8 +795,8 @@ end
 function bayesArrayUpdate(p::Placozoan)
 
   posteriorSum = 0.0
-   for i in -p.observer.maxRange:p.observer.maxRange
-     for j in -p.observer.maxRange:p.observer.maxRange
+  @inbounds for i in -p.observer.maxRange:p.observer.maxRange
+    @inbounds for j in -p.observer.maxRange:p.observer.maxRange
         # d = sqrt(i^2 + j^2)
         # if (d>p.radius) & (d<p.observer.maxRange)
           # posterior is dynamic prior
@@ -874,10 +865,17 @@ function particleStats(prey::Placozoan, predator::Placozoan)
   # index active particles
   N = prey.observer.nBparticles[]
 
-  # sorted squared distance from edge of prey to posterior particles
-  D2 = sort(sum(prey.observer.Bparticle[1:N,:].^2, dims=2), dims=1)
+  # sorted distance from edge of prey to posterior particles
+  D = sort(sqrt.(sum(prey.observer.Bparticle[1:N,:].^2, dims=2)), dims=1).-prey.radius
+
+
+
   # quantiles of particle distance to predator, toward prey from 1/2 (median) to 1/128 
-  QD = [sqrt(D2[Int(round(N/q))]).-prey.radius for q in  [2 4 20 100]]
+  QD = [D[Int(round(N/q))] for q in  [2 4 20 100]]
+
+  # number of particles (estimated probability) within specfied range
+  range = [25 50 100]
+  NR = [sum(x->x<range[i], D) for i in 1:length(range)]
 
   # bearing error for each particle
   θ = atan.(prey.observer.Bparticle[1:N,2],prey.observer.Bparticle[1:N,1]) .- bearing
@@ -897,7 +895,7 @@ function particleStats(prey::Placozoan, predator::Placozoan)
 
   # return quantiles + minimum distance as tuple
   #return (Q, sqrt(D2[1]).-p.radius )
-  return (QD, sqrt(D2[1]).-prey.radius, Qθ, θ[1]*180/π, θ[end]*180/π )
+  return (NR, QD, D[1], Qθ, θ[1]*180/π, θ[end]*180/π )
 
 end
 
@@ -941,46 +939,56 @@ function KLD!(I::Observer, frame::Int64)
 
   # KLD of particle estimate
   S = 0.0
-  for k in 1:I.nBparticles[]
+  n = 0
+  outlier_threshold = 1.0e-8
+  @inbounds for k in 1:I.nBparticles[]
     i = Int64(round(I.Bparticle[k,1]))
     j = Int64(round(I.Bparticle[k,2]))
     #if (i^2 + j^2)<I.maxRange^2 # exclude particles not in the observable world
-    # if I.posterior[i,j] > 1.0e-14
+    if I.posterior[i,j] > outlier_threshold
       # S = S + I.posterior[i,j]*log2(I.posterior[i,j] )
       S = S + log2(I.posterior[i,j])
-    # end
+      n = n + 1
+    end
     #end
   end
-  I.KLD[frame] = S/I.nBparticles[] +  log2(I.nBparticles[])
+  I.KLD[frame] = S/n +  log2(n)
 
   # KLD of random uniform sample
   S0 = 0.0
   nSamples = 0
+  n = 0
   while nSamples < I.nBparticles[]
     i = rand(-I.maxRange:I.maxRange,1)[]
     j = rand(-I.maxRange:I.maxRange,1)[]
     d = sqrt(i^2+j^2)
     if (d>=I.minRange) & (d<=I.maxRange) # exclude particles not in the observable world
-    # if I.posterior[i,j] > 1.0e-14
+      nSamples = nSamples + 1
+      if I.posterior[i,j] > outlier_threshold
        #S0 = S0 + I.posterior[i,j]*log2(I.posterior[i,j] )
        S0 = S0 + log2(I.posterior[i,j] )
-       nSamples = nSamples + 1
-    # end
+       n = n + 1
+       
+      end
     # end
     end
   end
-  I.KLD0[frame] = S0/I.nBparticles[] +  log2(I.nBparticles[])
+  I.KLD0[frame] = S0/n +  log2(n)
 
 
    # KLD of sample from posterior
    SI = 0.0
    s = sample(I.posterior, I.nBparticles[])
-   for i in 1:I.nBparticles[]
+   n = 0
+   @inbounds for i in 1:I.nBparticles[]
        #SI = SI + I.posterior[s[i,1],s[i,2]]*log2(I.posterior[s[i,1],s[i,2]])
-       SI = SI + log2(I.posterior[s[i,1],s[i,2]])
+       if I.posterior[s[i,1],s[i,2]] > outlier_threshold
+        SI = SI + log2(I.posterior[s[i,1],s[i,2]])
+        n = n + 1
+       end
    end
 
-   I.KLDI[frame] = SI/I.nBparticles[] +  log2(I.nBparticles[])
+   I.KLDI[frame] = SI/n +  log2(n)
 
  end
 

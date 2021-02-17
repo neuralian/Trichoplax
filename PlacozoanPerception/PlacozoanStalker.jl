@@ -31,7 +31,7 @@ nReps = 128
 nFrames = 480       # number of animation frames
 burn_time = 30      # burn in posterior initially for 30 sec with predator outside observable world
 mat_radius = 400
-approach_Δ = 32.0         # predator closest approach distance
+approach_Δ = 25.0         # predator closest approach distance
 dt = 1.00
 
 # # prey 
@@ -95,6 +95,7 @@ FileName = "PlacozoanStalker" * string(Int(ELECTRORECEPTION)) * string(Int(PHOTO
 CSV.write(FileName * ".csv",
     DataFrame(rep=Int64[],Range=Float64[], predatorx=Float64[], predatory=Float64[], xMAP=Int64[], yMAP=Int64[], 
                    PosteriorEntropy=Float64[], KLD=Float64[], KLD0=Float64[], KLDI=Float64[],
+                   N25 = Float64[], N50 = Float64[], N100 = Float64[],
                    Dmed = Float64[], Dquart = Float64[], D5pc = Float64[], D1pc = Float64[],
                    Dmin = Float64[], 
                    Θ1pc = Float64[], Θ5pc = Float64[], Θquart = Float64[], Θmed = Float64[],
@@ -150,7 +151,7 @@ tick()
 for rep = 1:nReps
     for n_likelihood_particles = [1024] # [512 1024  2048 4096 8192 ]
         for n_posterior_particles = [1024] # Int.(n_likelihood_particles .÷ [.5 1 2 4])
-            for posteriorDeaths = [8] # [.001 .01 .1]
+            for posteriorDeaths = [0] # [.001 .01 .1]
 
                 # construct placozoans
                 # HINT: These are local variables but if they are declared global 
@@ -263,8 +264,9 @@ for rep = 1:nReps
                 
                 if DO_PLOTS
                     # display nominal time on background
-                    clock_plt = Label(scene, "                 t = 0.0s",
+                    Δ_plt = Label(scene, "               Δ = 0",
                         color=RGB(.7,.7, .7), textsize=18, halign=:left)
+
 
                 # predator drawn using lift(..., node)
                 # (predatorLocation does not depend explicitly on t, but this causes
@@ -501,7 +503,8 @@ for rep = 1:nReps
 
                     # clock display
                     if DO_PLOTS
-                        clock_plt.text =  "                 t = " *  string(i+1) *  "s"
+                        Δ_plt.text =  "               Δ = " *  
+                          string(Int(round(sqrt(predator.x[]^2+predator.y[]^2)-predator.radius-prey.radius)))
 
                         # Node update causes redraw
                         t[] = dt * i
@@ -512,7 +515,7 @@ for rep = 1:nReps
                     iMAP = findmax(prey.observer.posterior)[2]
                    # println(iMAP[1], ", ", iMAP[2])
 
-                    (QD, Dmin, Qθ, θmin, θmax) = particleStats(prey, predator) 
+                    (NR, QD, Dmin, Qθ, θmin, θmax) = particleStats(prey, predator) 
                     # println(QD, ", ", Dmin, ", ", Qθ, ", ", θmin, ", ", θmax)
                     # sleep(2)
 
@@ -520,7 +523,7 @@ for rep = 1:nReps
                     CSV.write(FileName * ".csv",
                         DataFrame(hcat(rep, prey.observer.range[i], predator.x[], predator.y[], iMAP[1], iMAP[2],
                             prey.observer.PosteriorEntropy[i], prey.observer.KLD[i], prey.observer.KLD0[i], prey.observer.KLDI[i], 
-                            QD..., Dmin, Qθ..., θmin,  θmax, 
+                            NR..., QD..., Dmin, Qθ..., θmin,  θmax, 
                             Nreceptors, 
                             n_likelihood_particles, n_posterior_particles,  posteriorDeaths)),
                             header=false, append=true)

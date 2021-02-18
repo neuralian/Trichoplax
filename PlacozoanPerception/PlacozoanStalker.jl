@@ -95,6 +95,8 @@ FileName = "PlacozoanStalker" * string(Int(ELECTRORECEPTION)) * string(Int(PHOTO
 CSV.write(FileName * ".csv",
     DataFrame(rep=Int64[],Range=Float64[], predatorx=Float64[], predatory=Float64[], xMAP=Int64[], yMAP=Int64[], 
                    PosteriorEntropy=Float64[], KLD=Float64[], KLD0=Float64[], KLDI=Float64[],
+                   PR25 = Float64[], PR50 = Float64[], PR100 = Float64[], 
+                   MP = Int64[], 
                    N25 = Float64[], N50 = Float64[], N100 = Float64[],
                    Dmed = Float64[], Dquart = Float64[], D5pc = Float64[], D1pc = Float64[],
                    Dmin = Float64[], 
@@ -104,47 +106,6 @@ CSV.write(FileName * ".csv",
                    Nreceptors=Int[], n_likelihood_particles=Int64[], n_posterior_particles=Int64[],  
                    priorDensity=Float64[]))
 
-# # use dummy predator and prey to precompute fields, receptive fields and prior
-# # these are common to all Placozoans with the same number of receptors
-# # so only need to be computed once
-# dummy_prey = Placozoan(prey_radius, prey_margin, prey_fieldrange,
-#     Nreceptors, sizeof_receptor, mat_radius,
-#     Ncrystals, sizeof_crystal, mat_radius,
-#     n_likelihood_particles, Int(n_posterior_particles),
-#     posteriorDeaths, nFrames)
-
-
-
-# dummy_predator = Placozoan(predator_radius, predator_margin, predator_fieldrange,
-# RGBA(.25, 0.1, 0.1, 1.0),
-# RGBA(.45, 0.1, 0.1, 0.25),
-# RGB(.95, 0.1, 0.1) )
-# dummy_predator.x[] = (mat_radius + 0.25* predator_radius) 
-# dummy_predator.y[] = 0.0
-# # dummy_predator.x[] = 0
-# # dummy_predator.y[] = mat_radius + 2.0*predator_radius
-# dummy_predator.speed[] = predator_speed
-
-# placozoanFieldstrength!(dummy_predator)
-# Ereceptor_RF(dummy_prey, dummy_predator)
-# Vreceptor_RF(dummy_prey)
-# initialize_prior(dummy_prey)
-
-
-# # burn in
-# for i in 1:burn_time
-#     if ELECTRORECEPTION
-#         electroreception(dummy_prey, dummy_predator)
-#     end
-#     if PHOTORECEPTION
-#         photoreception(dummy_prey, dummy_predator)
-#     end
-#     likelihood(dummy_prey, ELECTRORECEPTION, PHOTORECEPTION)  
-#     bayesArrayUpdate(dummy_prey)
-#     dummy_prey.observer.prior[:,:] = dummy_prey.observer.posterior[:,:]
-# end
-
-# radialSmooth(dummy_prey.observer.prior, prey_radius:mat_radius)
 
 tick()
 
@@ -288,9 +249,9 @@ for rep = 1:nReps
                         color=colour_likelihood, markersize=size_likelihood, strokewidth=0.1)
 
                     # plot posterior particles
-                    Bparticle_plt = scatter!(left_panel,
-                        prey.observer.Bparticle[1:prey.observer.nBparticles[], 1],
-                        prey.observer.Bparticle[1:prey.observer.nBparticles[], 2],
+                    Pparticle_plt = scatter!(left_panel,
+                        prey.observer.Pparticle[1:prey.observer.nPparticles[], 1],
+                        prey.observer.Pparticle[1:prey.observer.nPparticles[], 2],
                         color=colour_posterior, markersize=size_posterior, strokewidth=0.1)
 
                 end # plot external particles
@@ -310,8 +271,8 @@ for rep = 1:nReps
                 # nb this is a dummy plot
                 # the correct particle locations are inserted before first plot
                 belief_plt = scatter!(left_panel,
-                    zeros(prey.observer.nBparticles[]),
-                    zeros(prey.observer.nBparticles[]),
+                    zeros(prey.observer.nPparticles[]),
+                    zeros(prey.observer.nPparticles[]),
                     color=colour_posterior, strokewidth=0, markersize=size_belief)
 
                 end  # plot internal particles
@@ -463,7 +424,7 @@ for rep = 1:nReps
 
                     bayesArrayUpdate(prey)  # numerical sequential Bayes (benchmark)
 
-                    (observation, belief) = reflect!(prey) # reflect samples into margin
+                    #(observation, belief) = reflect!(prey) # reflect samples into margin
     
 
                     if PLOT_EXT_PARTICLES
@@ -472,19 +433,19 @@ for rep = 1:nReps
                         Lparticle_plt[2] = prey.observer.Lparticle[1:prey.observer.nLparticles[], 2]
 
                         # update posterior particle plot
-                        Bparticle_plt[1] = prey.observer.Bparticle[1:prey.observer.nBparticles[], 1]
-                        Bparticle_plt[2] = prey.observer.Bparticle[1:prey.observer.nBparticles[], 2]
+                        Pparticle_plt[1] = prey.observer.Pparticle[1:prey.observer.nPparticles[], 1]
+                        Pparticle_plt[2] = prey.observer.Pparticle[1:prey.observer.nPparticles[], 2]
                     end # PLOT_EXT_PARTICLES
 
                     if PLOT_INT_PARTICLES
 
                         # update observation particle plot
-                        observation_plt[1] = observation[1:prey.observer.nLparticles[], 1]
-                        observation_plt[2] = observation[1:prey.observer.nLparticles[], 2]
+                        observation_plt[1] = prey.observer.Sparticle[1:prey.observer.nLparticles[], 1]
+                        observation_plt[2] = prey.observer.Sparticle[1:prey.observer.nLparticles[], 2]
 
                         # update observation particle plot
-                        belief_plt[1] = belief[1:prey.observer.nBparticles[], 1]
-                        belief_plt[2] = belief[1:prey.observer.nBparticles[], 2]
+                        belief_plt[1] = prey.observer.Bparticle[1:prey.observer.nPparticles[], 1]
+                        belief_plt[2] = prey.observer.Bparticle[1:prey.observer.nPparticles[], 2]
 
                     end # PLOT_INT_PARTICLES
 
@@ -515,7 +476,8 @@ for rep = 1:nReps
                     iMAP = findmax(prey.observer.posterior)[2]
                    # println(iMAP[1], ", ", iMAP[2])
 
-                    (NR, QD, Dmin, Qθ, θmin, θmax) = particleStats(prey, predator) 
+                    (MP, NR, QD, Dmin, Qθ, θmin, θmax) = particleStats(prey, predator) 
+                    PR = observerStats(prey, predator)
                     # println(QD, ", ", Dmin, ", ", Qθ, ", ", θmin, ", ", θmax)
                     # sleep(2)
 
@@ -523,7 +485,7 @@ for rep = 1:nReps
                     CSV.write(FileName * ".csv",
                         DataFrame(hcat(rep, prey.observer.range[i], predator.x[], predator.y[], iMAP[1], iMAP[2],
                             prey.observer.PosteriorEntropy[i], prey.observer.KLD[i], prey.observer.KLD0[i], prey.observer.KLDI[i], 
-                            NR..., QD..., Dmin, Qθ..., θmin,  θmax, 
+                            PR..., MP, NR..., QD..., Dmin, Qθ..., θmin,  θmax, 
                             Nreceptors, 
                             n_likelihood_particles, n_posterior_particles,  posteriorDeaths)),
                             header=false, append=true)

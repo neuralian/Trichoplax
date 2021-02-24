@@ -47,6 +47,25 @@ QN05t = hcat([D.QN05[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
 QN25t = hcat([D.QN25[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
 QN50t = hcat([D.QN50[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
 
+
+# quantiles of angle distribution
+Qψ01t = hcat([D.Qψ01[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
+Qψ05t = hcat([D.Qψ05[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
+Qψ25t = hcat([D.Qψ25[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
+Qψ50t = hcat([D.Qψ50[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
+Qψ75t = hcat([D.Qψ75[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
+Qψ95t = hcat([D.Qψ95[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
+Qψ99t = hcat([D.Qψ99[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
+
+QΘ01t = hcat([D.QΘ01[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
+QΘ05t = hcat([D.QΘ05[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
+QΘ25t = hcat([D.QΘ25[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
+QΘ50t = hcat([D.QΘ50[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
+QΘ75t = hcat([D.QΘ75[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
+QΘ95t = hcat([D.QΘ95[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
+QΘ99t = hcat([D.QΘ99[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
+
+
  # simulation data are saved per timestep, but we want to evaluate 
  # the observer in terms of distance to predator.  
  # convert (interpolate) to values on a regular grid of pred-prey distances
@@ -78,6 +97,23 @@ QN01  = Array{Float64,2}(undef,length(Rgrid), Nreps) # particle
 QN05  = Array{Float64,2}(undef,length(Rgrid), Nreps)
 QN25 = Array{Float64,2}(undef,length(Rgrid), Nreps)
 QN50 = Array{Float64,2}(undef,length(Rgrid), Nreps)
+
+# Quantiles of angle
+Qψ01 = Array{Float64,2}(undef,length(Rgrid), Nreps)
+Qψ05 = Array{Float64,2}(undef,length(Rgrid), Nreps)
+Qψ25 = Array{Float64,2}(undef,length(Rgrid), Nreps)
+Qψ50 = Array{Float64,2}(undef,length(Rgrid), Nreps)
+Qψ75 = Array{Float64,2}(undef,length(Rgrid), Nreps)
+Qψ95 = Array{Float64,2}(undef,length(Rgrid), Nreps)
+Qψ99 = Array{Float64,2}(undef,length(Rgrid), Nreps)
+
+QΘ01 = Array{Float64,2}(undef,length(Rgrid), Nreps)
+QΘ05 = Array{Float64,2}(undef,length(Rgrid), Nreps)
+QΘ25 = Array{Float64,2}(undef,length(Rgrid), Nreps)
+QΘ50 = Array{Float64,2}(undef,length(Rgrid), Nreps)
+QΘ75 = Array{Float64,2}(undef,length(Rgrid), Nreps)
+QΘ95 = Array{Float64,2}(undef,length(Rgrid), Nreps)
+QΘ99 = Array{Float64,2}(undef,length(Rgrid), Nreps)
 
 
 
@@ -145,6 +181,49 @@ for rep in 1:Nreps
     sp = Spline1D(R[i,rep], QN50t[i,rep])  
     QN50[:,rep] = sp(Rgrid)
 
+    # Quantiles of angle
+    sp = Spline1D(R[i,rep], Qψ01t[i,rep])  
+    Qψ01[:,rep] = sp(Rgrid)
+
+    sp = Spline1D(R[i,rep], Qψ05t[i,rep])  
+    Qψ05[:,rep] = sp(Rgrid)
+
+    sp = Spline1D(R[i,rep], Qψ25t[i,rep])  
+    Qψ25[:,rep] = sp(Rgrid)
+
+    sp = Spline1D(R[i,rep], Qψ50t[i,rep])  
+    Qψ50[:,rep] = sp(Rgrid)
+
+    sp = Spline1D(R[i,rep], Qψ75t[i,rep])  
+    Qψ75[:,rep] = sp(Rgrid)
+
+    sp = Spline1D(R[i,rep], Qψ95t[i,rep])  
+    Qψ95[:,rep] = sp(Rgrid)
+
+    sp = Spline1D(R[i,rep], Qψ99t[i,rep])  
+    Qψ99[:,rep] = sp(Rgrid)
+
+    sp = Spline1D(R[i,rep], QΘ01t[i,rep])  
+    QΘ01[:,rep] = sp(Rgrid)
+
+    sp = Spline1D(R[i,rep], QΘ05t[i,rep])  
+    QΘ05[:,rep] = sp(Rgrid)
+
+    sp = Spline1D(R[i,rep], QΘ25t[i,rep])  
+    QΘ25[:,rep] = sp(Rgrid)
+
+    sp = Spline1D(R[i,rep], QΘ50t[i,rep])  
+    QΘ50[:,rep] = sp(Rgrid)
+
+    sp = Spline1D(R[i,rep], QΘ75t[i,rep])  
+    QΘ75[:,rep] = sp(Rgrid)
+
+    sp = Spline1D(R[i,rep], QΘ95t[i,rep])  
+    QΘ95[:,rep] = sp(Rgrid)
+
+    sp = Spline1D(R[i,rep], QΘ99t[i,rep])  
+    QΘ99[:,rep] = sp(Rgrid)
+
 
 end    
 
@@ -179,6 +258,23 @@ QN01S = sort(QN01, dims = 2)
 QN05S = sort(QN05, dims = 2)
 QN25S = sort(QN25, dims = 2)
 QN50S = sort(QN50, dims = 2)
+
+Qψ01S = sort(Qψ01, dims = 2)
+Qψ05S = sort(Qψ05, dims = 2)
+Qψ25S = sort(Qψ25, dims = 2)
+Qψ50S = sort(Qψ50, dims = 2)
+Qψ75S = sort(Qψ75, dims = 2)
+Qψ95S = sort(Qψ95, dims = 2)
+Qψ99S = sort(Qψ99, dims = 2)
+
+QΘ01S = sort(QΘ01, dims = 2)
+QΘ05S = sort(QΘ05, dims = 2)
+QΘ25S = sort(QΘ25, dims = 2)
+QΘ50S = sort(QΘ50, dims = 2)
+QΘ75S = sort(QΘ75, dims = 2)
+QΘ95S = sort(QΘ95, dims = 2)
+QΘ99S = sort(QΘ99, dims = 2)
+
 
 
 # meanKLD = mean(KLD, dims=2)[:,1]

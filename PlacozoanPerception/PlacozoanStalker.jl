@@ -18,7 +18,7 @@ PLOT_ARRAYS = true
 # DO_PLOTS switches plotting ON/OFF, for running multiple simulations
 # to collect data without plotting. DO_PLOTS must be true for the 
 # settings above to take effect
-DO_PLOTS = true
+DO_PLOTS = false
 if DO_PLOTS == false
     PLOT_EXT_PARTICLES = false
     PLOT_INT_PARTICLES = false
@@ -27,7 +27,7 @@ end
 
 
 # simulation parameters
-nReps = 128
+nReps = 64
 nFrames = 480       # number of animation frames
 burn_time = 30      # burn in posterior initially for 30 sec with predator outside observable world
 mat_radius = 400
@@ -88,23 +88,62 @@ PHOTORECEPTION = false
 NTRIALS = [0]
 
 
-
+# open file to save results as dataframe, 1 row per simulation step (=per video frame when videoed)
 FileName = "PlacozoanStalker" * string(Int(ELECTRORECEPTION)) * string(Int(PHOTORECEPTION)) * "_" *
     string(Nreceptors) 
 
 CSV.write(FileName * ".csv",
-    DataFrame(rep=Int64[],Range=Float64[], predatorx=Float64[], predatory=Float64[], xMAP=Int64[], yMAP=Int64[], 
-                   PosteriorEntropy=Float64[], KLD=Float64[], KLD0=Float64[], KLDI=Float64[],
-                   PR25 = Float64[], PR50 = Float64[], PR100 = Float64[], 
-                   MP = Int64[], 
-                   N25 = Float64[], N50 = Float64[], N100 = Float64[],
-                   Dmed = Float64[], Dquart = Float64[], D5pc = Float64[], D1pc = Float64[],
-                   Dmin = Float64[], 
-                   Θ1pc = Float64[], Θ5pc = Float64[], Θquart = Float64[], Θmed = Float64[],
-                   Θquarta = Float64[], Θ5pca = Float64[], Θ1pca = Float64[],     
-                   Θmin = Float64[], Θmax = Float64[],           
-                   Nreceptors=Int[], n_likelihood_particles=Int64[], n_posterior_particles=Int64[],  
-                   priorDensity=Float64[]))
+    DataFrame(rep=Int64[],
+    
+        # distance to closest edge of predator, and predator location
+        Range=Float64[], predatorx=Float64[], predatory=Float64[], 
+        
+        # Bayesian MAP estimate of predator location
+        xMAP=Int64[], yMAP=Int64[], 
+
+        # Entropy of Bayesian posterior & Kullback-Leibler divergence (relative entropy)
+        #   of particle distribution (KLD), a uniform random sample (KLD0) and a sample 
+        # from the posterior density (KLDI, ie simulating an ideal Bayesian particle filter),
+        # with respect to the posterior (ie measure information loss in the particle estimate,
+        #   a sample from the posterior and a random sample, relative to the posterior)
+        PosteriorEntropy=Float64[], KLD=Float64[], KLD0=Float64[], KLDI=Float64[],
+
+        ## posterior density summary stats ##
+
+        # posterior probability that predator is closer than 25, 50 and 100um
+        PR25 = Float64[], PR50 = Float64[], PR100 = Float64[], 
+
+        # quantiles of posterior density of distance to predator
+        # 1%, 5%, 25% and 50% (median) (proximal side only, ie we care about how close the predator
+        # might be, not how far away it might be)
+        QP01 = Float64[], QP05 = Float64[], QP25 = Float64[], QP50 = Float64[],
+
+        # quantiles of angular distribution
+        Qψ01 = Float64[], Qψ05 = Float64[], Qψ25 = Float64[], Qψ50 = Float64[], 
+        Qψ75 = Float64[], Qψ95 = Float64[], Qψ99 = Float64[],
+
+        ## Particle summary stats  ##
+
+        # proportion of particles within 25, 50 and 100um
+        NR25 = Float64[], NR50 = Float64[], NR100 = Float64[], 
+
+        # quantiles of particle proximity, 1%, 5%, 25% and 50%
+        # e.g. QN05 is range including closest 5% of particles
+        QN01 = Float64[], QN05 = Float64[], QN25 = Float64[], QN50 = Float64[], 
+
+        # quantiles of particle direction error (from true heading to predator)
+        # giving credibility intervals for direction
+        # e.g. QΘ05 is left/anticlockwise limit of 5% credibility interval for direction to predator,
+        #      and Q095 is right/clockwise limit
+        QΘ01 = Float64[], QΘ05 = Float64[], QΘ25 = Float64[], QΘ50 = Float64[], 
+        QΘ75 = Float64[], QΘ95 = Float64[], QΘ99 = Float64[],
+
+        # M-cell posterior belief of predator in patch
+        MP = Float64[],
+        
+        # trial parameters
+        Nreceptors=Int[], n_likelihood_particles=Int64[], n_posterior_particles=Int64[],  
+        priorDensity=Float64[]))
 
 
 tick()
@@ -112,7 +151,7 @@ tick()
 for rep = 1:nReps
     for n_likelihood_particles = [1024] # [512 1024  2048 4096 8192 ]
         for n_posterior_particles = [1024] # Int.(n_likelihood_particles .÷ [.5 1 2 4])
-            for posteriorDeaths = [0] # [.001 .01 .1]
+            for posteriorDeaths = [4] # [.001 .01 .1]
 
                 # construct placozoans
                 # HINT: These are local variables but if they are declared global 
@@ -379,8 +418,8 @@ for rep = 1:nReps
 
                 # VIDEO RECORDING
                 # comment out ONE of the following 2 lines to (not) generate video file
-                record(scene, videoName , framerate=16, 1:nFrames) do i     # generate video file
-                #for i in 1:nFrames                                      # just compute
+                #record(scene, videoName , framerate=16, 1:nFrames) do i     # generate video file
+                for i in 1:nFrames                                      # just compute
 
                    #println(i)
 
@@ -476,16 +515,37 @@ for rep = 1:nReps
                     iMAP = findmax(prey.observer.posterior)[2]
                    # println(iMAP[1], ", ", iMAP[2])
 
-                    (MP, NR, QD, Dmin, Qθ, θmin, θmax) = particleStats(prey, predator) 
-                    PR = observerStats(prey, predator)
+                    # summary stats of particle distribution
+                    # NR = proportion of particles (estimated probabilty) that predator is closer than 25,50 & 100um
+                    # QN = quantiles of particle range, [0.005 0.025 0.25 0.5 0.75 0.975 0.995]
+                    #      giving 1%, 5% and 50% credibility intervals + median estimate
+                    # QΘ = quantiles of particle angle deviation from heading to predator (as above)
+                    # MP = M-cell's posterior belief that there is a predator in its patch 
+                    (NR, QN, Qθ, MP) = particleStats(prey, predator) 
+
+                    (PR, QP, Qψ) = observerStats(prey, predator) 
+
+                 
                     # println(QD, ", ", Dmin, ", ", Qθ, ", ", θmin, ", ", θmax)
                     # sleep(2)
 
-                    # save data
+                    # save data (see file open command for more detailed description of variables saved)
                     CSV.write(FileName * ".csv",
-                        DataFrame(hcat(rep, prey.observer.range[i], predator.x[], predator.y[], iMAP[1], iMAP[2],
-                            prey.observer.PosteriorEntropy[i], prey.observer.KLD[i], prey.observer.KLD0[i], prey.observer.KLDI[i], 
-                            PR..., MP, NR..., QD..., Dmin, Qθ..., θmin,  θmax, 
+                        DataFrame(hcat(rep, 
+                        
+                        # range and location 
+                        prey.observer.range[i], predator.x[], predator.y[], iMAP[1], iMAP[2],
+
+                        # entropy/information in particle filter
+                        prey.observer.PosteriorEntropy[i], prey.observer.KLD[i], prey.observer.KLD0[i], prey.observer.KLDI[i], 
+                        
+                        # summary stats of posterior probability 
+                        PR..., QP, Qψ, 
+
+                        # summary stats of particle distribution
+                        NR..., QN..., Qθ..., MP, 
+
+                        # trial parameters
                             Nreceptors, 
                             n_likelihood_particles, n_posterior_particles,  posteriorDeaths)),
                             header=false, append=true)

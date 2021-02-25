@@ -8,7 +8,7 @@ using Dierckx        # spline interpolation
 #include("makieTheme5.jl")
 
 # read PS data file
-fileName = "PS_10_32_FEB21_ALL.csv"
+fileName = "PlacozoanStalker10_32_25FEB21_ALL.csv"
 D = CSV.read(fileName, DataFrame)
 
 Nreps = Int64(D[:,1][end])
@@ -65,6 +65,9 @@ QΘ75t = hcat([D.QΘ75[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
 QΘ95t = hcat([D.QΘ95[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
 QΘ99t = hcat([D.QΘ99[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
 
+# cellular proximity detector
+CPDt = hcat([D.MP[ (D.rep.==i),:][:,1] for i in 1:Nreps]...)
+
 
  # simulation data are saved per timestep, but we want to evaluate 
  # the observer in terms of distance to predator.  
@@ -115,7 +118,8 @@ QΘ75 = Array{Float64,2}(undef,length(Rgrid), Nreps)
 QΘ95 = Array{Float64,2}(undef,length(Rgrid), Nreps)
 QΘ99 = Array{Float64,2}(undef,length(Rgrid), Nreps)
 
-
+# cellular proximity detector
+CPD = Array{Float64,2}(undef,length(Rgrid), Nreps)
 
 for rep in 1:Nreps
     
@@ -224,6 +228,8 @@ for rep in 1:Nreps
     sp = Spline1D(R[i,rep], QΘ99t[i,rep])  
     QΘ99[:,rep] = sp(Rgrid)
 
+    sp = Spline1D(R[i,rep], CPDt[i,rep])  
+    CPD[:,rep] = sp(Rgrid)
 
 end    
 
@@ -274,6 +280,8 @@ QΘ50S = sort(QΘ50, dims = 2)
 QΘ75S = sort(QΘ75, dims = 2)
 QΘ95S = sort(QΘ95, dims = 2)
 QΘ99S = sort(QΘ99, dims = 2)
+
+CPDS = sort(CPD, dims = 2)
 
 
 

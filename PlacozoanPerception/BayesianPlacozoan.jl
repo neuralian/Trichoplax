@@ -537,9 +537,47 @@ function likelihood(p::Placozoan, Electroreception::Bool = true, Photoreception:
  end
 
 
-# map likelihood, posterior density, likelihood particles and posterior particles
-# from mat onto the marginal zone of the placozoan
-function reflect!(p::Placozoan)
+# map likelihood particles and posterior particles from mat onto the marginal zone of the placozoan
+function reflectParticles!(p::Placozoan)
+
+  # # Likelihood
+  # @inbounds for i in -p.radius:p.radius
+  #   @inbounds for j in -p.radius:p.radius
+  #     r = sqrt(i^2+j^2)
+  #     if (r<p.radius) & (r > (p.radius-p.marginwidth))  # in marginal zone
+  #       # project map location to real-world location
+  #      # R = p.radius + (p.radius - r*(p.observer.maxRange - p.radius))/p.marginwidth 
+
+  #       R = (p.radius - r)*(p.observer.maxRange-p.radius)/ p.marginwidth + p.radius
+                
+  #       #println(i, ", ", j, ", ", r, ", ", R, ", ", R/r)
+  #       iproj = Int64(round(i*R/r))   
+  #       jproj = Int64(round(j*R/r))
+  #       # copy likelihood from world to map
+  #       p.observer.likelihood[Int64(i),Int64(j)] = p.observer.likelihood[iproj,jproj]
+  #       p.observer.posterior[Int64(i),Int64(j)] = p.observer.posterior[iproj,jproj]
+  #     end
+  #   end
+  # end
+
+
+  # likelihood particles
+  R = sqrt.(p.observer.Lparticle[1:p.observer.nLparticles[],1].^2 + p.observer.Lparticle[1:p.observer.nLparticles[],2].^2)
+  r = (p.radius .- p.marginwidth*(R.-p.radius)./
+      (p.observer.maxRange-p.radius))::Array{Float64,1}
+  p.observer.Sparticle[1:p.observer.nPparticles[],:] = r.*p.observer.Lparticle[1:p.observer.nLparticles[], :]./R
+
+  # posterior particles
+  Rp = sqrt.(p.observer.Pparticle[1:p.observer.nPparticles[],1].^2 + p.observer.Pparticle[1:p.observer.nPparticles[],2].^2)
+  rp = (p.radius .- p.marginwidth*(Rp.-p.radius)./
+      (p.observer.maxRange-p.radius))::Array{Float64,1}
+  p.observer.Bparticle[1:p.observer.nPparticles[],:] =rp.*p.observer.Pparticle[1:p.observer.nPparticles[],:]./Rp
+
+
+end
+
+# map likelihood and posterior density from mat onto the marginal zone of the placozoan
+function reflectArrays!(p::Placozoan)
 
   # Likelihood
   @inbounds for i in -p.radius:p.radius
@@ -562,19 +600,19 @@ function reflect!(p::Placozoan)
   end
 
 
-  # likelihood particles
-  R = sqrt.(p.observer.Lparticle[1:p.observer.nLparticles[],1].^2 + p.observer.Lparticle[1:p.observer.nLparticles[],2].^2)
-  r = (p.radius .- p.marginwidth*(R.-p.radius)./
-      (p.observer.maxRange-p.radius))::Array{Float64,1}
+  # # likelihood particles
+  # R = sqrt.(p.observer.Lparticle[1:p.observer.nLparticles[],1].^2 + p.observer.Lparticle[1:p.observer.nLparticles[],2].^2)
+  # r = (p.radius .- p.marginwidth*(R.-p.radius)./
+  #     (p.observer.maxRange-p.radius))::Array{Float64,1}
 
-  #observation = r.*p.observer.Lparticle[1:p.observer.nLparticles[], :]./R
-  p.observer.Sparticle[1:p.observer.nPparticles[],:] = r.*p.observer.Lparticle[1:p.observer.nLparticles[], :]./R
-  # posterior particles
-  Rp = sqrt.(p.observer.Pparticle[1:p.observer.nPparticles[],1].^2 + p.observer.Pparticle[1:p.observer.nPparticles[],2].^2)
-  rp = (p.radius .- p.marginwidth*(Rp.-p.radius)./
-      (p.observer.maxRange-p.radius))::Array{Float64,1}
-  #belief = rp.*p.observer.Pparticle[1:p.observer.nPparticles[],:]./Rp
-  p.observer.Bparticle[1:p.observer.nPparticles[],:] =rp.*p.observer.Pparticle[1:p.observer.nPparticles[],:]./Rp
+  # #observation = r.*p.observer.Lparticle[1:p.observer.nLparticles[], :]./R
+  # p.observer.Sparticle[1:p.observer.nPparticles[],:] = r.*p.observer.Lparticle[1:p.observer.nLparticles[], :]./R
+  # # posterior particles
+  # Rp = sqrt.(p.observer.Pparticle[1:p.observer.nPparticles[],1].^2 + p.observer.Pparticle[1:p.observer.nPparticles[],2].^2)
+  # rp = (p.radius .- p.marginwidth*(Rp.-p.radius)./
+  #     (p.observer.maxRange-p.radius))::Array{Float64,1}
+  # #belief = rp.*p.observer.Pparticle[1:p.observer.nPparticles[],:]./Rp
+  # p.observer.Bparticle[1:p.observer.nPparticles[],:] =rp.*p.observer.Pparticle[1:p.observer.nPparticles[],:]./Rp
 
 
 end
@@ -758,7 +796,7 @@ function bayesParticleUpdate(p::Placozoan)
   end
 
   # reflect likelihood, posterior, likelihood particles and posterior particles into the marginal zone
-  reflect!(p)  
+  reflectParticles!(p)  
 
 end
 
@@ -844,6 +882,9 @@ function bayesArrayUpdate(p::Placozoan)
   end
   p.observer.posterior[:,:] ./= posteriorSum
 
+  # map likelihood and posterior density into placozoan marginal zone
+  reflectArrays!(p)
+
 end
 
 # Utility functions
@@ -901,12 +942,12 @@ function particleStats(prey::Placozoan, predator::Placozoan)
   # sorted distance from edge of prey to posterior particles
   D = sort(sqrt.(sum(prey.observer.Pparticle[1:N,:].^2, dims=2)), dims=1).-prey.radius
 
-  # quantiles of particle distance to predator, toward prey from 1/2 (median) to 1/128 
-  QD = [D[Int(round(q*N))] for q in  [0.5 0.25 0.05 0.01]]
+  # quantiles of particle distance to predator
+  QN = [D[Int(round(q*N))] for q in  [0.01 0.05 0.25 0.50]]
 
-  # number of particles (estimated probability) within specfied range
+  # estimated probability of predator within specfied range
   range = [25 50 100]
-  NR = [sum(x->x<range[i], D) for i in 1:length(range)]
+  NR = [sum(x->x<range[i], D)/N for i in 1:length(range)]
 
   # bearing error for each particle
   θ = atan.(prey.observer.Pparticle[1:N,2],prey.observer.Pparticle[1:N,1]) .- bearing
@@ -921,8 +962,9 @@ function particleStats(prey::Placozoan, predator::Placozoan)
   end
 
   # quantiles of particle bearing angle from predator
+  # 1%, 5% amd 50% credibility intervals + median
   θ = sort(θ)
-  Qθ = hcat( [θ[N - Int(round(N/q))]*180/π for q in  [100 20 4]], [θ[Int(round(N/q))]*180/π for q in  [2 4 20 100]])
+  Qθ = [ θ[Int(round(q*N))]*180/π for q in  [0.005 0.025 0.25 0.5 0.75 0.975 0.995] ]
 
 
   # M-cell threat estimate
@@ -934,37 +976,81 @@ function particleStats(prey::Placozoan, predator::Placozoan)
       p = p + 1
     end
   end
+  p = p/N  # particle count to probability estimate
+
   
-  return (p, NR, QD, D[1], Qθ, θ[1]*180/π, θ[end]*180/π )
+  # return proportion of particles in range, quantiles of particle range, 
+  #   quantiles of particle angle and probability of predator in M-cell posterior field
+  # ie M-cell's belief that there is a predator in its patch
+  return (NR, QN, Qθ, p)
 
 end
 
 # summarize Bayesian observer distributions
 function observerStats(prey::Placozoan, predator::Placozoan)
 
+  bearing2predator = atan(predator.y[], predator.x[])    # bearing to centre of predator
+  
+  x_edge = predator.x[] - predator.radius*cos(bearing2predator) # x-coord of closest edge point
+  y_edge = predator.y[] - predator.radius*sin(bearing2predator)
+
+  bearing = atan(y_edge, x_edge)*180.0/π  # bearing to closest edge of predator
+
   #  radial cumulative distribution of posterior probability (ie integrate over direction)
-  d0 = Int64(prey.radius)
-  d1 = Int64(prey.observer.maxRange)
-  n = d1 - d0
-  RCDF = fill(0.0, n)
-  # first compute the radial density
+  RCDF = fill(0.0, prey.observer.maxRange+1)
+  # angular cumulative distn in 400 bins (ie using 400 instead of 360 "degrees")
+  ACDF = fill(0.0, 361)
+  # compute the radial density
   for i in -prey.observer.maxRange:prey.observer.maxRange
-    for j in -prey.observer.maxRange:prey.observer.maxRange
-       r = sqrt(i^2 + j^2)
-       for d in 2:n
-        if (r>(d0+d-1)) & (r<=(d0+d))
-          RCDF[d] = RCDF[d] + prey.observer.posterior[i,j]
-        end
-      end
+  for j in -prey.observer.maxRange:prey.observer.maxRange
+      
+    d = sqrt(i^2 + j^2)
+    Θ = atan(j,i)*180/π - bearing  
+    if Θ > 180.0
+      Θ = Θ - 360.0
+    elseif    Θ < -180.0
+      Θ = Θ + 360.0
+    end
+    
+    if (d< prey.observer.maxRange) & (d>=prey.radius)
+      d = 1+Int64(round(d))     # quantized distance to world location
+      RCDF[d] = RCDF[d] + prey.observer.posterior[i,j]
+      Θ = 181 + Int64(round(Θ))      # quantized angle
+      ACDF[Θ] =  ACDF[Θ] + prey.observer.posterior[i,j]
+    end
     end
   end
-  # overwrite with cumulative distribution 
+
+  # cumulative range distribution 
   RCDF = cumsum(RCDF)
   
   # probability that predator is within specified range(s)
   # range values here should match those in particleStats()
-  PR = RCDF[[25, 50, 100]]
+  PR = RCDF[Int64(round(prey.radius)).+[25, 50, 100]]
 
+  # quantiles of posterior density of distance to predator
+  # quantile values here should match those in particleStats()
+  QP = [ minimum(findall(x->x>=q, RCDF))-prey.radius for q in  [0.01 0.05 0.25 0.5] ]
+
+  # cumulative angle distribution (clockwise re -y direction)
+  ACDF = cumsum(ACDF)
+
+  # angle quantiles (for credibility intervals)
+  # 1% = 0.5% each end = 2/400 etc, note indexing from 1 not 0
+  QΘ = [ minimum(findall(x->x>=q, ACDF)) for q in  [0.01 0.05 0.25 0.5 .75 .95 .99] ] .-180.0
+
+  # unwrap (compute angle wrt heading to predator)
+    # for q in QΘ
+    #   if q > 180.0
+    #     q = q - 360.0
+    #   elseif    q < -180.0
+    #     q = q + 360.0
+    #   end
+    # end 
+
+    #println(QΘ)
+
+  (PR, QP, QΘ, bearing)
 
 end
 
@@ -1100,7 +1186,7 @@ function sample!(s::Array{Int64, 2}, D::AbstractArray)
 end
 
 function sample(D::AbstractArray, N::Int64)
-  # draw sample s of size n from 2D empirical distribution D by rejection
+  # draw sample s of size n from 2D empirical distribution D by rejection]
   # sum(D)==1.
   # samples are returned as Int64 nx2 indices of D
   # samples are returned as Int64 nx2 indices of D

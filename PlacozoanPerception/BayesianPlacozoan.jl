@@ -9,6 +9,7 @@ using Distributions
 using ImageFiltering
 using CSV
 using DataFrames
+using PolygonOps    
 
 
 const max_nLparticles = 2^14
@@ -17,15 +18,15 @@ const max_nPparticles = 2^14
 
 # colors
 # scene
-colour_mat =  RGB(.05, .2, .1)*.75
+colour_mat =  "#364e4a" #RGB(.05, .2, .1)*.75
 colour_background = RGB(0.1, 0.1, 0.1)
 title_color = RGB(.4, .4, .6)
 
 # external/world particles
-colour_likelihood = RGB(1.0,.85, 0.65)
+colour_likelihood = "#f6ecb5" #RGB(1.0,.85, 0.65)
 #colour_prior = RGB(0.75, 0.45, 0.45)
 #colour_posterior = RGB(0.85, 0.25, 0.25)
-colour_posterior = RGB(.85,.15, 0.3)
+colour_posterior = "#f88379" # RGB(.85,.15, 0.3)
 
 # internal/spike particles
 colour_observation = :yellow
@@ -51,7 +52,7 @@ mcell_radius = 2.5
 mcell_inset = 2.0*mcell_radius  # inset of M-cell centre from edge of animal
 
 # Particle sizes  
-size_likelihood = 2
+size_likelihood = 3
 #size_prior = 4
 size_posterior = 3
 
@@ -104,6 +105,8 @@ physics = Physics()
 struct Mcell
   d::Float64           # distance from Placozoan centre to M-cell centre 
   r::Float64           # cell radius
+  x::Array{Float64,1}         # x-y coords change
+  y::Array{Float64,1}
 end
 
 
@@ -343,7 +346,7 @@ function Placozoan(
       receptor,
       crystalcell,
       observer,
-      Mcell(radius-mcell_inset, mcell_radius),
+      Mcell(radius-mcell_inset, mcell_radius, [0.0], [0.0]),
       [0.0],
       [0.0, 0.0],
       bodycolor,
@@ -359,7 +362,7 @@ function Placozoan(radius::Int64, margin::Int64, fieldrange::Int64,
 
    return Placozoan(radius, margin, radius-margin, 12.0, [0.0], [0.0],
      zeros(fieldrange), zeros(fieldrange), fieldrange,
-     Ereceptor(), CrystalCell(), Observer(), Mcell(0.0, 0.0), [0.0], [0.0, 0.0],
+     Ereceptor(), CrystalCell(), Observer(), Mcell(0.0, 0.0, [0.0], [0.0]), [0.0], [0.0, 0.0],
      bodycolor, gutcolor, edgecolor )
 
 end
@@ -968,11 +971,12 @@ function particleStats(prey::Placozoan, predator::Placozoan)
 
 
   # M-cell threat estimate
-  mx = prey.mcell.d*cos(bearing2predator)
-  my = prey.mcell.d*sin(bearing2predator)
+  prey.mcell.x[] = prey.mcell.d*cos(bearing2predator)
+  prey.mcell.y[] = prey.mcell.d*sin(bearing2predator)
   p = 0   # initialize particle-in-threat-zone count
   for i = 1:N
-    if sqrt( (mx-prey.observer.Bparticle[i,1])^2 + (my-prey.observer.Bparticle[i,2])^2) < prey.mcell.r
+    if sqrt( (prey.mcell.x[]-prey.observer.Bparticle[i,1])^2 + 
+             (prey.mcell.y[]-prey.observer.Bparticle[i,2])^2) < prey.mcell.r
       p = p + 1
     end
   end
@@ -1039,16 +1043,8 @@ function observerStats(prey::Placozoan, predator::Placozoan)
   # 1% = 0.5% each end = 2/400 etc, note indexing from 1 not 0
   QΘ = [ minimum(findall(x->x>=q, ACDF)) for q in  [0.01 0.05 0.25 0.5 .75 .95 .99] ] .-180.0
 
-  # unwrap (compute angle wrt heading to predator)
-    # for q in QΘ
-    #   if q > 180.0
-    #     q = q - 360.0
-    #   elseif    q < -180.0
-    #     q = q + 360.0
-    #   end
-    # end 
-
-    #println(QΘ)
+  prey.mcell.x[] = prey.mcell.d*cos(bearing2predator)
+  prey.mcell.y[] = prey.mcell.d*sin(bearing2predator)
 
   (PR, QP, QΘ, bearing)
 
@@ -1221,4 +1217,24 @@ function sample(D::AbstractArray, N::Int64)
   end
 
   s
+end
+
+function rf(p::Placozoan)
+   # RF vertices are projections of M-cell vertices into the world
+
+   # get m-cell vertices
+   mc_pts = decompose(Point2f0, Circle(Point2f0(p.mcell.x[],p.mcell.y[]), p.mcell.r))
+   mc_pts[end] = mc_pts[1]  # close polygon
+   rf_pts = copy(mc_pts)  
+
+   # project thru edge
+   for j in 1:64
+    pt = mc_pts[j]
+    Ω = atan(pt[2], pt[1])
+    r = sqrt(pt[1]^2 + pt[2]^2)
+    r1 = (p.radius - r)*(p.observer.maxRange - p.radius)/p.marginwidth + p.radius
+    rf_pts[j] = Point2f0(r1*cos(Ω), r1*sin(Ω))
+ end
+ 
+  rf_pts
 end

@@ -5,8 +5,7 @@ using TickTock
 # import BayesianPlacozoan
 # function main()
 
-# to [not] create a video file, uncomment the line starting "record(scene ..."
-# (about line 400) and comment out the for i = ... (next line)
+
     
 # choose what gets plotted (for demo/explanatory videos)
 # the default is to plot 3 panels showing all particles + likelihood and posterior
@@ -17,7 +16,9 @@ PLOT_ARRAYS = true
 
 # DO_PLOTS switches plotting ON/OFF, for running multiple simulations
 # to collect data without plotting. DO_PLOTS must be true for the 
-# settings above to take effect
+# settings above to take effect.
+# to [not] create a video file, [comment] uncomment the line starting "record(scene ..."
+# (about line 400) and comment out the for i = ... (next line)
 DO_PLOTS = false
 if DO_PLOTS == false
     PLOT_EXT_PARTICLES = false
@@ -369,7 +370,7 @@ for rep = 1:nReps
                     # Prey
                     prey_plt = poly!(left_panel,
                         decompose(Point2f0, Circle(Point2f0(0., 0.), prey.radius)),
-                        color=prey.color, strokewidth=1, strokecolor=prey.gutcolor)
+                        color=prey.color, strokewidth=0.25, strokecolor=prey.gutcolor)
 
                     preyGut_plt = poly!(left_panel,
                         decompose(Point2f0, Circle(Point2f0(0., 0.), prey.gutradius)),

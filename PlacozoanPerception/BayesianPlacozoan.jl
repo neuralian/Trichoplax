@@ -1043,10 +1043,13 @@ function observerStats(prey::Placozoan, predator::Placozoan)
   # 1% = 0.5% each end = 2/400 etc, note indexing from 1 not 0
   QΘ = [ minimum(findall(x->x>=q, ACDF)) for q in  [0.01 0.05 0.25 0.5 .75 .95 .99] ] .-180.0
 
+  # update mcell coords
   prey.mcell.x[] = prey.mcell.d*cos(bearing2predator)
   prey.mcell.y[] = prey.mcell.d*sin(bearing2predator)
+  # probability of predator in M-cell RF
+  MP = posteriorInMcellRF(prey)
 
-  (PR, QP, QΘ, bearing)
+  (PR, QP, QΘ, MP)
 
 end
 
@@ -1219,22 +1222,45 @@ function sample(D::AbstractArray, N::Int64)
   s
 end
 
-function rf(p::Placozoan)
-   # RF vertices are projections of M-cell vertices into the world
+# posterior probability of predator in M-cell RF
+function posteriorInMcellRF(p::Placozoan)
+   
+  # get m-cell vertices
+  mc_pts = decompose(Point2f0, Circle(Point2f0(p.mcell.x[],p.mcell.y[]), p.mcell.r))
+  mc_pts[end] = mc_pts[1]  # close polygon
+  rf_pts = copy(mc_pts)  
 
-   # get m-cell vertices
-   mc_pts = decompose(Point2f0, Circle(Point2f0(p.mcell.x[],p.mcell.y[]), p.mcell.r))
-   mc_pts[end] = mc_pts[1]  # close polygon
-   rf_pts = copy(mc_pts)  
-
-   # project thru edge
-   for j in 1:64
+  # project to get RF vertices, 
+  # and record the min and maxy x and y coords of the RF
+  xMin = yMin = Inf
+  xMax = yMax = -Inf
+  for j in 1:64
     pt = mc_pts[j]
     Ω = atan(pt[2], pt[1])
     r = sqrt(pt[1]^2 + pt[2]^2)
     r1 = (p.radius - r)*(p.observer.maxRange - p.radius)/p.marginwidth + p.radius
-    rf_pts[j] = Point2f0(r1*cos(Ω), r1*sin(Ω))
- end
+    x = r1*cos(Ω)
+    y = r1*sin(Ω)
+    rf_pts[j] = Point2f0(x,y)
+    if x<xMin xMin = x end
+    if x>xMax xMax = x end
+    if y<yMin yMin = y end
+    if y>yMax yMax = y end
+  end
+
+  # close polygon (required by inpolygon() )
+  rf_pts[end] = rf_pts[1]
+
+  # integrate probability in RF
+  Pr = 0.0
+  for i in Int64(floor(xMin)):Int64(ceil(xMax))
+    for j in Int64(floor(yMin)):Int64(ceil(yMax))
+      if inpolygon(Point2f0(i,j), rf_pts)==1
+        Pr = Pr + p.observer.posterior[i,j]
+      end
+    end
+  end
  
-  rf_pts
+  Pr
 end
+

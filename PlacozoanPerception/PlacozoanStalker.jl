@@ -28,7 +28,7 @@ end
 
 
 # simulation parameters
-nReps = 64
+nReps = 128
 nFrames = 480       # number of animation frames
 burn_time = 30      # burn in posterior initially for 30 sec with predator outside observable world
 mat_radius = 400
@@ -123,6 +123,9 @@ CSV.write(FileName * ".csv",
         Qψ01 = Float64[], Qψ05 = Float64[], Qψ25 = Float64[], Qψ50 = Float64[], 
         Qψ75 = Float64[], Qψ95 = Float64[], Qψ99 = Float64[],
 
+        # M-cell Bayesian posterior belief of predator in patch
+        MP = Float64[],
+
         ## Particle summary stats  ##
 
         # proportion of particles within 25, 50 and 100um
@@ -139,8 +142,8 @@ CSV.write(FileName * ".csv",
         QΘ01 = Float64[], QΘ05 = Float64[], QΘ25 = Float64[], QΘ50 = Float64[], 
         QΘ75 = Float64[], QΘ95 = Float64[], QΘ99 = Float64[],
 
-        # M-cell posterior belief of predator in patch
-        MP = Float64[],
+        # M-cell particle posterior belief of predator in patch
+        MN = Float64[],
         
         # trial parameters
         Nreceptors=Int[], n_likelihood_particles=Int64[], n_posterior_particles=Int64[],  
@@ -521,10 +524,11 @@ for rep = 1:nReps
                     # QN = quantiles of particle range, [0.005 0.025 0.25 0.5 0.75 0.975 0.995]
                     #      giving 1%, 5% and 50% credibility intervals + median estimate
                     # QΘ = quantiles of particle angle deviation from heading to predator (as above)
-                    # MP = M-cell's posterior belief that there is a predator in its patch 
-                    (NR, QN, Qθ, MP) = particleStats(prey, predator) 
+                    # MN = M-cell's posterior belief that there is a predator in its patch 
+                    (NR, QN, Qθ, MN) = particleStats(prey, predator) 
 
-                    (PR, QP, Qψ) = observerStats(prey, predator) 
+                    # corresponding stats for Bayesian observer
+                    (PR, QP, Qψ, MP) = observerStats(prey, predator) 
 
                  
                     # println(QD, ", ", Dmin, ", ", Qθ, ", ", θmin, ", ", θmax)
@@ -541,10 +545,10 @@ for rep = 1:nReps
                         prey.observer.PosteriorEntropy[i], prey.observer.KLD[i], prey.observer.KLD0[i], prey.observer.KLDI[i], 
                         
                         # summary stats of posterior probability 
-                        PR..., QP, Qψ, 
+                        PR..., QP, Qψ, MP, 
 
                         # summary stats of particle distribution
-                        NR..., QN..., Qθ..., MP, 
+                        NR..., QN..., Qθ..., MN, 
 
                         # trial parameters
                             Nreceptors, 

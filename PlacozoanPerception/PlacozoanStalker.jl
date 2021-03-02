@@ -19,7 +19,7 @@ PLOT_ARRAYS = true
 # settings above to take effect.
 # to [not] create a video file, [comment] uncomment the line starting "record(scene ..."
 # (about line 400) and comment out the for i = ... (next line)
-DO_PLOTS = false
+DO_PLOTS = true
 if DO_PLOTS == false
     PLOT_EXT_PARTICLES = false
     PLOT_INT_PARTICLES = false
@@ -28,7 +28,7 @@ end
 
 
 # simulation parameters
-nReps = 128
+nReps = 4
 nFrames = 480       # number of animation frames
 burn_time = 30      # burn in posterior initially for 30 sec with predator outside observable world
 mat_radius = 400
@@ -69,15 +69,6 @@ for i in 1:WorldSize
     end
 end
 
-
-
-
-# initialize prey observer
-
-# likelihood(prey)           # initialize likelihood given initial receptor states
-# sample_likelihood(prey)    # sample from normalized likelihood
-# initialize_particles(prey) # draw initial sample from prior
-# initialize_prior(prey)     # initialize numerical Bayesian prior
 
 # time observable
 # used to force scene update (nothing depends explicitly on time)
@@ -170,8 +161,8 @@ for rep = 1:nReps
                 # predator constructed without observer
                 global
                 predator = Placozoan(predator_radius, predator_margin, predator_fieldrange,
-                     RGBA(.25, 0.1, 0.1, 1.0),
-                     RGBA(.45, 0.1, 0.1, 0.25),
+                     RGBA(.25, 0.1, 0.1, .35),
+                     RGBA(.45, 0.1, 0.1, 0.2),
                      RGB(.95, 0.1, 0.1) )
                 predator.speed[] = predator_speed
                 θ = π * rand()[] # Random initial heading (from above)
@@ -422,8 +413,8 @@ for rep = 1:nReps
 
                 # VIDEO RECORDING
                 # comment out ONE of the following 2 lines to (not) generate video file
-                #record(scene, videoName , framerate=16, 1:nFrames) do i     # generate video file
-                for i in 1:nFrames                                      # just compute
+                record(scene, videoName , framerate=16, 1:nFrames) do i     # generate video file
+                #for i in 1:nFrames                                      # just compute
 
                    #println(i)
 

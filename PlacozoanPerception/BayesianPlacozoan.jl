@@ -18,15 +18,15 @@ const max_nPparticles = 2^14
 
 # colors
 # scene
-colour_mat =  "#364e4a" #RGB(.05, .2, .1)*.75
+colour_mat =  "#87966c" #RGB(.05, .2, .1)*.75
 colour_background = RGB(0.1, 0.1, 0.1)
 title_color = RGB(.4, .4, .6)
 
 # external/world particles
-colour_likelihood = "#f6ecb5" #RGB(1.0,.85, 0.65)
+colour_likelihood = "#f5cd4c" #RGB(1.0,.85, 0.65)
 #colour_prior = RGB(0.75, 0.45, 0.45)
 #colour_posterior = RGB(0.85, 0.25, 0.25)
-colour_posterior = "#f88379" # RGB(.85,.15, 0.3)
+colour_posterior = "#a02c7d" # RGB(.85,.15, 0.3)
 
 # internal/spike particles
 colour_observation = :yellow
@@ -37,8 +37,8 @@ gutcolor = RGB(0.25, 0.25, 0.25)
 
 
 # receptors
-colour_receptor_OPEN  = RGB(1.0, 1.0, 1.0)
-colour_receptor_CLOSED  = RGB(0.25, 0.25, 0.25)
+colour_receptor_OPEN  = RGB(255/255,235/255,50/255)
+colour_receptor_CLOSED  = RGB(100/255,120/255,75/255)
 sizeof_receptor = 6.0
 
 #crystal cells
@@ -619,6 +619,9 @@ function reflectArrays!(p::Placozoan)
 
 
 end
+
+
+
 
  # Function to sample from normalized likelihood by rejection
  function sample_likelihood(p::Placozoan)

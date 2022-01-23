@@ -1,14 +1,18 @@
 # BayesianPlacozoan module
+# types and functions &c used by PlacozoanStalker.jl
 
 using GLMakie
-using AbstractPlotting.MakieLayout
-using AbstractPlotting
+#using AbstractPlotting.MakieLayout
+#using AbstractPlotting
 using Colors
 using OffsetArrays
 using Distributions
 using ImageFiltering
 using CSV
 using DataFrames
+using PolygonOps    
+
+const diffuseCoef = 2.5
 
 
 const max_nLparticles = 2^14
@@ -17,47 +21,47 @@ const max_nPparticles = 2^14
 
 # colors
 # scene
-colour_mat =  "#364e4a" #RGB(.05, .2, .1)*.75
-colour_background = RGB(0.1, 0.1, 0.1)
-title_color = RGB(.4, .4, .6)
+const colour_mat =  RGB(.1, .45, .4) # "#87966c"
+const colour_background = RGB(0.1, 0.1, 0.1)
+const title_color = RGB(.5, .5, .75)
 
 # external/world particles
-colour_likelihood = "#f6ecb5" #RGB(1.0,.85, 0.65)
+const colour_likelihood = "#f5cd4c" #RGB(1.0,.85, 0.65)
 #colour_prior = RGB(0.75, 0.45, 0.45)
 #colour_posterior = RGB(0.85, 0.25, 0.25)
-colour_posterior = "#f88379" # RGB(.85,.15, 0.3)
+const colour_posterior = RGB(.75,.25, 0.25) #"#a02c7d" #
 
 # internal/spike particles
-colour_observation = :yellow
+const colour_observation = :yellow
 
 # placozoans
-gutcolor = RGB(0.25, 0.25, 0.25)
+const gutcolor = RGB(0.25, 0.25, 0.25)
 
 
 
 # receptors
-colour_receptor_OPEN  = RGB(1.0, 1.0, 1.0)
-colour_receptor_CLOSED  = RGB(0.25, 0.25, 0.25)
-sizeof_receptor = 6.0
+const colour_receptor_OPEN  = RGB(255/255,235/255,50/255)
+const colour_receptor_CLOSED  = RGB(100/255,120/255,75/255)
+const sizeof_receptor = 6.0
 
 #crystal cells
-vision_light = RGB(1.0, 1.0, 1.0)
-vision_dark = RGB(0.0, 0.0, 0.0)
-sizeof_crystal = 5.0
-vision_SD = 0.8
+const vision_light = RGB(1.0, 1.0, 1.0)
+const vision_dark = RGB(0.0, 0.0, 0.0)
+const sizeof_crystal = 5.0
+const vision_SD = 0.8
 
 # "Mauthner" cell
-mcell_radius = 2.5
-mcell_inset = 2.0*mcell_radius  # inset of M-cell centre from edge of animal
+const mcell_radius = 2.5
+const mcell_inset = 2.0*mcell_radius  # inset of M-cell centre from edge of animal
 
 # Particle sizes  
-size_likelihood = 3
+const size_likelihood = 2
 #size_prior = 4
-size_posterior = 3
+const size_posterior = 3
 
-size_observation = 0.5
+const size_observation = 0.5
 #size_prediction = 2
-size_belief = 2.0
+const size_belief = 2.0
 
 # Physics structure
 # contains physical parameters
@@ -104,6 +108,8 @@ physics = Physics()
 struct Mcell
   d::Float64           # distance from Placozoan centre to M-cell centre 
   r::Float64           # cell radius
+  x::Array{Float64,1}         # x-y coords change
+  y::Array{Float64,1}
 end
 
 
@@ -123,7 +129,9 @@ struct Observer
   Sparticle::Array{Float64,2}    # sensory  particles (reflected likelihood particles)
   Bparticle::Array{Float64,2}    # belief particles (reflected posterior particles)
   Pparticle_step::Array{Float64,2}  # particle prediction steps
-  posteriorDeaths::Array{Int64,1}   # number of posterior particles that die (and are replaced) per frame
+  posteriorDeathRate::Array{Float64,1}   # probability that a posterior particle will die and be replaced by sample from prior per frame
+  diffuseCoef::Array{Float64,1}          # posterior diffusion coefficient
+  collisionRadius::Array{Float64,1}
   burnIn::Int64
   # priormean::Float64
   # priorsd::Float64  # std. dev. of prior
@@ -136,7 +144,7 @@ end
 
 # Observer constructor
 function Observer(minRange, maxRange, nLparticles::Int64, nPparticles::Int64,
-                  posteriorDeaths::Int64, nFrames::Int64)
+                  posteriorDeathRate::Float64, diffuseCoef::Float64, collisionRadius::Float64,  nFrames::Int64)
 
 
   # count sample points on mat
@@ -162,7 +170,9 @@ function Observer(minRange, maxRange, nLparticles::Int64, nPparticles::Int64,
                zeros(max_nLparticles,2),
                zeros(max_nPparticles,2),
                zeros(max_nPparticles,2),
-               [posteriorDeaths],
+               [posteriorDeathRate],
+               [diffuseCoef],
+               [collisionRadius],
                32,
                zeros(nFrames), zeros(nFrames), zeros(nFrames),
                zeros(nFrames), zeros(nFrames))
@@ -173,8 +183,8 @@ function Observer()
   z1 = zeros(1)
   z2 = zeros(1,1)
   zOff = OffsetArray(z2, 0:0, 0:0)
-  Observer(1, 1, 1, 1.0, zOff, zOff, zOff, [1], [1], z2, z2, z2, z2, z2, [1],0, 
-          z1, z1, z1, z1, z1)
+  Observer(1, 1, 1, 1.0, zOff, zOff, zOff, [1], [1], z2, z2, z2, z2, z2, 
+          [0.0],[0.0], [0.0], 0, z1, z1, z1, z1, z1)
 end
 
 
@@ -291,6 +301,7 @@ struct Placozoan
   observer::Observer  # Bayesian particle filter
   mcell::Mcell        # "Mauthner" neuron
   speed::Array{Float64,1}
+  ω::Array{Float64,1}   # omega, angular velocity
   step::Array{Float64,1}
   color::RGBA{Float64}
   gutcolor::RGBA{Float64}
@@ -298,6 +309,7 @@ struct Placozoan
 end
 
 # Placozoan constructor
+# With observer
 function Placozoan(
   radius::Int64,
   margin::Int64,
@@ -310,14 +322,17 @@ function Placozoan(
   crystalRange::Int64,
   nLparticles,
   nPparticles,
-  posteriorDeaths::Int64,
+  posteriorDeathRate::Float64,
+  diffuseCoef::Float64,
+  collisionRadius::Float64,
   nFrames::Int64,
   bodycolor = RGBA(0.9, 0.75, 0.65, 0.5),
   gutcolor = gutcolor,
   edgecolor = RGB(0.0, 0.0, 0.0),
   )
 
-  observer =  Observer(radius, eRange, nLparticles, nPparticles, posteriorDeaths, nFrames)
+  observer =  Observer(radius, eRange, nLparticles, nPparticles, 
+                        posteriorDeathRate, diffuseCoef, collisionRadius, nFrames)
   
     receptor = Ereceptor( eRange, radius, nEreceptors, receptorSize,  
                           colour_receptor_OPEN, colour_receptor_CLOSED)
@@ -343,7 +358,8 @@ function Placozoan(
       receptor,
       crystalcell,
       observer,
-      Mcell(radius-mcell_inset, mcell_radius),
+      Mcell(radius-mcell_inset, mcell_radius, [0.0], [0.0]),
+      [0.0],  
       [0.0],
       [0.0, 0.0],
       bodycolor,
@@ -359,7 +375,7 @@ function Placozoan(radius::Int64, margin::Int64, fieldrange::Int64,
 
    return Placozoan(radius, margin, radius-margin, 12.0, [0.0], [0.0],
      zeros(fieldrange), zeros(fieldrange), fieldrange,
-     Ereceptor(), CrystalCell(), Observer(), Mcell(0.0, 0.0), [0.0], [0.0, 0.0],
+     Ereceptor(), CrystalCell(), Observer(), Mcell(0.0, 0.0, [0.0], [0.0]), [0.0], [0.0], [0.0, 0.0],
      bodycolor, gutcolor, edgecolor )
 
 end
@@ -540,38 +556,18 @@ function likelihood(p::Placozoan, Electroreception::Bool = true, Photoreception:
 # map likelihood particles and posterior particles from mat onto the marginal zone of the placozoan
 function reflectParticles!(p::Placozoan)
 
-  # # Likelihood
-  # @inbounds for i in -p.radius:p.radius
-  #   @inbounds for j in -p.radius:p.radius
-  #     r = sqrt(i^2+j^2)
-  #     if (r<p.radius) & (r > (p.radius-p.marginwidth))  # in marginal zone
-  #       # project map location to real-world location
-  #      # R = p.radius + (p.radius - r*(p.observer.maxRange - p.radius))/p.marginwidth 
-
-  #       R = (p.radius - r)*(p.observer.maxRange-p.radius)/ p.marginwidth + p.radius
-                
-  #       #println(i, ", ", j, ", ", r, ", ", R, ", ", R/r)
-  #       iproj = Int64(round(i*R/r))   
-  #       jproj = Int64(round(j*R/r))
-  #       # copy likelihood from world to map
-  #       p.observer.likelihood[Int64(i),Int64(j)] = p.observer.likelihood[iproj,jproj]
-  #       p.observer.posterior[Int64(i),Int64(j)] = p.observer.posterior[iproj,jproj]
-  #     end
-  #   end
-  # end
-
-
   # likelihood particles
   R = sqrt.(p.observer.Lparticle[1:p.observer.nLparticles[],1].^2 + p.observer.Lparticle[1:p.observer.nLparticles[],2].^2)
   r = (p.radius .- p.marginwidth*(R.-p.radius)./
       (p.observer.maxRange-p.radius))::Array{Float64,1}
-  p.observer.Sparticle[1:p.observer.nPparticles[],:] = r.*p.observer.Lparticle[1:p.observer.nLparticles[], :]./R
+  p.observer.Sparticle[1:p.observer.nLparticles[],:] = r.*p.observer.Lparticle[1:p.observer.nLparticles[], :]./R
+
+
 
   # posterior particles
   Rp = sqrt.(p.observer.Pparticle[1:p.observer.nPparticles[],1].^2 + p.observer.Pparticle[1:p.observer.nPparticles[],2].^2)
-  rp = (p.radius .- p.marginwidth*(Rp.-p.radius)./
-      (p.observer.maxRange-p.radius))::Array{Float64,1}
-  p.observer.Bparticle[1:p.observer.nPparticles[],:] =rp.*p.observer.Pparticle[1:p.observer.nPparticles[],:]./Rp
+  rp = (p.radius .- p.marginwidth*(Rp.-p.radius)./ (p.observer.maxRange-p.radius))::Array{Float64,1}
+  p.observer.Bparticle[1:p.observer.nPparticles[],:] = rp.*p.observer.Pparticle[1:p.observer.nPparticles[],:]./Rp
 
 
 end
@@ -600,22 +596,10 @@ function reflectArrays!(p::Placozoan)
   end
 
 
-  # # likelihood particles
-  # R = sqrt.(p.observer.Lparticle[1:p.observer.nLparticles[],1].^2 + p.observer.Lparticle[1:p.observer.nLparticles[],2].^2)
-  # r = (p.radius .- p.marginwidth*(R.-p.radius)./
-  #     (p.observer.maxRange-p.radius))::Array{Float64,1}
-
-  # #observation = r.*p.observer.Lparticle[1:p.observer.nLparticles[], :]./R
-  # p.observer.Sparticle[1:p.observer.nPparticles[],:] = r.*p.observer.Lparticle[1:p.observer.nLparticles[], :]./R
-  # # posterior particles
-  # Rp = sqrt.(p.observer.Pparticle[1:p.observer.nPparticles[],1].^2 + p.observer.Pparticle[1:p.observer.nPparticles[],2].^2)
-  # rp = (p.radius .- p.marginwidth*(Rp.-p.radius)./
-  #     (p.observer.maxRange-p.radius))::Array{Float64,1}
-  # #belief = rp.*p.observer.Pparticle[1:p.observer.nPparticles[],:]./Rp
-  # p.observer.Bparticle[1:p.observer.nPparticles[],:] =rp.*p.observer.Pparticle[1:p.observer.nPparticles[],:]./Rp
-
-
 end
+
+
+
 
  # Function to sample from normalized likelihood by rejection
  function sample_likelihood(p::Placozoan)
@@ -692,28 +676,35 @@ end
 
 # predator movement
 function stalk(predator::Placozoan, prey::Placozoan, Δ::Float64)
+# Δ is the minimum approach distance (between edges of predator and prey)
 
-  # predator movement
-  d = sqrt(predator.x[]^2 + predator.y[]^2)  # distance from origin
-  v = sign(prey.radius + predator.radius + Δ - d)#(distance between edges)-Δ.
-  # pink noise motion in mat frame
-  predator.step[:] = 0.9*predator.step +
-                    0.1*randn(2).*predator.speed[]  .+
-                    0.1*v*predator.speed[].*([predator.x[], predator.y[]]) ./ d
 
-  # update predator coordinates
-  predator.x[] += predator.step[1]
-  predator.y[] += predator.step[2]
+  # predator location in polar coordinates
+  predatorRange = sqrt(predator.x[]^2 + predator.y[]^2)  # predator distance from origin
+  predatorBearing = atan(predator.y[], predator.x[])
 
-  d3 = sqrt.(prey.observer.Pparticle[1:prey.observer.nPparticles[],1].^2 + prey.observer.Pparticle[1:prey.observer.nPparticles[],2].^2)
+  # spin
+  # ω = -0.0002π
+  ω = -prey.ω[]  # predator rotates in prey frame
+  x = predator.x[]
+  predator.x[] =  cos(ω)*predator.x[] + sin(ω)*predator.y[]
+  predator.y[] = -sin(ω)*predator.x[] + cos(ω)*predator.y[]
 
-  v3 = sign.( prey.radius  + Δ .- d3)
-  prey.observer.Pparticle_step[1:prey.observer.nPparticles[],:].= 0.8*prey.observer.Pparticle_step[1:prey.observer.nPparticles[],:] +
-          0.2*randn(prey.observer.nPparticles[],2).*predator.speed[]
-          #  .+
-          # 0.1*v3.*predator.speed[].*prey.observer.Pparticle ./ d3
-  prey.observer.Pparticle[1:prey.observer.nPparticles[],:] .=  prey.observer.Pparticle[1:prey.observer.nPparticles[],:] +
-                              prey.observer.Pparticle_step[1:prey.observer.nPparticles[],:]
+
+  # drift towards prey
+  predator.x[] -= predator.speed[]*predator.x[]/predatorRange # x = x - speed*sin(bearing)
+  predator.y[] -= predator.speed[]*predator.y[]/predatorRange # x = x - speed*sin(bearing)
+
+  # # move back if over-stepped
+  # minRange =  prey.radius + predator.radius + Δ  # minimum allowed distance to predator (centre)
+  # if (sqrt(predator.x[]^2 + predator.y[]^2) - minRange) < 0.0    # too close
+  #   predator.x[] =  minRange*cos(predatorBearing)
+  #   predator.y[] =  minRange*sin(predatorBearing)    
+  # end
+
+  # # diffuse
+  # predator.x[] += 0.5*randn()[]
+  # predator.y[] += 0.5*randn()[]
 
 end
 
@@ -725,11 +716,10 @@ function initialize_particles(p::Placozoan)
 
 end
 
-
 function bayesParticleUpdate(p::Placozoan)
 
-  δ2 = 1.5  # squared collision maxRange
-  diffuseCoef = 4.0   # posterior particle diffusion rate (SD of Gaussian per step)
+  δ2 = p.observer.collisionRadius[]^2
+  #diffuseCoef = 2.0   # posterior particle diffusion rate (SD of Gaussian per step) at edge of mat
   # NB diffusion coef here should match diffusion coef in sequential Bayes upsdate (bayesArrayUpdate())
   nSpawn = 4  # average number of new posterior particles per collision
   nCollision = 0
@@ -739,29 +729,37 @@ function bayesParticleUpdate(p::Placozoan)
 
 
   # diffuse (random gaussian jitter) posterior particles
-  # prevent movement out of bounds (off the mat)
+  # with boundary at edge of mat. Include vigilance bias by (rarely) replacing
+  # a posterior particle by a sample from the prior
   @inbounds for i in 1:p.observer.nPparticles[]
-    inbounds = false
-    while !inbounds
-      candidate = p.observer.Pparticle[i,:] + diffuseCoef*randn(2)
-      r = sqrt(candidate[1]^2 + candidate[2]^2)
-      if (r > p.radius) & (r < p.observer.maxRange) 
-        p.observer.Pparticle[i,:] = candidate
-        inbounds = true
-      end
-    end  
+
+    if rand()[]<p.observer.posteriorDeathRate[] # with probability = posterior death rate
+      p.observer.Pparticle[i,:] = samplePrior(1,p)  # replace posteior particle with sample from prior
+    else   # otherwise particle Brownian motion
+      on_mat = false
+      while !on_mat
+        candidate = p.observer.Pparticle[i,:] 
+        r = sqrt(candidate[1]^2 + candidate[2]^2)
+        candidate += p.observer.diffuseCoef[]*randn(2)*r/p.observer.maxRange # map for uniform diffusion in epithelium
+        r = sqrt(candidate[1]^2 + candidate[2]^2)
+        if (r > p.radius) & (r < p.observer.maxRange) # if candidate location is on the mat
+          p.observer.Pparticle[i,:] = candidate       # move particle to candidate location
+          on_mat = true                               # and we're done. Otherwise try again.
+        end
+      end  
+    end
   end
 
-    # On each update a fixed number (proportion) of posterior particles 
-    # die at random and are reincarnated as (replaced by)
-    #  a random sample from the initial prior.
-    # (stops posterior particles prematurely condensing into local clouds, 
-    #  maintains 360 deg attention; biophysically interpreted as equilibrium 
-    #  between production and decay of posterior particles)
-    #nscatter = Int(round(p.observer.priorDensity[]*p.observer.nPparticles[]))
-    iscatter = rand(1:p.observer.nPparticles[], p.observer.posteriorDeaths[] )
-    p.observer.Pparticle[iscatter, :] = samplePrior(p.observer.posteriorDeaths[], p)
-    #p.observer.Pparticle_step[iscatter,:] .= 0.0
+    # # On each update a fixed number (proportion) of posterior particles 
+    # # die at random and are reincarnated as (replaced by)
+    # #  a random sample from the initial prior.
+    # # (stops posterior particles prematurely condensing into local clouds, 
+    # #  maintains 360 deg attention; biophysically interpreted as equilibrium 
+    # #  between production and decay of posterior particles)
+    # #nscatter = Int(round(p.observer.priorDensity[]*p.observer.nPparticles[]))
+    # iscatter = rand(1:p.observer.nPparticles[], p.observer.posteriorDeaths[] )
+    # p.observer.Pparticle[iscatter, :] = samplePrior(p.observer.posteriorDeaths[], p)
+    # #p.observer.Pparticle_step[iscatter,:] .= 0.0
 
   # list Pparticles that have collided with Lparticles
      nL = p.observer.nLparticles[]
@@ -830,15 +828,18 @@ end
 
 
 function initialize_prior(p::Placozoan)
-
+# prior probability increases linearly with distance from origin
+# (assume prey is more likely to appear further away)
   priorsum = 0.0
+  priorMean = p.radius + 100.0        # expect predator to appear when it gets within 100um
+  priorSigma2 = 100.0^2     # variance
   p.observer.prior .= 0.0
   for i = -p.observer.maxRange:p.observer.maxRange
     for j = -p.observer.maxRange:p.observer.maxRange
       d = sqrt(i^2 + j^2)
       if ( (d>p.radius) & (d<p.observer.maxRange) )
-         p.observer.prior[i, j] = 1.0
-         priorsum += 1.0
+         p.observer.prior[i, j] = exp(-(d-priorMean)^2.0/priorSigma2)
+         priorsum += p.observer.prior[i, j]
       end
     end
   end
@@ -849,29 +850,50 @@ end
 
 function bayesArrayUpdate(p::Placozoan)
 
-  posteriorSum = 0.0
-  @inbounds for i in -p.observer.maxRange:p.observer.maxRange
-    @inbounds for j in -p.observer.maxRange:p.observer.maxRange
-        # d = sqrt(i^2 + j^2)
-        # if (d>p.radius) & (d<p.observer.maxRange)
-          # posterior is dynamic prior
-          p.observer.posterior[i,j] *= p.observer.likelihood[i,j]
-          posteriorSum += p.observer.posterior[i,j]
-        # end
-      end
-    end
+ 
+  # posteriorSum = 0.0
+  # for i in -p.observer.maxRange:p.observer.maxRange
+  #   for j in -p.observer.maxRange:p.observer.maxRange
+  #       # d = sqrt(i^2 + j^2)
+  #       # if (d>p.radius) & (d<p.observer.maxRange)
+  #         # posterior is dynamic prior
+  #         p.observer.posterior[i,j] *= p.observer.likelihood[i,j]
+  #         posteriorSum += p.observer.posterior[i,j]
+  #       # end
+  #   end
+  # end
+
+  posteriorSum = sum(p.observer.posterior)
+  p.observer.posterior .*= p.observer.likelihood/posteriorSum
+ 
+
    # diffuse and mix with initial prior
    # NB diffusion coef here should match diffusion coef in particle filter
-   density = p.observer.posteriorDeaths[]/p.observer.nPparticles[]
-   diffuseCoef = 4.0
-   p.observer.posterior[:,:]  = (1.0-density)*
-      imfilter(p.observer.posterior, Kernel.gaussian(diffuseCoef))./posteriorSum + density.*p.observer.prior[:,:]
+   #density = p.observer.posteriorDeaths[]/p.observer.nPparticles[]
+   #diffuseCoef = 2.0
+   p.observer.posterior[:,:]  = (1.0-p.observer.posteriorDeathRate[])*
+      imfilter(p.observer.posterior, Kernel.gaussian(diffuseCoef)) + p.observer.posteriorDeathRate[].*p.observer.prior[:,:]
+      # p.observer.posterior[:,:]  = (1.0-density)*
+      # imfilter(p.observer.posterior, Kernel.gaussian(diffuseCoef))./posteriorSum + density.*p.observer.prior[:,:]
 
   # renormalize over mat (ie compensate for probability mass that has leaked out of the observable world,
   # corresponding to not allowing particles to diffuse off the mat)
+  # posteriorSum = 0.0
+  # @inbounds for i in -p.observer.maxRange:p.observer.maxRange
+  #   @inbounds for j in -p.observer.maxRange:p.observer.maxRange
+  #       d = sqrt(i^2 + j^2)
+  #       if (d>p.radius) & (d<p.observer.maxRange)
+  #         posteriorSum += p.observer.posterior[i,j]
+  #       else
+  #         p.observer.posterior[i,j] = 0.0
+  #       end
+  #   end
+  # end
+  # p.observer.posterior[:,:] ./= posteriorSum
+
   posteriorSum = 0.0
-  @inbounds for i in -p.observer.maxRange:p.observer.maxRange
-    @inbounds for j in -p.observer.maxRange:p.observer.maxRange
+for i in -p.observer.maxRange:p.observer.maxRange
+for j in -p.observer.maxRange:p.observer.maxRange
         d = sqrt(i^2 + j^2)
         if (d>p.radius) & (d<p.observer.maxRange)
           posteriorSum += p.observer.posterior[i,j]
@@ -946,7 +968,7 @@ function particleStats(prey::Placozoan, predator::Placozoan)
   QN = [D[Int(round(q*N))] for q in  [0.01 0.05 0.25 0.50]]
 
   # estimated probability of predator within specfied range
-  range = [25 50 100]
+  range = [40 45 50]
   NR = [sum(x->x<range[i], D)/N for i in 1:length(range)]
 
   # bearing error for each particle
@@ -965,14 +987,15 @@ function particleStats(prey::Placozoan, predator::Placozoan)
   # 1%, 5% amd 50% credibility intervals + median
   θ = sort(θ)
   Qθ = [ θ[Int(round(q*N))]*180/π for q in  [0.005 0.025 0.25 0.5 0.75 0.975 0.995] ]
-
+  iQmed = 4  # index of median angle
 
   # M-cell threat estimate
-  mx = prey.mcell.d*cos(bearing2predator)
-  my = prey.mcell.d*sin(bearing2predator)
+  prey.mcell.x[] = prey.mcell.d*cos(bearing2predator + Qθ[iQmed]*π/180.0)
+  prey.mcell.y[] = prey.mcell.d*sin(bearing2predator + Qθ[iQmed]*π/180.0)
   p = 0   # initialize particle-in-threat-zone count
   for i = 1:N
-    if sqrt( (mx-prey.observer.Bparticle[i,1])^2 + (my-prey.observer.Bparticle[i,2])^2) < prey.mcell.r
+    if sqrt( (prey.mcell.x[]-prey.observer.Bparticle[i,1])^2 + 
+             (prey.mcell.y[]-prey.observer.Bparticle[i,2])^2) <= prey.mcell.r
       p = p + 1
     end
   end
@@ -1026,7 +1049,7 @@ function observerStats(prey::Placozoan, predator::Placozoan)
   
   # probability that predator is within specified range(s)
   # range values here should match those in particleStats()
-  PR = RCDF[Int64(round(prey.radius)).+[25, 50, 100]]
+  PR = RCDF[Int64(round(prey.radius)).+[40, 45, 50]]
 
   # quantiles of posterior density of distance to predator
   # quantile values here should match those in particleStats()
@@ -1039,18 +1062,13 @@ function observerStats(prey::Placozoan, predator::Placozoan)
   # 1% = 0.5% each end = 2/400 etc, note indexing from 1 not 0
   QΘ = [ minimum(findall(x->x>=q, ACDF)) for q in  [0.01 0.05 0.25 0.5 .75 .95 .99] ] .-180.0
 
-  # unwrap (compute angle wrt heading to predator)
-    # for q in QΘ
-    #   if q > 180.0
-    #     q = q - 360.0
-    #   elseif    q < -180.0
-    #     q = q + 360.0
-    #   end
-    # end 
+  # update mcell coords
+  prey.mcell.x[] = prey.mcell.d*cos(bearing2predator)
+  prey.mcell.y[] = prey.mcell.d*sin(bearing2predator)
+  # probability of predator in M-cell RF
+  MP = posteriorInMcellRF(prey)
 
-    #println(QΘ)
-
-  (PR, QP, QΘ, bearing)
+  (PR, QP, QΘ, MP)
 
 end
 
@@ -1086,35 +1104,115 @@ function recordRange(I::Observer, predator::Placozoan, i)
     I.range[i] = sqrt(predator.x[]^2 + predator.y[]^2)
 end
 
+# # KLD(bayesian||particle)
+# # Kullback-Liebler divergence
+# # information gained by using particle distribution instead of bayesian posterior
+# # i.e.  overconfidence in the particle distribution
+# function KLD!(I::Observer, frame::Int64)
+
+#   # KLD of particle estimate
+#   S = 0.0
+#   n = 0
+#   # at each step the posterior includes a 
+#   outlier_threshold = 1.0e-6
+#   @inbounds for k in 1:I.nPparticles[]
+#     i = Int64(round(I.Pparticle[k,1]))
+#     j = Int64(round(I.Pparticle[k,2]))
+#     if I.posterior[i,j] > outlier_threshold
+#       S = S + log2(I.posterior[i,j])
+#       n = n + 1
+#     end
+#     #end
+#   end
+#   I.KLD[frame] = S/n +  log2(n)
+
+#   # KLD of random uniform sample
+#   S0 = 0.0
+#   nSamples = 0
+#   n = 0
+#   while nSamples < I.nPparticles[]
+#     i = rand(-I.maxRange:I.maxRange,1)[]
+#     j = rand(-I.maxRange:I.maxRange,1)[]
+#     d = sqrt(i^2+j^2)
+#     if (d>=I.minRange) & (d<=I.maxRange) # exclude particles not in the observable world
+#       nSamples = nSamples + 1
+#       if I.posterior[i,j] > outlier_threshold
+#        #S0 = S0 + I.posterior[i,j]*log2(I.posterior[i,j] )
+#        S0 = S0 + log2(I.posterior[i,j] )
+#        n = n + 1
+       
+#       end
+#     # end
+#     end
+#   end
+#   I.KLD0[frame] = S0/n +  log2(n)
+
+
+#    # KLD of sample from posterior
+#    SI = 0.0
+#    s = sample(I.posterior, I.nPparticles[])
+#    n = 0
+#    @inbounds for i in 1:I.nPparticles[]
+#        #SI = SI + I.posterior[s[i,1],s[i,2]]*log2(I.posterior[s[i,1],s[i,2]])
+#        if I.posterior[s[i,1],s[i,2]] > outlier_threshold
+#         SI = SI + log2(I.posterior[s[i,1],s[i,2]])
+#         n = n + 1
+#        end
+#    end
+
+#    I.KLDI[frame] = SI/n +  log2(n)
+
+#  end
+
+# KLD(particle||bayesian)
 function KLD!(I::Observer, frame::Int64)
   # computes Kullback-Liebler divergence, saves in KLD field of observer.
-  # NB If the particles are regarded as a random sample from a distribution P*
-  # then the expected value of "KLD" computed here is the KL-divergence 
-  # of P* from the true posterior P.   In particular, the expected value of "KLD"
-  # is zero if particles are drawn randomly from P.  
-  # also computes null KLD = KLD of uniform random sample of same size
+  # KLD is the information lost if the particle distribution is used instead of the 
+  # "true" posterior. It is computed for the placozoan model (KLD), a null model in 
+  # which particles are drawn uniformly at random over the mat (KLD0) and an "ideal"
+  # particle distribution drawn from the true posterior (KLDI).
+  # THIS VERSION of KLD compares the true posterior at sample points (particle locations)
+  # to the particle distribution i.e. a uniform distribution over those points.
 
   # KLD of particle estimate
   S = 0.0
   n = 0
-  outlier_threshold = 1.0e-8
+  outlier_threshold = 1.0e-14
+  psum = 0.0
+  @inbounds for k in 1:I.nPparticles[]
+    i = Int64(round(I.Pparticle[k,1]))
+    j = Int64(round(I.Pparticle[k,2]))
+    psum += I.posterior[i,j]
+  end
+
   @inbounds for k in 1:I.nPparticles[]
     i = Int64(round(I.Pparticle[k,1]))
     j = Int64(round(I.Pparticle[k,2]))
     #if (i^2 + j^2)<I.maxRange^2 # exclude particles not in the observable world
     if I.posterior[i,j] > outlier_threshold
       # S = S + I.posterior[i,j]*log2(I.posterior[i,j] )
-      S = S + log2(I.posterior[i,j])
-      n = n + 1
+      S = S + I.posterior[i,j]*log2(I.posterior[i,j]/psum) 
     end
     #end
   end
-  I.KLD[frame] = S/n +  log2(n)
+  I.KLD[frame] = S/psum + log2(I.nPparticles[])
 
   # KLD of random uniform sample
   S0 = 0.0
   nSamples = 0
-  n = 0
+  p0sum = 0.0
+  while nSamples < I.nPparticles[]
+    i = rand(-I.maxRange:I.maxRange,1)[]
+    j = rand(-I.maxRange:I.maxRange,1)[]
+    d = sqrt(i^2+j^2)
+    if (d>=I.minRange) & (d<=I.maxRange) # exclude particles not in the observable world
+      nSamples = nSamples + 1
+      if I.posterior[i,j] > outlier_threshold
+       p0sum = p0sum + I.posterior[i,j]
+      end
+    end
+  end
+  nSamples = 0
   while nSamples < I.nPparticles[]
     i = rand(-I.maxRange:I.maxRange,1)[]
     j = rand(-I.maxRange:I.maxRange,1)[]
@@ -1123,29 +1221,32 @@ function KLD!(I::Observer, frame::Int64)
       nSamples = nSamples + 1
       if I.posterior[i,j] > outlier_threshold
        #S0 = S0 + I.posterior[i,j]*log2(I.posterior[i,j] )
-       S0 = S0 + log2(I.posterior[i,j] )
-       n = n + 1
-       
+       S0 = S0 + I.posterior[i,j]*log2(I.posterior[i,j]/p0sum)
       end
-    # end
     end
   end
-  I.KLD0[frame] = S0/n +  log2(n)
+  I.KLD0[frame] = S0/p0sum +  log2(I.nPparticles[])
 
 
    # KLD of sample from posterior
    SI = 0.0
    s = sample(I.posterior, I.nPparticles[])
    n = 0
+   pIsum = 0.0
    @inbounds for i in 1:I.nPparticles[]
        #SI = SI + I.posterior[s[i,1],s[i,2]]*log2(I.posterior[s[i,1],s[i,2]])
        if I.posterior[s[i,1],s[i,2]] > outlier_threshold
-        SI = SI + log2(I.posterior[s[i,1],s[i,2]])
-        n = n + 1
+        pIsum = pIsum + I.posterior[s[i,1],s[i,2]]
        end
    end
 
-   I.KLDI[frame] = SI/n +  log2(n)
+   @inbounds for i in 1:I.nPparticles[]
+    #SI = SI + I.posterior[s[i,1],s[i,2]]*log2(I.posterior[s[i,1],s[i,2]])
+    if I.posterior[s[i,1],s[i,2]] > outlier_threshold
+     SI = SI + I.posterior[s[i,1],s[i,2]]*log2(I.posterior[s[i,1],s[i,2]]/pIsum)
+    end
+end
+   I.KLDI[frame] = SI/pIsum +   log2(I.nPparticles[])
 
  end
 
@@ -1222,3 +1323,49 @@ function sample(D::AbstractArray, N::Int64)
 
   s
 end
+
+# posterior probability of predator in M-cell RF
+function posteriorInMcellRF(p::Placozoan)
+   
+  # get m-cell vertices
+  mc_pts = decompose(Point2f0, Circle(Point2f0(p.mcell.x[],p.mcell.y[]), p.mcell.r))
+  mc_pts[end] = mc_pts[1]  # close polygon
+  rf_pts = copy(mc_pts)  
+
+  # project to get RF vertices, 
+  # and record the min and maxy x and y coords of the RF
+  xMin = yMin = Inf
+  xMax = yMax = -Inf
+  for j in 1:64
+    pt = mc_pts[j]
+    Ω = atan(pt[2], pt[1])
+    r = sqrt(pt[1]^2 + pt[2]^2)
+    r1 = (p.radius - r)*(p.observer.maxRange - p.radius)/p.marginwidth + p.radius
+    x = r1*cos(Ω)
+    y = r1*sin(Ω)
+    rf_pts[j] = Point2f0(x,y)
+    if x<xMin xMin = x end
+    if x>xMax xMax = x end
+    if y<yMin yMin = y end
+    if y>yMax yMax = y end
+  end
+
+  # close polygon (required by inpolygon() )
+  rf_pts[end] = rf_pts[1]
+
+  # integrate probability in RF
+  j0 = Int64(floor(yMin))
+  j1 = Int64(ceil(yMax))
+  Pr = 0.0
+  for i in Int64(floor(xMin)):Int64(ceil(xMax))
+ for j in j0:j1
+      if inpolygon(Point2f0(i,j), rf_pts)==1
+        #Pr = Pr + p.observer.posterior[i,j]
+        Pr += p.observer.posterior[i,j] 
+      end
+    end
+  end
+ 
+  Pr
+end
+

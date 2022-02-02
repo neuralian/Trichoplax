@@ -52,7 +52,7 @@ N_POSTERIOR_PARTICLES = [2000 ]
 POSTERIOR_DEATH_RATE = [0.001]
 
 # number of replicate simulations for each combination of the above parameters
-N_REPS = 8
+N_REPS = 32
 
 # show animation while simulating true/false
 # (must be true if )
@@ -60,6 +60,8 @@ SHOW_ANIMATION = true
 
 # log parameters and simulation statistics per trial true/false 
 LOG_DATA = true
+
+
 
 # choose what gets plotted (for demo/explanatory videos)
 # the default is to plot 3 panels showing all particles + likelihood and posterior
@@ -77,10 +79,11 @@ end
 
 
 # simulation parameters
-nFrames = 2100      # number of animation frames
+nFrames = 1800     # number of animation frames
 burn_time = 30      # burn in posterior initially for 30 sec with predator outside observable world
 mat_radius = 400
-approach_Δ = 25.0         # predator closest approach distance
+min_Δ = 5.0         # predator closest approach distance
+Δinit = 175.0
 dt = 1.00
 
 # # prey 
@@ -90,21 +93,21 @@ dt = 1.00
 # n_posterior_particles = 2500
 
 
-#  prey parameters
+#  prey parameters-
 prey_radius = 120
 prey_margin = 40
 Nreceptors = 32
-Ncrystals = 8
+Ncrystals = 32
 prey_fieldrange = 0   # no field
-prey_spinrate =   0.00024π # 0.0004π   # prey turns slowly clockwise
+prey_spinrate =   0.0003π  # prey turns slowly clockwise
 particle_collisionRadius = 1.5  # when particles are this close to each other they are deemed to have collided
-posterior_diffusion_coefficient = 3.0
+posterior_diffusion_coefficient = 2.5
 
 
 # predator parameters
 predator_radius = 150
 predator_margin = 0
-predator_speed = 0.1
+predator_speed =  0.25
 predator_fieldrange = mat_radius
 
 
@@ -236,14 +239,14 @@ for n_likelihood_particles = N_LIKELIHOOD_PARTICLES
                     RGB(.95, 0.1, 0.1) )
             predator.speed[] = predator_speed
             θ = π * rand()[] # Random initial heading (from above) 
-            predator.x[] = (mat_radius + 1.0*predator_radius) * cos(θ)
-            predator.y[] = (mat_radius + 1.0*predator_radius) * sin(θ)
+            predator.x[] = (prey_radius + predator_radius + Δinit) * cos(θ)
+            predator.y[] = (prey_radius + predator_radius + Δinit) * sin(θ)
             # predator.field[:] = dummy_predator.field[:]
             # predator.potential[:] = dummy_predator.potential[:]
         
             placozoanFieldstrength!(predator)
             Ereceptor_RF(prey, predator)
-            Vreceptor_RF(prey)
+           # Vreceptor_RF(prey)
             initialize_prior(prey)
             prey.observer.posterior[:,:] = prey.observer.prior[:,:]
 
@@ -304,7 +307,7 @@ for n_likelihood_particles = N_LIKELIHOOD_PARTICLES
                     decompose(Point2f0, Circle(Point2f0(0., 0.), mat_radius)),
                     color=colour_mat, strokewidth=0, strokecolor=:black)
                 display(scene)
-            end # SHOW_ANIMATION
+            #end # SHOW_ANIMATION
             
             if PLOT_ARRAYS
                 mat_middle_plt = poly!(middle_panel,
@@ -322,7 +325,7 @@ for n_likelihood_particles = N_LIKELIHOOD_PARTICLES
                 )
             end  # PLOT_ARRAYS
             
-            if SHOW_ANIMATION
+            #if SHOW_ANIMATION
                 # display nominal time on background
 
 
@@ -331,9 +334,10 @@ for n_likelihood_particles = N_LIKELIHOOD_PARTICLES
 
                 text!(left_panel, @lift(string("T = ", Int64($t))), color = :white, 
                                   position = (40-mat_radius,60-mat_radius), textsize = 16)
-                text!(left_panel, @lift(string("Δ = ", Int64(round(prey.observer.range[Int64($t[])]-prey.radius-predator.radius)))), color = :white, 
-                                  position = (40-mat_radius,35-mat_radius), textsize = 16)
-                #prey.observer.range[i]
+                # text!(left_panel, @lift(string("Δ = ", Int64(round(prey.observer.range[Int64($t[])]-prey.radius-predator.radius)))), color = :white, 
+                #                   position = (40-mat_radius,35-mat_radius), textsize = 16)
+                text!(left_panel, @lift(string("Δ = ", Int64(round(prey.observer.Δ[Int64($t[])] ) ))), color = :white, 
+                                  position = (40-mat_radius,35-mat_radius), textsize = 16)                #prey.observer.range[i]
 
             # predator drawn using lift(..., node)
             # (predatorLocation does not depend explicitly on t, but this causes
@@ -489,8 +493,8 @@ for n_likelihood_particles = N_LIKELIHOOD_PARTICLES
             #for i in 1:nFrames                                         # simulate without writing video file
 
 
-                # predator random walk to within Δ of prey
-                stalk(predator, prey, approach_Δ)
+                # predator drifts-diffuses towards prey
+                stalk(predator, prey, min_Δ)
 
                 # electroreception
                 if ELECTRORECEPTION
@@ -503,7 +507,6 @@ for n_likelihood_particles = N_LIKELIHOOD_PARTICLES
                         # receptor_plt.color[] = L_receptor_plt.color[] = R_receptor_plt.color[] = receptorColor
                     end # SHOW_ANIMATION
                 end  # electroreception
-
 
                 # photoreception
                 if PHOTORECEPTION
@@ -527,9 +530,7 @@ for n_likelihood_particles = N_LIKELIHOOD_PARTICLES
 
                 bayesParticleUpdate(prey)   # Bayesian particle filter
 
-                bayesArrayUpdate(prey)  # numerical sequential Bayes (benchmark)
-
-                #(observation, belief) = reflect!(prey) # reflect samples into margin
+                bayesArrayUpdate(prey)      # numerical sequential Bayes (benchmark)
 
                 if SHOW_ANIMATION
 
@@ -577,13 +578,16 @@ for n_likelihood_particles = N_LIKELIHOOD_PARTICLES
                     print(".")
                 end # SHOW_ANIMATION
 
-                # record posterior entropy (& display during simulation)
+                # record posterior entropy 
                 prey.observer.PosteriorEntropy[i] = entropy(prey.observer.posterior)
-                #Sprey.observer.KLD[i] = KLDBits(prey.observer)
-                recordRange(prey.observer, predator, i)
+                
+                # record distance between edges of predator and prey
+                getRange(prey, predator, i)
+
+                # Kullback-Liebler divergence (information-distance between particle distibution and 'true' posterior)
                 KLD!(prey.observer, i)
 
-                t[] = i
+                t[] = i  # node update -> redraw 
 
                 if LOG_DATA
 
@@ -614,7 +618,7 @@ for n_likelihood_particles = N_LIKELIHOOD_PARTICLES
                         n_likelihood_particles, 
                         n_posterior_particles,  posteriorDeathRate,
                                                 # range and location 
-                        prey.observer.range[i], predator.x[], predator.y[], iMAP[1], iMAP[2],
+                        prey.observer.Δ[i], predator.x[], predator.y[], iMAP[1], iMAP[2],
 
                         # entropy/information in particle filter
                         prey.observer.PosteriorEntropy[i], prey.observer.KLD[i], prey.observer.KLD0[i], prey.observer.KLDI[i], 
@@ -629,14 +633,13 @@ for n_likelihood_particles = N_LIKELIHOOD_PARTICLES
 
                 end # if LOG_DATA   
 
-
             end # frame
 
             # print timing information to terminal
             println()
             laptimer()
             
-            
+
             # re-initialize for next trial
             initialize_particles(prey) # draw initial sample from prior
             initialize_prior(prey)     # initialize numerical Bayesian prior

@@ -7,12 +7,13 @@ using GLMakie
 using Colors
 using OffsetArrays
 using Distributions
+using Random
 using ImageFiltering
 using CSV
 using DataFrames
 using PolygonOps    
 
-const diffuseCoef = 2.5
+diffuseCoef = 3.0
 
 
 const max_nLparticles = 2^14
@@ -139,7 +140,7 @@ struct Observer
   KLD::Array{Float64,1}   # K-L divergence from particles to posterior
   KLD0::Array{Float64,1}  # K-L divergence from uniform sample to posterior
   KLDI::Array{Float64,1}  # K-L divergence of random sample from posterior
-  range::Array{Float64,1} # track distance between predator & prey edges
+  Δ::Array{Float64,1} # track distance between predator & prey edges
 end
 
 # Observer constructor
@@ -165,11 +166,11 @@ function Observer(minRange, maxRange, nLparticles::Int64, nPparticles::Int64,
                zeros(-maxRange:maxRange, -maxRange:maxRange),
                zeros(-maxRange:maxRange, -maxRange:maxRange),
                [nLparticles], [nPparticles],
-               zeros(max_nLparticles,2),
-               zeros(max_nPparticles,2),
-               zeros(max_nLparticles,2),
-               zeros(max_nPparticles,2),
-               zeros(max_nPparticles,2),
+               zeros(nPparticles,2),
+               zeros(nPparticles,2),
+               zeros(nPparticles,2),
+               zeros(nPparticles,2),
+               zeros(nPparticles,2),
                [posteriorDeathRate],
                [diffuseCoef],
                [collisionRadius],
@@ -515,7 +516,7 @@ end
 
  # compute likelihood given receptor states
  # option to switch off each sensory modality (Electroreception/Photoreception = false)
-function likelihood(p::Placozoan, Electroreception::Bool = true, Photoreception::Bool = true)
+function likelihood(p::Placozoan, Electroreception::Bool = true, Photoreception::Bool = false)
 
   p.observer.likelihood .= 1.0
 
@@ -541,7 +542,8 @@ function likelihood(p::Placozoan, Electroreception::Bool = true, Photoreception:
 
    for j in -p.observer.maxRange:p.observer.maxRange
      for k in -p.observer.maxRange:p.observer.maxRange
-       if (j^2 + k^2) <= p.radius^2
+       r = sqrt(j^2 + k^2)
+       if  (r<= p.radius) | (r>=p.observer.maxRange)
          p.observer.likelihood[j,k] = 0.0
        end
      end
@@ -606,9 +608,10 @@ end
 
      n = 0
      while n < p.observer.nLparticles[]
-       candidate = rand(-p.observer.maxRange:p.observer.maxRange,2)
-       if sqrt(candidate[1]^2 + candidate[2]^2) < p.observer.maxRange
-         if rand()[] < p.observer.likelihood[candidate...]
+       candidate =   2.0*p.observer.maxRange*(rand(2).-0.5) #rand(-p.observer.maxRange:p.observer.maxRange,2)
+       r = sqrt(candidate[1]^2 + candidate[2]^2)
+       if  r < p.observer.maxRange
+         if (rand()[]*(r/max(abs.(candidate)...))^2) < p.observer.likelihood[Int64.(round.(candidate[1])), Int64.(round.(candidate[2]))]
            n = n + 1
            p.observer.Lparticle[n, :] = candidate[:]
          end
@@ -675,36 +678,34 @@ function orbit(dψ::Float64, p::Array{Float64,2})
 end
 
 # predator movement
-function stalk(predator::Placozoan, prey::Placozoan, Δ::Float64)
-# Δ is the minimum approach distance (between edges of predator and prey)
+function stalk(predator::Placozoan, prey::Placozoan, min_Δ::Float64)
 
+# predator location in polar coordinates
+predatorRange  = sqrt(predator.x[]^2 + predator.y[]^2)  # predator distance from origin
 
-  # predator location in polar coordinates
-  predatorRange = sqrt(predator.x[]^2 + predator.y[]^2)  # predator distance from origin
-  predatorBearing = atan(predator.y[], predator.x[])
+Δ = predatorRange - prey.radius - predator.radius  # distance between edges
 
-  # spin
-  # ω = -0.0002π
-  ω = -prey.ω[]  # predator rotates in prey frame
-  x = predator.x[]
-  predator.x[] =  cos(ω)*predator.x[] + sin(ω)*predator.y[]
-  predator.y[] = -sin(ω)*predator.x[] + cos(ω)*predator.y[]
+driftDirection = sign(Δ - min_Δ)
 
+if driftDirection > 0.0  # predator is approaching
 
-  # drift towards prey
-  predator.x[] -= predator.speed[]*predator.x[]/predatorRange # x = x - speed*sin(bearing)
-  predator.y[] -= predator.speed[]*predator.y[]/predatorRange # x = x - speed*sin(bearing)
+  # model prey spinning by rotating predator trajectory
+  predator.x[] =  cos(prey.ω[])*predator.x[] + -sin(prey.ω[])*predator.y[]
+  predator.y[] =  sin(prey.ω[])*predator.x[] + cos(prey.ω[])*predator.y[]
 
-  # # move back if over-stepped
-  # minRange =  prey.radius + predator.radius + Δ  # minimum allowed distance to predator (centre)
-  # if (sqrt(predator.x[]^2 + predator.y[]^2) - minRange) < 0.0    # too close
-  #   predator.x[] =  minRange*cos(predatorBearing)
-  #   predator.y[] =  minRange*sin(predatorBearing)    
-  # end
+end
 
-  # # diffuse
-  # predator.x[] += 0.5*randn()[]
-  # predator.y[] += 0.5*randn()[]
+#speed = predator.speed[]*(50.0/abs(Δ))^0.3
+speed = predator.speed[]*(100.0/(50.0+Δ))^(2.0)
+
+# drift towards prey, hold at min_Δ
+predator.x[] -= driftDirection*speed*predator.x[]/predatorRange  # x = x - speed*sin(bearing) 
+predator.y[] -= driftDirection*speed*predator.y[]/predatorRange  # y = y - speed*sin(bearing) 
+
+# Gaussian diffusion
+predator.x[] +=  0.75*randn()[] # x = x  + noise
+predator.y[] +=  0.75*randn()[] # y = y  + noise 
+
 
 end
 
@@ -716,88 +717,164 @@ function initialize_particles(p::Placozoan)
 
 end
 
+# function bayesParticleUpdate(p::Placozoan)
+
+#   δ2 = p.observer.collisionRadius[]^2
+#   #diffuseCoef = 2.0   # posterior particle diffusion rate (SD of Gaussian per step) at edge of mat
+#   # NB diffusion coef here should match diffusion coef in sequential Bayes upsdate (bayesArrayUpdate())
+#   nSpawn = 4  # average number of new posterior particles per collision
+#   nCollision = 0
+#   nCollider = 0
+#   collision = fill(0, p.observer.nPparticles[])
+#   collider = fill(0, p.observer.nPparticles[])
+
+
+#   # diffuse (random gaussian jitter) posterior particles
+#   # with boundary at edge of mat. Include vigilance bias by (rarely) replacing
+#   # a posterior particle by a sample from the prior
+#   @inbounds for i in 1:p.observer.nPparticles[]
+
+#     if rand()[]<p.observer.posteriorDeathRate[] # with probability = posterior death rate
+#       p.observer.Pparticle[i,:] = samplePrior(1,p)  # replace posteior particle with sample from prior
+#     else   # otherwise particle Brownian motion
+#       on_mat = false
+#       while !on_mat
+
+#         # compute a candidate location for each posterior particle to jump to 
+#         candidate = p.observer.Pparticle[i,:] 
+#         r = sqrt(candidate[1]^2 + candidate[2]^2)
+#         candidate += p.observer.diffuseCoef[]*randn(2)*r/p.observer.maxRange # uniform diffusion in epithelium
+
+#         # if the candidate location is within the boundary of the internal map
+#         # then move the particle to that location. Otherwise try again.
+#         r = sqrt(candidate[1]^2 + candidate[2]^2)
+#         if (r > p.radius) & (r < p.observer.maxRange) # if candidate location is on the mat
+#           p.observer.Pparticle[i,:] = candidate       # move particle to candidate location
+#           on_mat = true                               # and we're done. Otherwise try again.
+#         end
+#       end  
+#     end
+#   end
+
+#     # # On each update a fixed number (proportion) of posterior particles 
+#     # # die at random and are reincarnated as (replaced by)
+#     # #  a random sample from the initial prior.
+#     # # (stops posterior particles prematurely condensing into local clouds, 
+#     # #  maintains 360 deg attention; biophysically interpreted as equilibrium 
+#     # #  between production and decay of posterior particles)
+#     # #nscatter = Int(round(p.observer.priorDensity[]*p.observer.nPparticles[]))
+#     # iscatter = rand(1:p.observer.nPparticles[], p.observer.posteriorDeaths[] )
+#     # p.observer.Pparticle[iscatter, :] = samplePrior(p.observer.posteriorDeaths[], p)
+#     # #p.observer.Pparticle_step[iscatter,:] .= 0.0
+
+#   # list Pparticles that have collided with Lparticles
+#      nL = p.observer.nLparticles[]
+#      L = p.observer.Lparticle[:,:]
+#      @inbounds for i = 1:p.observer.nPparticles[]  # find collisions between posterior and likelihood particles
+#       #J = shuffle(1:nL)
+#       @inbounds for j in 1:nL
+#           if ((p.observer.Pparticle[i, 1] - L[j, 1])^2 +
+#                 (p.observer.Pparticle[i, 2] - L[j, 2])^2) < δ2  #  collision
+#           # if (abs((p.observer.Pparticle[i, 1] - L[j, 1]))<p.observer.collisionRadius[]) &
+#           #   (abs((p.observer.Pparticle[i, 2] - L[j, 2]))<p.observer.collisionRadius[])
+#               nCollision = nCollision + 1
+#               collision[nCollision] = i     # ith posterior particle has collided with a likelihood particle
+#               L[j:(nL-1)] = L[(j+1):nL]     # remove the Lparticle from list of available colliders
+#               nL = nL - 1
+#             break
+#           end
+#         end
+#       end
+
+#    #  print(nCollision)
+
+#   if nCollision > 0
+
+#     # copy posterior particles that have collided with sensory particles
+#     particle = p.observer.Pparticle[collision[1:nCollision], :] 
+
+#     # each collision spawns a Poisson-distributed number of new particles
+#     n_newparticles = rand(Poisson(nSpawn), nCollision)
+
+
+#     @inbounds for i = 1:nCollision
+#        @inbounds for j = 1:n_newparticles[i]   # replace randomly chosen posterior particles with offspring of collision
+#           p.observer.Pparticle[rand(1:p.observer.nPparticles[]), :]  = particle[i,:]
+#         end
+#     end
+
+#   end
+
+#   # reflect likelihood, posterior, likelihood particles and posterior particles into the marginal zone
+#   reflectParticles!(p)  
+
+# end
+
 function bayesParticleUpdate(p::Placozoan)
 
-  δ2 = p.observer.collisionRadius[]^2
-  #diffuseCoef = 2.0   # posterior particle diffusion rate (SD of Gaussian per step) at edge of mat
-  # NB diffusion coef here should match diffusion coef in sequential Bayes upsdate (bayesArrayUpdate())
-  nSpawn = 4  # average number of new posterior particles per collision
+  δ2 = 4.0   # squared collision maxRange
+  sδ = 9.0  # scatter maxRange
   nCollision = 0
-  nCollider = 0
-  collision = fill(0, p.observer.nPparticles[])
-  collider = fill(0, p.observer.nPparticles[])
-
-
-  # diffuse (random gaussian jitter) posterior particles
-  # with boundary at edge of mat. Include vigilance bias by (rarely) replacing
-  # a posterior particle by a sample from the prior
-  @inbounds for i in 1:p.observer.nPparticles[]
-
-    if rand()[]<p.observer.posteriorDeathRate[] # with probability = posterior death rate
-      p.observer.Pparticle[i,:] = samplePrior(1,p)  # replace posteior particle with sample from prior
-    else   # otherwise particle Brownian motion
-      on_mat = false
-      while !on_mat
-        candidate = p.observer.Pparticle[i,:] 
-        r = sqrt(candidate[1]^2 + candidate[2]^2)
-        candidate += p.observer.diffuseCoef[]*randn(2)*r/p.observer.maxRange # map for uniform diffusion in epithelium
-        r = sqrt(candidate[1]^2 + candidate[2]^2)
-        if (r > p.radius) & (r < p.observer.maxRange) # if candidate location is on the mat
-          p.observer.Pparticle[i,:] = candidate       # move particle to candidate location
-          on_mat = true                               # and we're done. Otherwise try again.
-        end
-      end  
+  collision = fill(0, 10 * p.observer.nLparticles[])
+  # list Bparticles that have collided with Lparticles
+  for i = 1:p.observer.nLparticles[]
+    for j = 1:p.observer.nPparticles[]  # check for collisions with belief
+      if (p.observer.Pparticle[j, 1] - p.observer.Lparticle[i, 1])^2 +
+         (p.observer.Pparticle[j, 2] - p.observer.Lparticle[i, 2])^2 < δ2   # collision
+        nCollision = nCollision + 1
+        collision[nCollision] = j
+      end
     end
   end
+  if nCollision > 0
+    # each collision produces a Poisson-distributed number of new particles
+    # such that expected number of new particles is p.observer.nPparticles
+    newBelief = fill(0.0, p.observer.nPparticles[], 2)
 
-    # # On each update a fixed number (proportion) of posterior particles 
-    # # die at random and are reincarnated as (replaced by)
-    # #  a random sample from the initial prior.
-    # # (stops posterior particles prematurely condensing into local clouds, 
-    # #  maintains 360 deg attention; biophysically interpreted as equilibrium 
-    # #  between production and decay of posterior particles)
-    # #nscatter = Int(round(p.observer.priorDensity[]*p.observer.nPparticles[]))
-    # iscatter = rand(1:p.observer.nPparticles[], p.observer.posteriorDeaths[] )
-    # p.observer.Pparticle[iscatter, :] = samplePrior(p.observer.posteriorDeaths[], p)
-    # #p.observer.Pparticle_step[iscatter,:] .= 0.0
-
-  # list Pparticles that have collided with Lparticles
-     nL = p.observer.nLparticles[]
-     L = p.observer.Lparticle[:,:]
-     @inbounds for i = 1:p.observer.nPparticles[]  # find collisions between posterior and likelihood particles
-      @inbounds for j = 1:nL
-          if ((p.observer.Pparticle[i, 1] - L[j, 1])^2 +
-                (p.observer.Pparticle[i, 2] - L[j, 2])^2) < δ2  #  collision
-              nCollision = nCollision + 1
-              collision[nCollision] = i     # ith posterior particle has collided with a likelihood particle
-              L[j:(nL-1)] = L[(j+1):nL]     # remove the Lparticle from list of available colliders
-              nL = nL - 1
-            break
+    n_newparticles =
+      rand(Poisson(p.observer.nPparticles[] / nCollision), nCollision)
+    count = 0
+    for i = 1:nCollision
+      for j = 1:n_newparticles[i]
+        count = count + 1
+        if count <= p.observer.nPparticles[]
+          R = Inf
+          while R > p.observer.maxRange  # no beliefs beyond edge of world
+          newBelief[count, :] =
+            p.observer.Pparticle[collision[i], :] + sδ * randn(2)
+            R = sqrt(newBelief[count,1]^2 + newBelief[count,2]^2)
           end
         end
       end
-
-   #  print(nCollision)
-
-  if nCollision > 0
-
-    # each collision spawns a Poisson-distributed number of new particles
-    #newBelief = fill(0.0, p.observer.nPparticles[], 2)
-    n_newparticles = rand(Poisson(nSpawn), nCollision)
-    @inbounds for i = 1:nCollision
-       particle = p.observer.Pparticle[collision[i], :]  # save the parent in case the original gets replaced
-       @inbounds for j = 1:n_newparticles[i]   # replace randomly chosen posterior particles with offspring of collision
-          p.observer.Pparticle[rand(1:p.observer.nPparticles[]), :]  = particle 
-        end
     end
+
+    # kluge number of particles (normalize the discrete distribution)
+    # by random particle duplication
+    for i in 1:(p.observer.nPparticles[]-count)
+      newBelief[count+i,:] = newBelief[rand(1:count),:]
+    end
+
+    p.observer.Pparticle[:] = newBelief[:]
+
+    # draw 100S% of Bparticles from prior
+    S = 0.01
+    nscatter = Int(round(S * p.observer.nPparticles[]))
+    iscatter = rand(1:p.observer.nPparticles[], nscatter)
+    p.observer.Pparticle[iscatter, :] = samplePrior(nscatter, p)
+    p.observer.Pparticle_step[iscatter, :] = zeros(nscatter,2)
+    # ϕ = 2 * π * rand(nscatter)
+    # for i = 1:nscatter
+    #   r = Inf
+    #   while r > p.observer.maxRange[]
+    #     r = p.observer.priormean[] + p.observer.priorsd[] * randn()[]
+    #   end
+    #   p.observer.Pparticle[iscatter[i], :] = [r * cos(ϕ[i]), r * sin(ϕ[i])]
+    #   p.observer.Pparticle_step[iscatter[i], :] = [0.0, 0.0]
+    # end
 
   end
 
-  # reflect likelihood, posterior, likelihood particles and posterior particles into the marginal zone
-  reflectParticles!(p)  
-
 end
-
 
 # draw n samples from prior by rejection
 function samplePrior(n, p::Placozoan)
@@ -810,7 +887,7 @@ function samplePrior(n, p::Placozoan)
     
     # pick a random point on mat external to the placozoan
     r = p.radius +  (p.observer.maxRange - p.radius)*rand()
-    ϕ = 2*π*rand()
+    ϕ = 2.0*π*rand()
     x = r*cos(ϕ)
     y = r*sin(ϕ)
    
@@ -871,8 +948,11 @@ function bayesArrayUpdate(p::Placozoan)
    # NB diffusion coef here should match diffusion coef in particle filter
    #density = p.observer.posteriorDeaths[]/p.observer.nPparticles[]
    #diffuseCoef = 2.0
+
+   ###############################################################
    p.observer.posterior[:,:]  = (1.0-p.observer.posteriorDeathRate[])*
       imfilter(p.observer.posterior, Kernel.gaussian(diffuseCoef)) + p.observer.posteriorDeathRate[].*p.observer.prior[:,:]
+      ###############################################################
       # p.observer.posterior[:,:]  = (1.0-density)*
       # imfilter(p.observer.posterior, Kernel.gaussian(diffuseCoef))./posteriorSum + density.*p.observer.prior[:,:]
 
@@ -1098,10 +1178,10 @@ function entropy(pdf)
   S
 end
 
-# range recorder (saves distance to predator on ith timestep)
-# nb this is centre of predator from centre of prey
-function recordRange(I::Observer, predator::Placozoan, i)
-    I.range[i] = sqrt(predator.x[]^2 + predator.y[]^2)
+
+#  Record the distance Δ between edges of predator and prey on each time step
+function getRange(prey::Placozoan, predator::Placozoan, i)
+    prey.observer.Δ[i] = sqrt(predator.x[]^2 + predator.y[]^2)-prey.radius-predator.radius
 end
 
 # # KLD(bayesian||particle)

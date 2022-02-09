@@ -611,7 +611,7 @@ end
        candidate =   2.0*p.observer.maxRange*(rand(2).-0.5) #rand(-p.observer.maxRange:p.observer.maxRange,2)
        r = sqrt(candidate[1]^2 + candidate[2]^2)
        if  r < p.observer.maxRange
-         if (rand()[]*(r/max(abs.(candidate)...))^2) < p.observer.likelihood[Int64.(round.(candidate[1])), Int64.(round.(candidate[2]))]
+         if rand() < p.observer.likelihood[Int64.(round.(candidate[1])), Int64.(round.(candidate[2]))]
            n = n + 1
            p.observer.Lparticle[n, :] = candidate[:]
          end
@@ -812,54 +812,84 @@ end
 
 function bayesParticleUpdate(p::Placozoan)
 
-  δ2 = 4.0   # squared collision maxRange
-  sδ = 9.0  # scatter maxRange
+  δ2 = 1.5   # squared collision maxRange
+  sδ = 1.0  # scatter maxRange
   nCollision = 0
-  collision = fill(0, 10 * p.observer.nLparticles[])
+
+  # collision[i] counts the number of Lparticles that the 
+  # ith Pparticle has collided with
+  collision = fill(0, p.observer.nPparticles[])
   # list Bparticles that have collided with Lparticles
-  for i = 1:p.observer.nLparticles[]
-    for j = 1:p.observer.nPparticles[]  # check for collisions with belief
-      if (p.observer.Pparticle[j, 1] - p.observer.Lparticle[i, 1])^2 +
-         (p.observer.Pparticle[j, 2] - p.observer.Lparticle[i, 2])^2 < δ2   # collision
+  for i = 1:p.observer.nPparticles[]
+    for j = 1:p.observer.nLparticles[]  # check for collisions with belief
+      if (p.observer.Pparticle[i, 1] - p.observer.Lparticle[j, 1])^2 +
+         (p.observer.Pparticle[i, 2] - p.observer.Lparticle[j, 2])^2 < δ2   # collision
         nCollision = nCollision + 1
-        collision[nCollision] = j
+        collision[i] += 1   
       end
     end
   end
+
   if nCollision > 0
     # each collision produces a Poisson-distributed number of new particles
-    # such that expected number of new particles is p.observer.nPparticles
-    newBelief = fill(0.0, p.observer.nPparticles[], 2)
+    # this may produce an excess of Pparticles that will need to be winnowed
+    # (that's why this array, which will hold the locations of new particles,
+    #  is much larger than the number of new particles we will end up with)
+    newParticle = fill(0.0, 20*p.observer.nPparticles[], 2)
 
-    n_newparticles =
-      rand(Poisson(p.observer.nPparticles[] / nCollision), nCollision)
-    count = 0
-    for i = 1:nCollision
-      for j = 1:n_newparticles[i]
-        count = count + 1
-        if count <= p.observer.nPparticles[]
+  #######################################
+  #   TBD: ensure all new particles are on the mat
+  ################################################
+    newparticlecount = 0 
+    for i = 1:p.observer.nPparticles[]
+      for j = 1:collision[i]  # for each collision of ith particle
+        nnew = 1+rand(Poisson(4))  # number of particles created by collision
+        for k = 1:nnew
+          newparticlecount += 1
           R = Inf
-          while R > p.observer.maxRange  # no beliefs beyond edge of world
-          newBelief[count, :] =
-            p.observer.Pparticle[collision[i], :] + sδ * randn(2)
-            R = sqrt(newBelief[count,1]^2 + newBelief[count,2]^2)
+          while (R > p.observer.maxRange) | (R < p.radius)  # ensure new particle is on the mat
+              # create new particle near ith Pparticle
+            newParticle[newparticlecount,:] = p.observer.Pparticle[i, :] + sδ * randn(2)
+            R = sqrt(newParticle[newparticlecount,1]^2 + newParticle[newparticlecount,2]^2)
           end
         end
       end
     end
 
-    # kluge number of particles (normalize the discrete distribution)
-    # by random particle duplication
-    for i in 1:(p.observer.nPparticles[]-count)
-      newBelief[count+i,:] = newBelief[rand(1:count),:]
+    # choose up to p.observer.nPparticles[] of these new particles at random
+    k = shuffle(1:newparticlecount)  # random index into new particles
+    if newparticlecount > p.observer.nPparticles[]
+      newparticlecount = p.observer.nPparticles[]
+    end
+    # random selection of new particles (in random order)
+    newParticle =   newParticle[k[1:newparticlecount],:]
+
+    # replace randomly chosen existing particles with new particles
+    for i = 1:newparticlecount
+      p.observer.Pparticle[rand(1:p.observer.nPparticles[]), :]  = newParticle[i,:]
     end
 
-    p.observer.Pparticle[:] = newBelief[:]
+    # diffusion
+    for i = 1:p.observer.nPparticles[]
+      R = Inf
+      while (R > p.observer.maxRange) | (R < p.radius) 
+        p.observer.Pparticle[i,:] += 4.0*randn(2)
+        R = sqrt(newParticle[newparticlecount,1]^2 + newParticle[newparticlecount,2]^2)
+      end
+    end
+
+    # # kluge number of particles (normalize the discrete distribution)
+    # # by random particle duplication
+    # for i in 1:(p.observer.nPparticles[]-count)
+    #   newBelief[count+i,:] = newBelief[rand(1:count),:]
+    # end
+
+    # p.observer.Pparticle[:] = newBelief[:]
 
     # draw 100S% of Bparticles from prior
-    S = 0.01
+    S = 0.001
     nscatter = Int(round(S * p.observer.nPparticles[]))
-    iscatter = rand(1:p.observer.nPparticles[], nscatter)
+    iscatter = shuffle(1:p.observer.nPparticles[])[1:nscatter]
     p.observer.Pparticle[iscatter, :] = samplePrior(nscatter, p)
     p.observer.Pparticle_step[iscatter, :] = zeros(nscatter,2)
     # ϕ = 2 * π * rand(nscatter)
@@ -1262,18 +1292,23 @@ function KLD!(I::Observer, frame::Int64)
   @inbounds for k in 1:I.nPparticles[]
     i = Int64(round(I.Pparticle[k,1]))
     j = Int64(round(I.Pparticle[k,2]))
-    psum += I.posterior[i,j]
+    try  # rarely [i,j] is out of bounds, but we dont care
+       psum += I.posterior[i,j]
+    catch
+    end
   end
 
   @inbounds for k in 1:I.nPparticles[]
     i = Int64(round(I.Pparticle[k,1]))
     j = Int64(round(I.Pparticle[k,2]))
     #if (i^2 + j^2)<I.maxRange^2 # exclude particles not in the observable world
-    if I.posterior[i,j] > outlier_threshold
-      # S = S + I.posterior[i,j]*log2(I.posterior[i,j] )
-      S = S + I.posterior[i,j]*log2(I.posterior[i,j]/psum) 
+    try
+      if I.posterior[i,j] > outlier_threshold
+        # S = S + I.posterior[i,j]*log2(I.posterior[i,j] )
+        S = S + I.posterior[i,j]*log2(I.posterior[i,j]/psum) 
+      end
+    catch
     end
-    #end
   end
   I.KLD[frame] = S/psum + log2(I.nPparticles[])
 

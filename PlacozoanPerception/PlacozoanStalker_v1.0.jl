@@ -52,7 +52,7 @@ N_POSTERIOR_PARTICLES = [2000 ]
 POSTERIOR_DEATH_RATE = [0.001]
 
 # number of replicate simulations for each combination of the above parameters
-N_REPS = 32
+N_REPS = 8
 
 # show animation while simulating true/false
 # (must be true if )
@@ -101,7 +101,7 @@ Ncrystals = 32
 prey_fieldrange = 0   # no field
 prey_spinrate =   0.0003π  # prey turns slowly clockwise
 particle_collisionRadius = 1.5  # when particles are this close to each other they are deemed to have collided
-posterior_diffusion_coefficient = 2.5
+posterior_diffusion_coefficient = 1.0
 
 
 # predator parameters

@@ -13,7 +13,7 @@ using CSV
 using DataFrames
 using PolygonOps  
 
-diffuseCoef = 3.0
+#diffuseCoef = 3.0
 
 
 const max_nLparticles = 2^14
@@ -56,13 +56,13 @@ const mcell_radius = 2.5
 const mcell_inset = 2.0*mcell_radius  # inset of M-cell centre from edge of animal
 
 # Particle sizes  
-const size_likelihood = 2
+const size_likelihood = 2.0
 #size_prior = 4
-const size_posterior = 3
+const size_posterior = 2.5
 
-const size_observation = 0.5
+const size_observation = 1.5
 #size_prediction = 2
-const size_belief = 2.0
+const size_belief = 1.5
 
 # Physics structure
 # contains physical parameters
@@ -328,10 +328,10 @@ function Placozoan(
   observer =  Observer(radius, eRange, nLparticles, nPparticles, 
                         posteriorDeathRate, diffuseCoef, collisionRadius, nFrames)
   
-    receptor = Ereceptor( eRange, radius, nEreceptors, receptorSize,  
+  receptor = Ereceptor( eRange, radius, nEreceptors, receptorSize,  
                           colour_receptor_OPEN, colour_receptor_CLOSED)
 
-    crystalcell = CrystalCell(crystalRange, (radius-0.75*margin), nCrystalCells, crystalSize,
+  crystalcell = CrystalCell(crystalRange, (radius-0.75*margin), nCrystalCells, crystalSize,
                           vision_light, vision_dark)
 
 
@@ -377,24 +377,24 @@ function Placozoan(radius::Int64, margin::Int64, fieldrange::Int64, position::Po
 
 end
 
-function initializeObserver(p::Placozoan, nLparticles::Int64, nPparticles::Int64,
-  priorDensity::Float64)
+# function initializeObserver(p::Placozoan, nLparticles::Int64, nPparticles::Int64,
+#   priorDensity::Float64)
 
-   p.observer.nLparticles[]  = nLparticles
-   p.observer.nPparticles[]  = nPparticles
-   p.observer.priorDensity[] = priorDensity
+#    p.observer.nLparticles[]  = nLparticles
+#    p.observer.nPparticles[]  = nPparticles
+#    p.observer.priorDensity[] = priorDensity
 
-# +   p.observer.Lparticle = zeros(nLparticles,2)
-#    p.observer.Pparticle = zeros(nPparticles,2)
-#    p.observer.Pparticle_step = zeros(nPparticles,2)
+# # +   p.observer.Lparticle = zeros(nLparticles,2)
+# #    p.observer.Pparticle = zeros(nPparticles,2)
+# #    p.observer.Pparticle_step = zeros(nPparticles,2)
 
 
-   likelihood(p)           # initialize likelihood given initial receptor states
-   sample_likelihood(p)    # sample from normalized likelihood
-   initialize_particles(p) # draw initial sample from prior
-   initialize_prior(p)     # initialize numerical Bayesian prior
+#    likelihood(p)           # initialize likelihood given initial receptor states
+#    sample_likelihood(p)    # sample from normalized likelihood
+#    initialize_particles(p) # draw initial sample from prior
+#    initialize_prior(p)     # initialize numerical Bayesian prior
 
-end
+# end
 
 
 # function computes receptor channel Open probability
@@ -667,7 +667,8 @@ end
 #    nothing
 # end
 
-# predator movement
+# predator step
+# returns Δ = distance between edges after step
 function stalk(predator::Placozoan, prey::Placozoan, min_Δ::Float64)
 
   predatorRange = distance(predator.position)[]
@@ -682,17 +683,17 @@ function stalk(predator::Placozoan, prey::Placozoan, min_Δ::Float64)
   end
 
   # prey accelerates as it approaches
-  speed = predator.speed[]*(100.0/(50.0+Δ))^(2.0)
+  #speed = predator.speed[]*(100.0/(50.0+Δ))
 
   # approach prey
   # nb predator.position[]/predatorRange  is a unit vector pointing from predator to prey
   # the predator will approach and hover at min_Δ
-  predator.position[] -= sign(Δ - min_Δ)*speed*predator.position[]/predatorRange 
+  predator.position[] -= sign(Δ - min_Δ)*predator.speed[]*predator.position[]/predatorRange 
  
   # diffusion/brownian motion: add Gaussian noise
   predator.position[] += predator.brown[]*Point2(randn(2))
 
-
+   return(Δ)
 end
 
 # not needed anymore, samplePrior initializes Pparticles
@@ -713,12 +714,26 @@ function bayesParticleUpdate(placozoan::Placozoan)
   # ith Pparticle has collided with
   collision = fill(0, placozoan.observer.nPparticles[])
   # list Bparticles that have collided with Lparticles
-  for i = 1:placozoan.observer.nPparticles[]
-    for j = 1:placozoan.observer.nLparticles[]  # check for collisions with belief
-      if distance(placozoan.observer.Pparticle[i], placozoan.observer.Lparticle[j]) < placozoan.observer.collisionRadius[]
+  # for i = 1:placozoan.observer.nPparticles[]
+  #   for j = 1:placozoan.observer.nLparticles[]  # check for collisions with belief
+  #     if distance(placozoan.observer.Pparticle[i], placozoan.observer.Lparticle[j]) < placozoan.observer.collisionRadius[]
+  #       # jth likleihood particle has collided with ith posterior particle
+  #       nCollision = nCollision + 1
+  #       collision[i] += 1   
+  #     end
+  #   end
+  # end
+
+  i = 0
+  for P in placozoan.observer.Pparticle
+    i = i + 1
+    # d = distance(P)
+    # r = (d < placozoan.radius + 50.) ? placozoan.observer.collisionRadius[]*sqrt(distance(P)/placozoan.radius) : 1.2*placozoan.observer.collisionRadius[]
+    for L in placozoan.observer.Lparticle # check for collisions with belief
+      if distance(P,L) < placozoan.observer.collisionRadius[]*projectMap(P, placozoan)
         # jth likleihood particle has collided with ith posterior particle
         nCollision = nCollision + 1
-        collision[i] += 1   
+        collision[i] += 1  
       end
     end
   end
@@ -741,7 +756,7 @@ function bayesParticleUpdate(placozoan::Placozoan)
     OVERFLOW = false
     for i = 1:placozoan.observer.nPparticles[]
       for j = 1:collision[i]  # for each collision of ith particle
-        nnew = 1+rand(Poisson(4))  # number of posterior particles after collision 
+        nnew = 4 #1+rand(Poisson(2)) #*(distance(placozoan.observer.Pparticle[i])/placozoan.radius)^.5))  # number of posterior particles after collision 
         for k = 1:nnew
           newparticlecount += 1
           if newparticlecount > maxNewParticles
@@ -792,6 +807,10 @@ function bayesParticleUpdate(placozoan::Placozoan)
     # draw 100S% of Bparticles from prior
   #S = 0.001
   NpriorParticles = Int(round(placozoan.observer.posteriorDeathRate[] * placozoan.observer.nPparticles[]))  # number of particles to draw & replace
+  priorPoint = uniformSampleAnnulus(Float64(placozoan.observer.minRange), 
+                    Float64(placozoan.observer.maxRange), NpriorParticles)# uniform random sample
+
+  
   priorPoint = samplePrior(placozoan, NpriorParticles)   # random sameple from prior
   # println("e")
   shuffle!(placozoan.observer.Pparticle)                # randomize order of posterior points
@@ -801,17 +820,7 @@ function bayesParticleUpdate(placozoan::Placozoan)
     placozoan.observer.Pparticle_step[i] = Point2(0.0, 0.0) # legacy - not used??
   end
 
-
-    # ϕ = 2 * π * rand(nscatter)
-    # for i = 1:nscatter
-    #   r = Inf
-    #   while r > p.observer.maxRange[]
-    #     r = p.observer.priormean[] + p.observer.priorsd[] * randn()[]
-    #   end
-    #   p.observer.Pparticle[iscatter[i], :] = [r * cos(ϕ[i]), r * sin(ϕ[i])]
-    #   p.observer.Pparticle_step[iscatter[i], :] = [0.0, 0.0]
-    # end
-  # println("x")
+  reflectParticles!(placozoan)
 
 end
 
@@ -851,7 +860,7 @@ end
 function initializePosteriorPDF(p::Placozoan)
 
   priorsum = 0.0
-  priorMean = p.radius + 100.0        # expect predator to appear when it gets within 100um
+  priorMean = p.radius + 175.0        # expect predator to appear when it gets within 100um
   priorSigma2 = 100.0^2     # variance
   p.observer.prior .= 0.0
   for i = -p.observer.maxRange:p.observer.maxRange
@@ -870,59 +879,25 @@ end
 
 function bayesArrayUpdate(p::Placozoan)
 
- 
-  # posteriorSum = 0.0
-  # for i in -p.observer.maxRange:p.observer.maxRange
-  #   for j in -p.observer.maxRange:p.observer.maxRange
-  #       # d = sqrt(i^2 + j^2)
-  #       # if (d>p.radius) & (d<p.observer.maxRange)
-  #         # posterior is dynamic prior
-  #         p.observer.posterior[i,j] *= p.observer.likelihood[i,j]
-  #         posteriorSum += p.observer.posterior[i,j]
-  #       # end
-  #   end
-  # end
-
   posteriorSum = sum(p.observer.posterior)
   p.observer.posterior .*= p.observer.likelihood/posteriorSum
  
 
-   # diffuse and mix with initial prior
-   # NB diffusion coef here should match diffusion coef in particle filter
-   #density = p.observer.posteriorDeaths[]/p.observer.nPparticles[]
-   #diffuseCoef = 2.0
+  # diffuse and mix with uniform prior 
+  p.observer.posterior[:,:]  = (1.0-p.observer.posteriorDeathRate[])*
+    imfilter(p.observer.posterior, Kernel.gaussian(p.observer.diffuseCoef[])) + 
+              p.observer.posteriorDeathRate[]/p.observer.N
 
-   ###############################################################
-   p.observer.posterior[:,:]  = (1.0-p.observer.posteriorDeathRate[])*
-      imfilter(p.observer.posterior, Kernel.gaussian(diffuseCoef)) + p.observer.posteriorDeathRate[].*p.observer.prior[:,:]
-      ###############################################################
-      # p.observer.posterior[:,:]  = (1.0-density)*
-      # imfilter(p.observer.posterior, Kernel.gaussian(diffuseCoef))./posteriorSum + density.*p.observer.prior[:,:]
-
-  # renormalize over mat (ie compensate for probability mass that has leaked out of the observable world,
-  # corresponding to not allowing particles to diffuse off the mat)
-  # posteriorSum = 0.0
-  # @inbounds for i in -p.observer.maxRange:p.observer.maxRange
-  #   @inbounds for j in -p.observer.maxRange:p.observer.maxRange
-  #       d = sqrt(i^2 + j^2)
-  #       if (d>p.radius) & (d<p.observer.maxRange)
-  #         posteriorSum += p.observer.posterior[i,j]
-  #       else
-  #         p.observer.posterior[i,j] = 0.0
-  #       end
-  #   end
-  # end
-  # p.observer.posterior[:,:] ./= posteriorSum
-
+  # renormalize 
   posteriorSum = 0.0
-for i in -p.observer.maxRange:p.observer.maxRange
-for j in -p.observer.maxRange:p.observer.maxRange
-        d = sqrt(i^2 + j^2)
-        if (d>p.radius) & (d<p.observer.maxRange)
-          posteriorSum += p.observer.posterior[i,j]
-        else
-          p.observer.posterior[i,j] = 0.0
-        end
+  for i in -p.observer.maxRange:p.observer.maxRange
+    for j in -p.observer.maxRange:p.observer.maxRange
+      d = sqrt(i^2 + j^2)
+      if (d>p.radius) & (d<p.observer.maxRange)
+        posteriorSum += p.observer.posterior[i,j]
+      else
+        p.observer.posterior[i,j] = 0.0
+      end
     end
   end
   p.observer.posterior[:,:] ./= posteriorSum
@@ -986,7 +961,7 @@ function particleStats(prey::Placozoan, predator::Placozoan)
   N = prey.observer.nPparticles[]
 
   # sorted distance from closest point to all posterior particles
-  D = sort(distance(prey.observer.Pparticles[:], pClosest))
+  D = sort(distance(prey.observer.Pparticle[:])) .- prey.radius
 
   # quantiles of particle distance to predator
   QN = [D[Int(cround(q*N))] for q in  [0.01 0.05 0.25 0.50]]
@@ -995,11 +970,13 @@ function particleStats(prey::Placozoan, predator::Placozoan)
   range = [40 45 50]
   NR = [sum(x->x<range[i], D)/N for i in 1:length(range)]
 
-  # bearing error for each particle
-  θ = atan.(prey.observer.Pparticle[:][2], prey.observer.Pparticle[:][1]) .- bearing
+  
+  #θ = atan.(prey.observer.Pparticle[:][2], prey.observer.Pparticle[:][1]) .- bearing
 
-  # unwrap
+  # bearing error for each particle
+  θ = fill(0.0, N)
   for i in 1:N
+    θ[i] = atan(prey.observer.Pparticle[i][2], prey.observer.Pparticle[i][1]) .- bearing
     if θ[i] > π
       θ[i] = θ[i] - 2π
     elseif    θ[i] < -π
@@ -1019,7 +996,7 @@ function particleStats(prey::Placozoan, predator::Placozoan)
   prey.mcell.position[] = prey.mcell.d*Point2(cos(bearing + Qθ[iQmed]*π/180.0), sin(bearing + Qθ[iQmed]*π/180.0))
   p = 0   # initialize particle-in-threat-zone count
   for i = 1:N
-    if distance(prey.mcell.position[] - prey.observer.Bparticle[i]) <= prey.mcell.r
+    if distance(prey.mcell.position[], prey.observer.Bparticle[i]) <= prey.mcell.r
       p = p + 1
     end
   end
@@ -1033,13 +1010,26 @@ function particleStats(prey::Placozoan, predator::Placozoan)
 
 end
 
+# Max posterior probability of placozoan location
+function MAPlocation(placozoan::Placozoan)
+
+  r = placozoan.radius
+  D = placozoan.observer.maxRange
+  p = findmax(OffsetArrays.no_offset_view(prey.observer.posterior).*[ ((i)^2+(j)^2)>(placozoan.radius^2) for i in -D:D, j in -D:D])
+  
+  # transform back to offset indices
+  return(Tuple(p[2]) .- D .- 1)
+
+end
+
+
 # summarize Bayesian observer distributions
 function observerStats(prey::Placozoan, predator::Placozoan)
 
   bearing2predator = atan(predator.position[][2], predator.position[][1])    # bearing to centre of predator
   
-  x_edge = predator.x[] - predator.radius*cos(bearing2predator) # x-coord of closest edge point
-  y_edge = predator.y[] - predator.radius*sin(bearing2predator)
+  x_edge = predator.position[][1] - predator.radius*cos(bearing2predator) # x-coord of closest edge point
+  y_edge = predator.position[][2] - predator.radius*sin(bearing2predator)
 
   bearing = atan(y_edge, x_edge)*180.0/π  # bearing to closest edge of predator
 
@@ -1060,9 +1050,9 @@ function observerStats(prey::Placozoan, predator::Placozoan)
     end
     
     if (d< prey.observer.maxRange) & (d>=prey.radius)
-      d = 1+Int64(round(d))     # quantized distance to world location
+      d = 1+Int64(cround(d))     # quantized distance to world location
       RCDF[d] = RCDF[d] + prey.observer.posterior[i,j]
-      Θ = 181 + Int64(round(Θ))      # quantized angle
+      Θ = 181 + Int64(cround(Θ))      # quantized angle
       ACDF[Θ] =  ACDF[Θ] + prey.observer.posterior[i,j]
     end
     end
@@ -1073,7 +1063,7 @@ function observerStats(prey::Placozoan, predator::Placozoan)
   
   # probability that predator is within specified range(s)
   # range values here should match those in particleStats()
-  PR = RCDF[Int64(round(prey.radius)).+[40, 45, 50]]
+  PR = RCDF[Int64(cround(prey.radius)).+[40, 45, 50]]
 
   # quantiles of posterior density of distance to predator
   # quantile values here should match those in particleStats()
@@ -1087,8 +1077,7 @@ function observerStats(prey::Placozoan, predator::Placozoan)
   QΘ = [ minimum(findall(x->x>=q, ACDF)) for q in  [0.01 0.05 0.25 0.5 .75 .95 .99] ] .-180.0
 
   # update mcell coords
-  prey.mcell.x[] = prey.mcell.d*cos(bearing2predator)
-  prey.mcell.y[] = prey.mcell.d*sin(bearing2predator)
+  prey.mcell.position[] = prey.mcell.d * Point2( cos(bearing2predator), sin(bearing2predator) )
   # probability of predator in M-cell RF
   MP = posteriorInMcellRF(prey)
 
@@ -1128,155 +1117,139 @@ function getRange(prey::Placozoan, predator::Placozoan, i)
     prey.observer.Δ[i] = sqrt(predator.x[]^2 + predator.y[]^2)-prey.radius-predator.radius
 end
 
-# # KLD(bayesian||particle)
-# # Kullback-Liebler divergence
-# # information gained by using particle distribution instead of bayesian posterior
-# # i.e.  overconfidence in the particle distribution
-# function KLD!(I::Observer, frame::Int64)
+# KLD(particle||bayesian)
+function DKLD!(placozoan::Placozoan, frame::Int64)
+  # Kullback-Liebler divergence from posterior distribution at points drawn from itself (posterior sample distribution)
+  #   to posterior distribution at posterior particle locations, and KLD from posterior 
+  #   sample distribution to posterior distribution at prior.
 
-#   # KLD of particle estimate
-#   S = 0.0
-#   n = 0
-#   # at each step the posterior includes a 
-#   outlier_threshold = 1.0e-6
-#   @inbounds for k in 1:I.nPparticles[]
-#     i = Int64(round(I.Pparticle[k,1]))
-#     j = Int64(round(I.Pparticle[k,2]))
-#     if I.posterior[i,j] > outlier_threshold
-#       S = S + log2(I.posterior[i,j])
-#       n = n + 1
-#     end
-#     #end
-#   end
-#   I.KLD[frame] = S/n +  log2(n)
+  # distribution of posterior at random sample from prior.
+  priorSample = samplePrior(placozoan, placozoan.observer.nPparticles[])  # random sample from prior
+  posteriorPDF_priorSample = fill(0.0,placozoan.observer.nPparticles[])
+  for i in 1:placozoan.observer.nPparticles[]
+    posteriorPDF_priorSample[i] = placozoan.observer.posterior[gridPoint(priorSample[i])...] # posterior density at sample points
+  end
+  posteriorPDF_priorSample /= sum(posteriorPDF_priorSample) # normalize
 
-#   # KLD of random uniform sample
-#   S0 = 0.0
-#   nSamples = 0
-#   n = 0
-#   while nSamples < I.nPparticles[]
-#     i = rand(-I.maxRange:I.maxRange,1)[]
-#     j = rand(-I.maxRange:I.maxRange,1)[]
-#     d = sqrt(i^2+j^2)
-#     if (d>=I.minRange) & (d<=I.maxRange) # exclude particles not in the observable world
-#       nSamples = nSamples + 1
-#       if I.posterior[i,j] > outlier_threshold
-#        #S0 = S0 + I.posterior[i,j]*log2(I.posterior[i,j] )
-#        S0 = S0 + log2(I.posterior[i,j] )
-#        n = n + 1
-       
-#       end
-#     # end
-#     end
-#   end
-#   I.KLD0[frame] = S0/n +  log2(n)
+  # distribution of posterior at random sample from posterior.
+  postSample = samplePosterior(placozoan)  # random sample from prior
+  posteriorPDF_posteriorSample = fill(0.0,placozoan.observer.nPparticles[])
+  for i in 1:placozoan.observer.nPparticles[]
+    posteriorPDF_posteriorSample[i] = placozoan.observer.posterior[gridPoint(postSample[i])...] # posterior density at sample points
+  end
+  posteriorPDF_posteriorSample /= sum(posteriorPDF_posteriorSample) # normalize
+  
+
+    # distribution of posterior at posterior particle locations
+    priorSample = samplePrior(placozoan, placozoan.observer.nPparticles[])  # random sample from prior
+    posteriorPDF_posteriorParticles = fill(0.0,placozoan.observer.nPparticles[])
+    for i in 1:placozoan.observer.nPparticles[]
+      posteriorPDF_posteriorParticles[i] = placozoan.observer.posterior[gridPoint(prey.observer.posterior[i])...] # posterior density at sample points
+    end
+    posteriorPDF_posteriorParticles  # normalize
+
+end
 
 
-#    # KLD of sample from posterior
-#    SI = 0.0
-#    s = sample(I.posterior, I.nPparticles[])
-#    n = 0
-#    @inbounds for i in 1:I.nPparticles[]
-#        #SI = SI + I.posterior[s[i,1],s[i,2]]*log2(I.posterior[s[i,1],s[i,2]])
-#        if I.posterior[s[i,1],s[i,2]] > outlier_threshold
-#         SI = SI + log2(I.posterior[s[i,1],s[i,2]])
-#         n = n + 1
-#        end
-#    end
-
-#    I.KLDI[frame] = SI/n +  log2(n)
-
-#  end
 
 # KLD(particle||bayesian)
-function KLD!(I::Observer, frame::Int64)
-  # computes Kullback-Liebler divergence, saves in KLD field of observer.
-  # KLD is the information lost if the particle distribution is used instead of the 
-  # "true" posterior. It is computed for the placozoan model (KLD), a null model in 
-  # which particles are drawn uniformly at random over the mat (KLD0) and an "ideal"
-  # particle distribution drawn from the true posterior (KLDI).
-  # THIS VERSION of KLD compares the true posterior at sample points (particle locations)
-  # to the particle distribution i.e. a uniform distribution over those points.
+function KLD!(placozoan::Placozoan, frame::Int64)
+  # (1) Kullback-Liebler divergence from posterior particle distribution to posterior distribution
+  # (2) ... from posterior sample to posterior
+  # (3) ... from prior sample to posterior
+
+
 
   # KLD of particle estimate
   S = 0.0
   n = 0
   outlier_threshold = 1.0e-14
   psum = 0.0
-  @inbounds for k in 1:I.nPparticles[]
-    i = Int64(round(I.Pparticle[k,1]))
-    j = Int64(round(I.Pparticle[k,2]))
-    try  # rarely [i,j] is out of bounds, but we dont care
-       psum += I.posterior[i,j]
-    catch
-    end
-  end
 
-  @inbounds for k in 1:I.nPparticles[]
-    i = Int64(round(I.Pparticle[k,1]))
-    j = Int64(round(I.Pparticle[k,2]))
-    #if (i^2 + j^2)<I.maxRange^2 # exclude particles not in the observable world
-    try
-      if I.posterior[i,j] > outlier_threshold
-        # S = S + I.posterior[i,j]*log2(I.posterior[i,j] )
-        S = S + I.posterior[i,j]*log2(I.posterior[i,j]/psum) 
+  # sum of posterior densitoes at sample points needed to normalize posterior over particle locations
+  @inbounds for k in 1:placozoan.observer.nPparticles[]
+    try  # sometimes a grid point is out of bounds. Ignored.
+      p = placozoan.observer.posterior[gridPoint(placozoan.observer.Pparticle[k])...]
+      if p > outlier_threshold
+        psum = psum + p
+        n = n+1
       end
     catch
     end
   end
-  I.KLD[frame] = S/psum + log2(I.nPparticles[])
+
+  # KLD posterior || particles
+  @inbounds for k in 1:placozoan.observer.nPparticles[]
+    try  # sometimes a grid point is out of bounds. Ignored.
+      p = placozoan.observer.posterior[gridPoint(placozoan.observer.Pparticle[k])...]
+      if p > outlier_threshold
+        S = S + p*log2(p/psum) # nb divided by psum later to get p/psum*log2(p/psum) 
+      end
+    catch
+    end
+  end
+  placozoan.observer.KLD[frame] = S/psum + log2(n)
 
   # KLD of random uniform sample
-  S0 = 0.0
-  nSamples = 0
-  p0sum = 0.0
-  while nSamples < I.nPparticles[]
-    i = rand(-I.maxRange:I.maxRange,1)[]
-    j = rand(-I.maxRange:I.maxRange,1)[]
-    d = sqrt(i^2+j^2)
-    if (d>=I.minRange) & (d<=I.maxRange) # exclude particles not in the observable world
-      nSamples = nSamples + 1
-      if I.posterior[i,j] > outlier_threshold
-       p0sum = p0sum + I.posterior[i,j]
+  S = 0.0
+  psum = 0.0
+  n = 0
+  u = uniformSampleAnnulus(Float64(placozoan.observer.minRange), Float64(placozoan.observer.maxRange), placozoan.observer.nPparticles[])# uniform random sample
+
+  # psum at uniform sample points
+  @inbounds for k in 1:placozoan.observer.nPparticles[]
+    try
+      p = placozoan.observer.posterior[gridPoint(u[k])...]
+      if p > outlier_threshold
+        psum = psum + p
+        n = n + 1
       end
+    catch
     end
   end
-  nSamples = 0
-  while nSamples < I.nPparticles[]
-    i = rand(-I.maxRange:I.maxRange,1)[]
-    j = rand(-I.maxRange:I.maxRange,1)[]
-    d = sqrt(i^2+j^2)
-    if (d>=I.minRange) & (d<=I.maxRange) # exclude particles not in the observable world
-      nSamples = nSamples + 1
-      if I.posterior[i,j] > outlier_threshold
-       #S0 = S0 + I.posterior[i,j]*log2(I.posterior[i,j] )
-       S0 = S0 + I.posterior[i,j]*log2(I.posterior[i,j]/p0sum)
+
+  # KLD posterior || uniform sample
+  @inbounds for k in 1:placozoan.observer.nPparticles[]
+    try
+      p = placozoan.observer.posterior[gridPoint(u[k])...]
+      if p > outlier_threshold
+        S = S + p*log2(p/psum) 
       end
+    catch
     end
   end
-  I.KLD0[frame] = S0/p0sum +  log2(I.nPparticles[])
+  placozoan.observer.KLD0[frame] = S/psum +  log2(n)
 
 
    # KLD of sample from posterior
-   SI = 0.0
-   s = sample(I.posterior, I.nPparticles[])
+   S = 0.0
+   psum = 0.0
    n = 0
-   pIsum = 0.0
-   @inbounds for i in 1:I.nPparticles[]
-       #SI = SI + I.posterior[s[i,1],s[i,2]]*log2(I.posterior[s[i,1],s[i,2]])
-       if I.posterior[s[i,1],s[i,2]] > outlier_threshold
-        pIsum = pIsum + I.posterior[s[i,1],s[i,2]]
-       end
-   end
+   s = samplePosterior(placozoan)
 
-   @inbounds for i in 1:I.nPparticles[]
-    #SI = SI + I.posterior[s[i,1],s[i,2]]*log2(I.posterior[s[i,1],s[i,2]])
-    if I.posterior[s[i,1],s[i,2]] > outlier_threshold
-     SI = SI + I.posterior[s[i,1],s[i,2]]*log2(I.posterior[s[i,1],s[i,2]]/pIsum)
+   @inbounds for k in 1:placozoan.observer.nPparticles[]
+    try
+      p = placozoan.observer.posterior[gridPoint(s[k])...]
+      if p > outlier_threshold
+        psum = psum + p
+        n = n+1
+      end
+    catch
     end
-end
-   I.KLDI[frame] = SI/pIsum +   log2(I.nPparticles[])
+  end
 
+   @inbounds for k in 1:placozoan.observer.nPparticles[]
+    try
+      p = placozoan.observer.posterior[gridPoint(s[k])...]
+      if p > outlier_threshold
+        S = S + p*log2(p/psum) 
+      end
+    catch
+    end
+  end
+  placozoan.observer.KLDI[frame] = S/psum +   log2(n)
+
+ # println(  placozoan.observer.KLDI[frame])
  end
 
 
@@ -1296,7 +1269,7 @@ function sample!(s::Array{Int64, 2}, D::AbstractArray)
   Y = axes(D,2)
 
   # sample region is 3 sd each side of peak
-  Δ = Int64(round(4*σ))
+  Δ = Int64(cround(4*σ))
   x0 = max( minimum(X),   ipeak[1] - Δ)
   x1 = min( maximum(X), ipeak[1] + Δ)
   y0 = max( minimum(Y),   ipeak[2] - Δ)
@@ -1315,49 +1288,68 @@ function sample!(s::Array{Int64, 2}, D::AbstractArray)
   s
 end
 
-function sample(D::AbstractArray, N::Int64)
-  # draw sample s of size n from 2D empirical distribution D by rejection]
-  # sum(D)==1.
-  # samples are returned as Int64 nx2 indices of D
-  # samples are returned as Int64 nx2 indices of D
-  # Uses rectangular uniform proposal distribution whose 1/2-width shrinks
-  # to 3x the standard deviation of the posterior as it converges. 
+# function sample(D::AbstractArray, N::Int64)
+#   # draw sample s of size n from 2D empirical distribution D by rejection]
+#   # sum(D)==1.
+#   # samples are returned as Int64 nx2 indices of D
+#   # samples are returned as Int64 nx2 indices of D
+#   # Uses rectangular uniform proposal distribution whose 1/2-width shrinks
+#   # to 3x the standard deviation of the posterior as it converges. 
 
-  s = fill(0, N, 2)   # for samples
+#   s = fill(0, N, 2)   # for samples
 
-  (peak, ipeak) = findmax(D)  # maximum probability and its location
-  σ = 2^((entropy(D)-4.0942)/2)  # standard deviation of target distribution
+#   (peak, ipeak) = findmax(D)  # maximum probability and its location
+#   σ = 2^((entropy(D)-4.0942)/2)  # standard deviation of target distribution
 
 
-  i = 0              # sample size counter
-  X = axes(D,1)
-  Y = axes(D,2)
+#   i = 0              # sample size counter
+#   X = axes(D,1)
+#   Y = axes(D,2)
 
-  # sample region is 3 sd each side of peak
-  Δ = Int64(round(3*σ))
-  x0 = max(minimum(X), ipeak[1] - Δ)
-  x1 = min(maximum(X), ipeak[1] + Δ)
-  y0 = max(minimum(Y), ipeak[2] - Δ)
-  y1 = min(maximum(Y), ipeak[2] + Δ) 
+#   # sample region is 3 sd each side of peak
+#   Δ = Int64(round(3*σ))
+#   x0 = max(minimum(X), ipeak[1] - Δ)
+#   x1 = min(maximum(X), ipeak[1] + Δ)
+#   y0 = max(minimum(Y), ipeak[2] - Δ)
+#   y1 = min(maximum(Y), ipeak[2] + Δ) 
 
-  while i<N
-    x = rand(x0:x1,1)[]    # uniform random point
-    y = rand(y0:y1,1)[]
-    if peak*rand()[] < D[x,y]  # accept/reject
-      i = i + 1
-      s[i,1] = x
-      s[i,2] = y
+#   while i<N
+#     x = rand(x0:x1,1)[]    # uniform random point
+#     y = rand(y0:y1,1)[]
+#     if peak*rand()[] < D[x,y]  # accept/reject
+#       i = i + 1
+#       s[i,1] = x
+#       s[i,2] = y
+#     end
+#   end
+
+#   s
+# end
+
+# random sample from posterior
+# sample size = nPparticles
+function samplePosterior(placozoan::Placozoan)
+
+  maxPosterior = maximum(placozoan.observer.posterior)
+  s = fill(Point2(0.0, 0.0), placozoan.observer.nPparticles[])  
+  n = 0
+  while n < placozoan.observer.nPparticles[]
+    candidate = uniformSampleAnnulus(placozoan.radius, Float64(placozoan.observer.maxRange), 1)  # random point on mat
+    if (maxPosterior*rand()) < placozoan.observer.posterior[gridPoint(candidate[])...]   # rejection sampling
+      n = n+1
+      s[n] = candidate[]   # accept
     end
   end
 
-  s
+  return(s)
+
 end
 
 # posterior probability of predator in M-cell RF
 function posteriorInMcellRF(p::Placozoan)
    
   # get m-cell vertices
-  mc_pts = decompose(Point2f0, Circle(Point2f0(p.mcell.x[],p.mcell.y[]), p.mcell.r))
+  mc_pts = decompose(Point2f0, Circle(Point2f0(p.mcell.position[][1],p.mcell.position[][2]), p.mcell.r))
   mc_pts[end] = mc_pts[1]  # close polygon
   rf_pts = copy(mc_pts)  
 
@@ -1468,6 +1460,21 @@ function cround(x::Float64)
   round(x,  RoundNearestTiesAway)
 end
 
-struct thing
-  p::Vector{Point2{Float64}}
+function pMap(p::Point2, placozoan::Placozoan)
+
+   d = distance(p)
+
+  r = (d < placozoan.radius + 50.) ? placozoan.observer.collisionRadius[]*sqrt(d/placozoan.radius) : 1.2*placozoan.observer.collisionRadius[]
+  
+end
+
+function projectMap(p::Point2, placozoan::Placozoan)
+
+  d = distance(p) - placozoan.radius
+
+  #r = ( (distance(p)/placozoan.radius))^.25
+  #r = ( (distance(p)-placozoan.radius)/5.0)^.25
+  #r = 0.95 + 0.05*(d^2/(160.0 + d^2))
+  r = 1.0
+
 end

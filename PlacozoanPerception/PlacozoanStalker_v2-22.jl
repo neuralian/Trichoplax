@@ -46,13 +46,15 @@ n_posterior_particles = 12800
 posteriorDeathRate = .0005
 
 # number of replicate simulations for each combination of the above parameters
-N_REPS = 16
+N_REPS = 32
 
 # show animation while simulating true/false
 # (must be true if )
-SHOW_ANIMATION = true
+SHOW_ANIMATION = false
 
 # log parameters and simulation statistics per trial true/false 
+
+
 LOG_DATA = true
 
 
@@ -95,7 +97,7 @@ Ncrystals = 32
 prey_fieldrange = 0   # no field
 prey_spinrate =   0.0005π  # prey turns slowly clockwise
 particle_collisionRadius = 1.5 # when particles are this close to each other they are deemed to have collided
-posterior_diffusion_coefficient = 5.0
+posterior_diffusion_coefficient = 4.0
 
 
 # predator parameters
@@ -104,6 +106,10 @@ predator_margin = 0
 predator_speed =  .365
 predator_brownian = 0.0 # 0.5*posterior_diffusion_coefficient
 predator_fieldrange = mat_radius
+
+# "Mauthner" cell
+
+mcell_inset = 2.0*mcell_radius  # inset of M-cell centre from edge of animal
 
 
 
@@ -297,9 +303,13 @@ for rep = 1:N_REPS
         scene = Figure(resolution = ( Int(cround(3 * .75 * WorldSize)), Int(cround(.75 * WorldSize + 40)) ), backgroundcolor = :black)
         left_panel = scene[1,1] = Axis(scene, title="2D Reaction-Diffusion (Placozoan Model)",
             titlecolor = title_color, backgroundcolor=:black )
-        middle_panel = scene[1, 2] = Axis(scene, title="Likelihood", titlecolor = title_color, backgroundcolor=colour_background)
-        right_panel = scene[1, 3] = Axis(scene, title="Bayesian Observer", titlecolor = title_color, backgroundcolor=colour_background)
-        
+        middle_panel = scene[1, 2] = Axis(scene, title="Bayesian Observer", titlecolor = title_color, backgroundcolor=colour_background)
+        right_panel = scene[1, 3] = Axis(scene, title="Likelihood", titlecolor = title_color, backgroundcolor=colour_background)
+
+
+
+
+
         # colsize!(scene, 1, Relative(0.04))
         # colsize!(scene, 2, Relative(0.32))
         # colsize!(scene, 3, Relative(0.32))
@@ -378,10 +388,10 @@ for rep = 1:N_REPS
         # zeros(prey.observer.nPparticles[]),
                             color=colour_posterior, strokewidth=0, markersize=size_belief)
 
-    Likely_plt = plot!( middle_panel,
+    Likely_plt = plot!( right_panel,
         OffsetArrays.no_offset_view(prey.observer.likelihood), colorrange = (0.0, 1.25), colormap = :copper)  # :turku
 
-    Posty_plt =  surface!(right_panel, 1:WorldSize, 1:WorldSize,
+    Posty_plt =  surface!( middle_panel , 1:WorldSize, 1:WorldSize,
         OffsetArrays.no_offset_view(prey.observer.posterior),  colormap = :magma)
 
     # PostContour_plt = contour!(right_panel, 1:WorldSize, 1:WorldSize,
@@ -478,8 +488,8 @@ for rep = 1:N_REPS
     # comment out ONE of the following 2 lines to generate video file or not
     # NB animation can be displayed while simulating, by setting SHOW_ANIMATION = true, without saving as video file,
     # SHOW_ANIMATION must be true for video to be recorded.
-    record(scene, videoFileName , framerate=30, compression = 0, 1:nFrames) do i     # simulate and write video file
-    #for i in 1:nFrames                                         # simulate without writing video file
+    #record(scene, videoFileName , framerate=30, compression = 0, 1:nFrames) do i     # simulate and write video file
+    for i in 1:nFrames                                         # simulate without writing video file
 
 
         # predator takes a stochastic step toward prey

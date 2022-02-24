@@ -14,7 +14,7 @@ using DataFrames
 using PolygonOps  
 
 #diffuseCoef = 3.0
-
+mcell_radius = 2.5
 
 const max_nLparticles = 2^14
 const max_nPparticles = 2^14
@@ -51,9 +51,7 @@ const vision_dark = RGB(0.0, 0.0, 0.0)
 const sizeof_crystal = 5.0
 const vision_SD = 0.8
 
-# "Mauthner" cell
-const mcell_radius = 2.5
-const mcell_inset = 2.0*mcell_radius  # inset of M-cell centre from edge of animal
+
 
 # Particle sizes  
 const size_likelihood = 2.0
@@ -293,6 +291,7 @@ struct Placozoan
   photoreceptor::CrystalCell
   observer::Observer  # Bayesian particle filter
   mcell::Mcell        # "Mauthner" neuron
+  pcell::Mcell        # particle M-cell
   speed::Array{Float64,1}  # speed parameter (actual speed depends on state)
   brown::Array{Float64,1}  # Brownian motion parameter (diffusion constant)
   ω::Array{Float64,1}   # omega, angular velocity of self-rotation
@@ -351,7 +350,8 @@ function Placozoan(
       receptor,
       crystalcell,
       observer,
-      Mcell(radius-mcell_inset, mcell_radius, [Point2(0.0, 0.0)] ),
+      Mcell(radius-7.14, mcell_radius, [Point2(0.0, 0.0)] ),
+      Mcell(radius-5.5, mcell_radius, [Point2(0.0, 0.0)] ),
       [0.0],  
       [diffuseCoef],
       [0.0],
@@ -372,7 +372,9 @@ function Placozoan(radius::Int64, margin::Int64, fieldrange::Int64, position::Po
 
    return Placozoan(radius, margin, radius-margin, 12.0,  [position],
      zeros(fieldrange), zeros(fieldrange), fieldrange,
-     Ereceptor(), CrystalCell(), Observer(), Mcell(0.0, 0.0, [Point2(0.0, 0.0)]), [speed], [brownian], [0.0], [0.0, 0.0],
+     Ereceptor(), CrystalCell(), Observer(), 
+     Mcell(0.0, 0.0, [Point2(0.0, 0.0)]), Mcell(0.0, 0.0, [Point2(0.0, 0.0)]),
+     [speed], [brownian], [0.0], [0.0, 0.0],
      bodycolor, gutcolor, edgecolor )
 
 end
@@ -885,7 +887,7 @@ function bayesArrayUpdate(p::Placozoan)
 
   # diffuse and mix with uniform prior 
   p.observer.posterior[:,:]  = (1.0-p.observer.posteriorDeathRate[])*
-    imfilter(p.observer.posterior, Kernel.gaussian(p.observer.diffuseCoef[])) + 
+    imfilter(p.observer.posterior, Kernel.gaussian(p.observer.diffuseCoef[])) .+ 
               p.observer.posteriorDeathRate[]/p.observer.N
 
   # renormalize 
@@ -993,10 +995,10 @@ function particleStats(prey::Placozoan, predator::Placozoan)
   # M-cell threat estimate
   # nb M-cell is positioned dynamically on the predator bearing
   # so 1 M-cell simulates the closest of an array of M-cells
-  prey.mcell.position[] = prey.mcell.d*Point2(cos(bearing + Qθ[iQmed]*π/180.0), sin(bearing + Qθ[iQmed]*π/180.0))
+  prey.pcell.position[] = prey.pcell.d*Point2(cos(bearing + Qθ[iQmed]*π/180.0), sin(bearing + Qθ[iQmed]*π/180.0))
   p = 0   # initialize particle-in-threat-zone count
   for i = 1:N
-    if distance(prey.mcell.position[], prey.observer.Bparticle[i]) <= prey.mcell.r
+    if distance(prey.pcell.position[], prey.observer.Bparticle[i]) <= prey.pcell.r
       p = p + 1
     end
   end
@@ -1459,6 +1461,22 @@ end
 function cround(x::Float64)
   round(x,  RoundNearestTiesAway)
 end
+
+
+# what is the true range when range in map is r?
+function projectRangeToWorld(r::Float64, placozoan::Placozoan)
+
+  R = r*(placozoan.observer.maxRange-placozoan.radius)/ 
+             placozoan.marginwidth 
+end
+
+# what is the range in map when true range is R?
+function projectRangeFromWorld(R::Float64, placozoan::Placozoan)
+
+  r = R*placozoan.marginwidth / (placozoan.observer.maxRange-placozoan.radius)
+
+end
+
 
 function pMap(p::Point2, placozoan::Placozoan)
 

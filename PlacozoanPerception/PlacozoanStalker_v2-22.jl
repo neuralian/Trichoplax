@@ -41,7 +41,7 @@ function placozoanStalker()
 
 
 # SIMULATION parameters
-n_likelihood_particles = 6400
+n_likelihood_particles =  6400
 n_posterior_particles = 12800
 posteriorDeathRate = .0005
 
@@ -50,12 +50,12 @@ N_REPS = 32
 
 # show animation while simulating true/false
 # (must be true if )
-SHOW_ANIMATION = false
+SHOW_ANIMATION = true
 
 # log parameters and simulation statistics per trial true/false 
 
 
-LOG_DATA = true
+LOG_DATA = false
 
 
 
@@ -127,7 +127,8 @@ end
 
 # time observable
 # used to force scene update (nothing depends explicitly on time)
-t = Node(1.0)
+t = Observable{Int}(1)
+
 
 ELECTRORECEPTION = true
 PHOTORECEPTION = false
@@ -326,26 +327,26 @@ for rep = 1:N_REPS
 
         # mat is a dark green disc in left panel (always present)
         mat_plt = poly!(left_panel,
-            decompose(Point2f0, Circle(Point2f0(0., 0.), mat_radius)),
+            decompose(Point2f, Circle(Point2f(0., 0.), mat_radius)),
             color=colour_mat, strokewidth=0, strokecolor=:black)
         display(scene)
 
         mat_middle_plt = poly!(middle_panel,
-            decompose(Point2f0, Circle(Point2f0(mat_radius, mat_radius), mat_radius)),
+            decompose(Point2f, Circle(Point2f(mat_radius, mat_radius), mat_radius)),
             color=RGBA(0.0, 0.0, 0.0, 0.0),
             strokewidth=0.5,
             strokecolor=RGB(0.75, 0.75, 0.75),
         )
 
         mat_right_plt = poly!(right_panel,
-            decompose(Point2f0, Circle(Point2f0(mat_radius, mat_radius), mat_radius)),
+            decompose(Point2f, Circle(Point2f(mat_radius, mat_radius), mat_radius)),
             color=RGBA(0.0, 0.0, 0.0, 0.0),
             strokewidth=0.5,
             strokecolor=RGB(0.75, 0.75, 0.75),
         )
 
         # time and Δ report on plot
-        text!(left_panel, @lift(string("T = ", Int64($t))), color = :white, 
+        text!(left_panel, @lift(string("T = ", Int64($t[]))), color = :white, 
                             position = (40-mat_radius,60-mat_radius), textsize = 16)
         # text!(left_panel, @lift(string("Δ = ", Int64(round(prey.observer.range[Int64($t[])]-prey.radius-predator.radius)))), color = :white, 
         #                   position = (40-mat_radius,35-mat_radius), textsize = 16)
@@ -356,7 +357,7 @@ for rep = 1:N_REPS
     # (predatorLocation does not depend explicitly on t, but this causes
     #  the plot to be updated when the node t changes)
     predator_plt = poly!(left_panel,
-        lift(s -> decompose(Point2f0, Circle(Point2f0(predator.position[][1], predator.position[][2]),
+        lift(s -> decompose(Point2f, Circle(Point2f(predator.position[][1], predator.position[][2]),
             predator.radius)), t),
         color=predator.color, strokecolor=predator.edgecolor, strokewidth=.5)
 
@@ -398,7 +399,7 @@ for rep = 1:N_REPS
     #     lift(u->u, Posty_plt[3]), levels = [1.0e-6, 1.0e-5, 1.0e-4], color = RGB(.35,.35,.35))
 
     predator_right_plt = poly!(right_panel,
-        lift(s -> decompose(Point2f0, Circle(Point2f0(
+        lift(s -> decompose(Point2f, Circle(Point2f(
             mat_radius + predator.position[][1], mat_radius + predator.position[][2]),
             predator.radius)), t ),
             color=RGBA(0.0, 0.0, 0.0, 0.0),
@@ -407,8 +408,8 @@ for rep = 1:N_REPS
         )
 
         predator_middle_plt = poly!( middle_panel,
-            lift(s -> decompose(Point2f0,
-                Circle(Point2f0(mat_radius + predator.position[][1], mat_radius + predator.position[][2]),
+            lift(s -> decompose(Point2f,
+                Circle(Point2f(mat_radius + predator.position[][1], mat_radius + predator.position[][2]),
                 predator.radius) ), t),
                 color=RGBA(0.0, 0.0, 0.0, 0.0),
                 strokecolor=predator.edgecolor,
@@ -416,30 +417,30 @@ for rep = 1:N_REPS
             )
 
         prey_Lcopy_plt = poly!(middle_panel,
-            decompose(Point2f0, Circle(Point2f0(mat_radius, mat_radius), prey.radius)),
+            decompose(Point2f, Circle(Point2f(mat_radius, mat_radius), prey.radius)),
             color=RGBA(0.0, 0.0, 0.0, 0.0), strokewidth=1.5, strokecolor=prey.gutcolor)
 
         preygut_Lcopy_plt = poly!(middle_panel,
-            decompose(Point2f0, Circle(Point2f0(mat_radius, mat_radius), prey.radius - prey.marginwidth + 1)),
+            decompose(Point2f, Circle(Point2f(mat_radius, mat_radius), prey.radius - prey.marginwidth + 1)),
             color=prey.gutcolor, strokewidth=0.5, strokecolor=prey.gutcolor*.75)
 
         prey_Pcopy_plt = poly!(right_panel,
-            decompose(Point2f0, Circle(Point2f0(mat_radius, mat_radius), prey.radius)),
+            decompose(Point2f, Circle(Point2f(mat_radius, mat_radius), prey.radius)),
             color=RGBA(0.0, 0.0, 0.0, 0.0), strokewidth=1.5, strokecolor=prey.gutcolor)
 
         preygut_Pcopy_plt = poly!(right_panel,
-            decompose(Point2f0, Circle(Point2f0(mat_radius, mat_radius), prey.radius - prey.marginwidth + 1)),
+            decompose(Point2f, Circle(Point2f(mat_radius, mat_radius), prey.radius - prey.marginwidth + 1)),
             color=prey.gutcolor, strokewidth=0.5, strokecolor=prey.gutcolor*.75)
 
 
 
         # Prey
         prey_plt = poly!(left_panel,
-            decompose(Point2f0, Circle(Point2f0(0., 0.), prey.radius)),
+            decompose(Point2f, Circle(Point2f(0., 0.), prey.radius)),
             color=prey.color, strokewidth=0.25, strokecolor=prey.gutcolor)
 
         preyGut_plt = poly!(left_panel,
-            decompose(Point2f0, Circle(Point2f0(0., 0.), prey.gutradius)),
+            decompose(Point2f, Circle(Point2f(0., 0.), prey.gutradius)),
             color=prey.gutcolor, strokewidth=0.5, strokecolor=prey.gutcolor*.75)
 
 
@@ -565,7 +566,8 @@ for rep = 1:N_REPS
         # Kullback-Liebler divergence (information-distance between particle distibution and 'true' posterior)
         KLD!(prey, i)
 
-        t[] = i  # node update -> redraw 
+        t[] = i  # update observable, causes redraw 
+        notify(t)
 
         if LOG_DATA
 
@@ -618,7 +620,7 @@ for rep = 1:N_REPS
         println()
         laptimer()
 
-        t[] = 1
+        t = 1
 
     end # for rep
 

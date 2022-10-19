@@ -2,8 +2,6 @@
 # types and functions &c used by PlacozoanStalker.jl
 
 using GLMakie
-#using AbstractPlotting.MakieLayout
-#using AbstractPlotting
 using Colors
 using OffsetArrays
 using Distributions
@@ -13,7 +11,6 @@ using CSV
 using DataFrames
 using PolygonOps  
 
-#diffuseCoef = 3.0
 mcell_radius = 2.5
 
 const max_nLparticles = 2^14
